@@ -93,4 +93,5 @@ server.listen(PORT, () => {
   console.log(`🌍 Environnement : ${process.env.NODE_ENV}`);
 });
 
-module.exports = { app, io };
+// Remplace ton module.exports actuel par celui-ci :
+module.exports = app;
