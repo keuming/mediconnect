@@ -26,6 +26,11 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: 'Trop de tentatives, réessayez dans 15 minutes.' }));
 app.use('/api/',     rateLimit({ windowMs: 1*60*1000,  max: 200 }));
 
+// Route de test pour confirmer que Vercel voit bien le fichier
+app.get('/', (req, res) => {
+  res.send('🚀 MediConnect API est en ligne et fonctionnelle !');
+});
+
 // ── Routes ────────────────────────────────────────────────────────
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/utilisateurs',  require('./routes/utilisateurs'));
