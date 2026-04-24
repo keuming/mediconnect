@@ -26,10 +26,9 @@ const io = new Server(server, {
 
 // ── Middleware ────────────────────────────────────────────────────
 app.use(helmet({
-  crossOriginResourcePolicy: false, // Nécessaire pour afficher les images/uploads
+  crossOriginResourcePolicy: false,
 }));
 
-// Configuration CORS Ultra-Large pour Vercel
 app.use(cors({ 
   origin: function (origin, callback) {
     const allowedOrigins = [
@@ -37,8 +36,6 @@ app.use(cors({
       'https://mediconnect-m9xf.vercel.app',
       process.env.FRONTEND_URL
     ];
-    // Autorise les requêtes sans origine (comme les apps mobiles ou curl) 
-    // et les sous-domaines vercel.app
     if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
@@ -55,83 +52,68 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ── Rate limiting ─────────────────────────────────────────────────
-const authLimiter = rateLimit({ 
-  windowMs: 15 * 60 * 1000, 
-  max: 50, // Augmenté un peu pour les tests
-  message: { success: false, message: 'Trop de tentatives, réessayez dans 15 minutes.' } 
-});
-app.use('/api/auth', authLimiter);
-app.use('/api/', rateLimit({ windowMs: 1 * 60 * 1000, max: 200 }));
-
-// ── Route de Base & Health Check ──────────────────────────────────
+// ── Route de Base ─────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.send('🚀 MediConnect API est en ligne et fonctionnelle !');
 });
 
-app.get('/api/health', (req, res) => res.json({
+// ── Double Routage Stratégique ────────────────────────────────────
+// Cette fonction enregistre les routes avec ET sans le préfixe /api
+// pour corriger l'erreur 404 du frontend
+const registerRoutes = (prefix, routerPath) => {
+  const router = require(routerPath);
+  app.use(`/api${prefix}`, router); // Route standard: /api/auth
+  app.use(prefix, router);          // Route de secours: /auth
+};
+
+registerRoutes('/auth',           './routes/auth');
+registerRoutes('/utilisateurs',   './routes/utilisateurs');
+registerRoutes('/cliniques',      './routes/cliniques');
+registerRoutes('/medecins',       './routes/medecins');
+registerRoutes('/patients',       './routes/patients');
+registerRoutes('/rendez-vous',    './routes/rendezVous');
+registerRoutes('/consultations',  './routes/consultations');
+registerRoutes('/ordonnances',    './routes/ordonnances');
+registerRoutes('/pharmacies',     './routes/pharmacies');
+registerRoutes('/commandes',      './routes/commandes');
+registerRoutes('/assurances',     './routes/assurances');
+registerRoutes('/factures',       './routes/factures');
+registerRoutes('/stock',          './routes/stock');
+registerRoutes('/caisse',         './routes/caisse');
+registerRoutes('/livreurs',       './routes/livreurs');
+registerRoutes('/notifications',  './routes/notifications');
+
+// ── Health check ──────────────────────────────────────────────────
+app.get(['/api/health', '/health'], (req, res) => res.json({
   status: 'ok', 
-  env: process.env.NODE_ENV, 
   timestamp: new Date().toISOString()
 }));
 
-// ── Routes API ────────────────────────────────────────────────────
-app.use('/api/auth',           require('./routes/auth'));
-app.use('/api/utilisateurs',   require('./routes/utilisateurs'));
-app.use('/api/cliniques',      require('./routes/cliniques'));
-app.use('/api/medecins',       require('./routes/medecins'));
-app.use('/api/patients',       require('./routes/patients'));
-app.use('/api/rendez-vous',    require('./routes/rendezVous'));
-app.use('/api/consultations',  require('./routes/consultations'));
-app.use('/api/ordonnances',    require('./routes/ordonnances'));
-app.use('/api/pharmacies',     require('./routes/pharmacies'));
-app.use('/api/commandes',      require('./routes/commandes'));
-app.use('/api/assurances',     require('./routes/assurances'));
-app.use('/api/factures',       require('./routes/factures'));
-app.use('/api/stock',          require('./routes/stock'));
-app.use('/api/caisse',         require('./routes/caisse'));
-app.use('/api/livreurs',       require('./routes/livreurs'));
-app.use('/api/notifications',  require('./routes/notifications'));
-
-// ── Socket.IO — GPS & Notifications ───────────────────────────────
+// ── Socket.IO ─────────────────────────────────────────────────────
 const livreurPositions = {};
-
 io.on('connection', (socket) => {
-  console.log('🔌 Client connecté:', socket.id);
-
   socket.on('livreur:position', (data) => {
     livreurPositions[data.livreur_id] = { ...data, ts: Date.now() };
     io.emit('livreur:positions', Object.values(livreurPositions));
   });
-
-  socket.on('join:clinique', (clinique_id) => socket.join(`clinique:${clinique_id}`));
-  socket.on('join:patient',  (patient_id)  => socket.join(`patient:${patient_id}`));
-
-  socket.on('notification:send', (data) => {
-    io.to(`patient:${data.patient_id}`).emit('notification:new', data);
-  });
-
-  socket.on('disconnect', () => console.log('🔌 Client déconnecté:', socket.id));
+  socket.on('disconnect', () => console.log('🔌 Client déconnecté'));
 });
 
 // ── Gestion des Erreurs ───────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Erreur serveur:', err);
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Erreur interne du serveur'
-  });
+  res.status(err.status || 500).json({ success: false, message: err.message });
 });
 
-app.use((req, res) => res.status(404).json({ success: false, message: 'Route introuvable' }));
+app.use((req, res) => res.status(404).json({ 
+  success: false, 
+  message: `Route introuvable : ${req.originalUrl}` 
+}));
 
-// ── Démarrage (Listen uniquement si pas sur Vercel) ────────────────
+// ── Démarrage ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'production') {
-  server.listen(PORT, () => {
-    console.log(`🚀 MediConnect Backend Local — http://localhost:${PORT}`);
-  });
+  server.listen(PORT, () => console.log(`🚀 Serveur local sur port ${PORT}`));
 }
 
-// Export pour Vercel
 module.exports = app;
