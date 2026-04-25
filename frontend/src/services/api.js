@@ -1,11 +1,22 @@
 import axios from 'axios';
 
 // ── Configuration Axios ───────────────────────────────────────────
+// ── Normalisation de l'URL API (ajoute /api si absent) ──────────
+const rawUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const BASE_URL = rawUrl.endsWith('/api') ? rawUrl
+               : rawUrl.endsWith('/')   ? rawUrl + 'api'
+               : rawUrl + '/api';
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+  baseURL: BASE_URL,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
+
+// Debug en développement
+if (process.env.NODE_ENV === 'development') {
+  console.log('[MediConnect] API URL:', BASE_URL);
+}
 
 // Intercepteur — ajouter le token JWT automatiquement
 api.interceptors.request.use((config) => {
