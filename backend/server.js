@@ -13,7 +13,7 @@ const server = http.createServer(app);
 // ── Configuration Socket.IO ────────────────────────────────────────
 const io = new Server(server, {
   cors: { 
-    origin: "*", // Autorise tout pour Socket.io en test, on pourra restreindre plus tard
+    origin: "*", 
     methods: ['GET', 'POST'],
     credentials: true 
   }
@@ -24,9 +24,18 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-// Configuration CORS simplifiée et robuste pour Vercel
+// Configuration CORS dynamique (Accepte localhost et TOUS les domaines Vercel)
 app.use(cors({ 
-  origin: 'https://mediconnect-m9xf.vercel.app', // Ton frontend exact
+  origin: function (origin, callback) {
+    const isVercel = origin && origin.endsWith('.vercel.app');
+    const isLocal = !origin || origin.includes('localhost');
+    
+    if (isLocal || isVercel) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
