@@ -1,11 +1,12 @@
 import axios from 'axios';
 
 // ── Configuration Axios ───────────────────────────────────────────
-// ── Normalisation de l'URL API (ajoute /api si absent) ──────────
-const rawUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-const BASE_URL = rawUrl.endsWith('/api') ? rawUrl
-               : rawUrl.endsWith('/')   ? rawUrl + 'api'
-               : rawUrl + '/api';
+// On récupère l'URL de base et on enlève le slash final s'il existe
+const rawUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const CLEAN_URL = rawUrl.replace(/\/$/, ""); 
+
+// On s'assure que l'URL se termine par /api (si ce n'est pas déjà le cas)
+const BASE_URL = CLEAN_URL.endsWith('/api') ? CLEAN_URL : `${CLEAN_URL}/api`;
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -13,34 +14,38 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Debug en développement
-if (process.env.NODE_ENV === 'development') {
-  console.log('[MediConnect] API URL:', BASE_URL);
+// Debug utile pour voir l'URL finale dans la console du navigateur
+if (process.env.NODE_ENV !== 'production') {
+  console.log('[MediConnect] API Connectée sur :', BASE_URL);
 }
 
 // Intercepteur — ajouter le token JWT automatiquement
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('mc_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
-// Intercepteur — gérer l'expiration de session
+// Intercepteur — gérer les erreurs et l'expiration de session
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Si 401 (Non autorisé) et qu'on n'est pas déjà sur la page login
+    if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
       localStorage.removeItem('mc_token');
       localStorage.removeItem('mc_user');
-      window.location.href = '/login';
+      window.location.href = '/login?expired=true';
     }
     return Promise.reject(error);
   }
 );
 
 // ════════════════════════════════════════════
-//  AUTH
+//  SERVICES API (Exportés)
 // ════════════════════════════════════════════
+
 export const authAPI = {
   login:    (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
@@ -48,46 +53,34 @@ export const authAPI = {
   password: (data) => api.put('/auth/password', data),
 };
 
-// ════════════════════════════════════════════
-//  CLINIQUES
-// ════════════════════════════════════════════
 export const cliniqueAPI = {
   moi:            ()     => api.get('/cliniques/moi'),
   stats:          ()     => api.get('/cliniques/stats'),
-  // Médecins
   medecins:       ()     => api.get('/medecins'),
   addMedecin:     (data) => api.post('/medecins', data),
   updateMedecin:  (id,d) => api.put(`/medecins/${id}`, d),
   deleteMedecin:  (id)   => api.delete(`/medecins/${id}`),
-  // RDV
   rdvs:           (p)    => api.get('/rendez-vous', { params: p }),
   addRdv:         (data) => api.post('/rendez-vous', data),
   updateRdv:      (id,d) => api.put(`/rendez-vous/${id}`, d),
   deleteRdv:      (id)   => api.delete(`/rendez-vous/${id}`),
-  // EMR / Patients
   patients:       ()     => api.get('/patients'),
   addPatient:     (data) => api.post('/patients', data),
   deletePatient:  (id)   => api.delete(`/patients/${id}`),
-  // Stock
   stock:          ()     => api.get('/stock/clinique'),
   addStock:       (data) => api.post('/stock/clinique', data),
   updateStock:    (id,d) => api.put(`/stock/clinique/${id}`, d),
   deleteStock:    (id)   => api.delete(`/stock/clinique/${id}`),
-  // Facturation
   factures:       ()     => api.get('/factures'),
   addFacture:     (data) => api.post('/factures', data),
   updateFacture:  (id,d) => api.put(`/factures/${id}`, d),
   deleteFacture:  (id)   => api.delete(`/factures/${id}`),
-  // Dossiers assurance
   dossiers:       ()     => api.get('/assurances/dossiers'),
   addDossier:     (data) => api.post('/assurances/dossiers', data),
   updateDossier:  (id,d) => api.put(`/assurances/dossiers/${id}`, d),
   deleteDossier:  (id)   => api.delete(`/assurances/dossiers/${id}`),
 };
 
-// ════════════════════════════════════════════
-//  CONSULTATIONS
-// ════════════════════════════════════════════
 export const consultationAPI = {
   liste:         ()           => api.get('/consultations'),
   parCode:       (code)       => api.get(`/consultations/par-code/${code}`),
@@ -96,9 +89,6 @@ export const consultationAPI = {
   supprimer:     (id)         => api.delete(`/consultations/${id}`),
 };
 
-// ════════════════════════════════════════════
-//  CAISSE
-// ════════════════════════════════════════════
 export const caisseAPI = {
   active:    ()     => api.get('/caisse/active'),
   ouvrir:    (data) => api.post('/caisse/ouvrir', data),
@@ -107,21 +97,15 @@ export const caisseAPI = {
   cloturer:  ()     => api.post('/caisse/cloturer'),
 };
 
-// ════════════════════════════════════════════
-//  PHARMACIE
-// ════════════════════════════════════════════
 export const pharmacieAPI = {
-  ordonnances:   ()     => api.get('/ordonnances'),
-  commandes:     ()     => api.get('/commandes'),
-  stock:         ()     => api.get('/stock/pharmacie'),
-  addStock:      (data) => api.post('/stock/pharmacie', data),
-  updateStock:   (id,d) => api.put(`/stock/pharmacie/${id}`, d),
-  updateCommande:(id,d) => api.put(`/commandes/${id}`, d),
+  ordonnances:    ()     => api.get('/ordonnances'),
+  commandes:      ()     => api.get('/commandes'),
+  stock:          ()     => api.get('/stock/pharmacie'),
+  addStock:       (data) => api.post('/stock/pharmacie', data),
+  updateStock:    (id,d) => api.put(`/stock/pharmacie/${id}`, d),
+  updateCommande: (id,d) => api.put(`/commandes/${id}`, d),
 };
 
-// ════════════════════════════════════════════
-//  PATIENT
-// ════════════════════════════════════════════
 export const patientAPI = {
   profil:        ()     => api.get('/patients/moi'),
   rdvs:          ()     => api.get('/rendez-vous/mes-rdvs'),
@@ -131,9 +115,6 @@ export const patientAPI = {
   assurance:     ()     => api.get('/assurances/mon-assurance'),
 };
 
-// ════════════════════════════════════════════
-//  NOTIFICATIONS
-// ════════════════════════════════════════════
 export const notifAPI = {
   liste:  ()   => api.get('/notifications'),
   lire:   (id) => api.put(`/notifications/${id}/lire`),

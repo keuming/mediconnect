@@ -10,17 +10,22 @@ const path       = require('path');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
+
+// ── Configuration Socket.IO ────────────────────────────────────────
+const io = new Server(server, {
   cors: {
-    origin: (origin, cb) => cb(null, true), // Accepte toutes les origines Vercel
-    methods: ['GET','POST'],
+    origin: true, // Autorise dynamiquement l'origine du frontend
+    methods: ['GET', 'POST'],
     credentials: true,
   }
 });
 
-// ── Middleware ────────────────────────────────────────────────────
-app.use(helmet());
-// ── CORS — accepte plusieurs origines (dev + prod Vercel) ────────
+// ── Middleware de sécurité & logs ──────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: false, // Nécessaire pour afficher les images d'uploads
+}));
+
+// Configuration CORS robuste
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -30,91 +35,111 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Autoriser les requêtes sans origin (Postman, mobile) et les origines autorisées
-    if (!origin || allowedOrigins.includes(origin) ||
-        (origin && origin.endsWith('.vercel.app'))) {
+    // Autorise les requêtes sans origin (comme Postman) ou les domaines Vercel
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
-      console.warn('CORS bloqué pour:', origin);
-      callback(null, true); // En prod, mettre false pour plus de sécurité
+      callback(new Error('Bloqué par CORS'));
     }
   },
   credentials: true,
-  methods: ['GET','POST','PUT','DELETE','PATCH','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
 }));
 
-// Répondre aux preflight OPTIONS
-app.options('*', cors());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Rate limiting
-app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20, message: 'Trop de tentatives, réessayez dans 15 minutes.' }));
-app.use('/api/',     rateLimit({ windowMs: 1*60*1000,  max: 200 }));
+// ── Limitation des requêtes (Rate Limiting) ────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { message: 'Trop de tentatives, réessayez dans 15 minutes.' }
+});
 
-// ── Routes ────────────────────────────────────────────────────────
-app.use('/api/auth',          require('./routes/auth'));
-app.use('/api/utilisateurs',  require('./routes/utilisateurs'));
-app.use('/api/cliniques',     require('./routes/cliniques'));
-app.use('/api/medecins',      require('./routes/medecins'));
-app.use('/api/patients',      require('./routes/patients'));
-app.use('/api/rendez-vous',   require('./routes/rendezVous'));
-app.use('/api/consultations', require('./routes/consultations'));
-app.use('/api/ordonnances',   require('./routes/ordonnances'));
-app.use('/api/pharmacies',    require('./routes/pharmacies'));
-app.use('/api/commandes',     require('./routes/commandes'));
-app.use('/api/assurances',    require('./routes/assurances'));
-app.use('/api/factures',      require('./routes/factures'));
-app.use('/api/stock',         require('./routes/stock'));
-app.use('/api/caisse',        require('./routes/caisse'));
-app.use('/api/livreurs',      require('./routes/livreurs'));
-app.use('/api/notifications', require('./routes/notifications'));
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 200
+});
+
+app.use('/api/auth', authLimiter);
+app.use('/api/', apiLimiter);
+
+// ── Routes API ─────────────────────────────────────────────────────
+const register = (path, route) => app.use(`/api${path}`, require(route));
+
+register('/auth',           './routes/auth');
+register('/utilisateurs',   './routes/utilisateurs');
+register('/cliniques',      './routes/cliniques');
+register('/medecins',       './routes/medecins');
+register('/patients',       './routes/patients');
+register('/rendez-vous',    './routes/rendezVous');
+register('/consultations',  './routes/consultations');
+register('/ordonnances',    './routes/ordonnances');
+register('/pharmacies',     './routes/pharmacies');
+register('/commandes',      './routes/commandes');
+registerRoutes = register; // Alias pour la clarté
+register('/assurances',     './routes/assurances');
+register('/factures',       './routes/factures');
+register('/stock',          './routes/stock');
+register('/caisse',         './routes/caisse');
+register('/livreurs',       './routes/livreurs');
+register('/notifications',  './routes/notifications');
 
 // ── Health check ──────────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({
-  status: 'ok', env: process.env.NODE_ENV, timestamp: new Date().toISOString()
-}));
+app.get(['/api/health', '/health'], (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
-// ── Socket.IO — GPS en temps réel ─────────────────────────────────
+// ── Socket.IO — Logique Temps Réel ────────────────────────────────
 const livreurPositions = {};
 
 io.on('connection', (socket) => {
-  console.log('🔌 Client connecté:', socket.id);
+  console.log(`🔌 Client connecté : ${socket.id}`);
 
+  // GPS Livreurs
   socket.on('livreur:position', (data) => {
     livreurPositions[data.livreur_id] = { ...data, ts: Date.now() };
     io.emit('livreur:positions', Object.values(livreurPositions));
   });
 
-  socket.on('join:clinique', (clinique_id) => socket.join(`clinique:${clinique_id}`));
-  socket.on('join:patient',  (patient_id)  => socket.join(`patient:${patient_id}`));
+  // Salons (Rooms)
+  socket.on('join:clinique', (id) => socket.join(`clinique:${id}`));
+  socket.on('join:patient', (id) => socket.join(`patient:${id}`));
 
+  // Notifications
   socket.on('notification:send', (data) => {
     io.to(`patient:${data.patient_id}`).emit('notification:new', data);
   });
 
-  socket.on('disconnect', () => console.log('🔌 Client déconnecté:', socket.id));
+  socket.on('disconnect', () => {
+    console.log(`🔌 Client déconnecté : ${socket.id}`);
+  });
 });
 
-// ── Erreur globale ────────────────────────────────────────────────
+// ── Gestion des erreurs ───────────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('Erreur serveur:', err);
+  console.error('❌ Erreur serveur:', err.stack);
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Erreur interne du serveur'
   });
 });
 
-app.use((req, res) => res.status(404).json({ success: false, message: 'Route introuvable' }));
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: 'Route introuvable' });
+});
 
 // ── Démarrage ─────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 MediConnect Backend v2 — http://localhost:${PORT}`);
-  console.log(`🌍 Environnement : ${process.env.NODE_ENV}`);
-});
 
-module.exports = { app, io };
+// Sur Vercel, on exporte l'app. En local, on lance le serveur.
+if (process.env.NODE_ENV !== 'production') {
+  server.listen(PORT, () => {
+    console.log(`🚀 Serveur MediConnect : http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
