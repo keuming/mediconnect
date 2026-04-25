@@ -5,7 +5,6 @@ const helmet     = require('helmet');
 const morgan     = require('morgan');
 const http       = require('http');
 const { Server } = require('socket.io');
-const rateLimit  = require('express-rate-limit');
 const path       = require('path');
 
 const app    = express();
@@ -14,11 +13,7 @@ const server = http.createServer(app);
 // ── Configuration Socket.IO ────────────────────────────────────────
 const io = new Server(server, {
   cors: { 
-    origin: [
-      process.env.FRONTEND_URL, 
-      'http://localhost:3000',
-      'https://mediconnect-m9xf.vercel.app'
-    ], 
+    origin: "*", // Autorise tout pour Socket.io en test, on pourra restreindre plus tard
     methods: ['GET', 'POST'],
     credentials: true 
   }
@@ -29,22 +24,12 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
+// Configuration CORS simplifiée et robuste pour Vercel
 app.use(cors({ 
-  origin: function (origin, callback) {
-    const allowedOrigins = [
-      'http://localhost:3000', 
-      'https://mediconnect-m9xf.vercel.app',
-      process.env.FRONTEND_URL
-    ];
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: 'https://mediconnect-m9xf.vercel.app', // Ton frontend exact
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
 
 app.use(morgan('dev'));
@@ -58,12 +43,14 @@ app.get('/', (req, res) => {
 });
 
 // ── Double Routage Stratégique ────────────────────────────────────
-// Cette fonction enregistre les routes avec ET sans le préfixe /api
-// pour corriger l'erreur 404 du frontend
 const registerRoutes = (prefix, routerPath) => {
-  const router = require(routerPath);
-  app.use(`/api${prefix}`, router); // Route standard: /api/auth
-  app.use(prefix, router);          // Route de secours: /auth
+  try {
+    const router = require(routerPath);
+    app.use(`/api${prefix}`, router); 
+    app.use(prefix, router);          
+  } catch (error) {
+    console.error(`Erreur chargement route ${prefix}:`, error.message);
+  }
 };
 
 registerRoutes('/auth',           './routes/auth');
