@@ -1,33 +1,56 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import useAuthStore from './context/authStore';
 
-// Pages publiques
 import Login    from './pages/Login';
 import Register from './pages/Register';
-
-// Dashboards par rôle
 import DashboardPatient   from './pages/patient/Dashboard';
 import DashboardClinique  from './pages/clinique/Dashboard';
 import DashboardPharmacie from './pages/pharmacie/Dashboard';
 import DashboardLivreur   from './pages/livreur/Dashboard';
 import DashboardAdmin     from './pages/admin/Dashboard';
 import DashboardAssureur  from './pages/assureur/Dashboard';
-
-// Layout commun
 import AppLayout from './components/layout/AppLayout';
 
+// ── React Query — config production ──────────────────────────────
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        // Ne pas retry les 401/403/404
+        const status = error?.response?.status;
+        if (status === 401 || status === 403 || status === 404) return false;
+        return failureCount < 2; // Max 2 retries pour les autres erreurs
+      },
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+      staleTime: 30 * 1000,      // 30s
+      cacheTime: 5 * 60 * 1000,  // 5min
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
 });
 
-// ── Guard de route privée ─────────────────────────────────────────
+// ── Spinner ───────────────────────────────────────────────────────
+const Loader = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#060C12' }}>
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+      <div style={{ color: '#8BA0B5', fontSize: 14 }}>Chargement de MediConnect…</div>
+    </div>
+  </div>
+);
+
+// ── Route privée ─────────────────────────────────────────────────
 const PrivateRoute = ({ children, roles }) => {
   const { user, isAuthenticated } = useAuthStore();
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user?.role)) return <Navigate to="/unauthorized" replace />;
+  if (roles && !roles.includes(user?.role)) return <Navigate to="/login" replace />;
   return children;
 };
 
@@ -35,80 +58,78 @@ const PrivateRoute = ({ children, roles }) => {
 const RoleRedirect = () => {
   const { user } = useAuthStore();
   const routes = {
-    patient:   '/patient',
-    clinique:  '/clinique',
-    pharmacie: '/pharmacie',
-    livreur:   '/livreur',
-    admin:     '/admin',
-    assureur:  '/assureur',
+    patient: '/patient', clinique: '/clinique', pharmacie: '/pharmacie',
+    livreur: '/livreur', admin: '/admin', assureur: '/assureur',
   };
   return <Navigate to={routes[user?.role] || '/login'} replace />;
 };
 
+// ── App ───────────────────────────────────────────────────────────
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Toaster position="top-right" toastOptions={{
-          duration: 3500,
-          style: { background: '#141E2B', color: '#F0F4F8', border: '1px solid #1E2F42' },
+          duration: 4000,
+          style: { background: '#141E2B', color: '#F0F4F8', border: '1px solid #1E2F42', fontSize: 14 },
           success: { iconTheme: { primary: '#0A8F58', secondary: '#fff' } },
-          error:   { iconTheme: { primary: '#E11D48', secondary: '#fff' } },
+          error:   { iconTheme: { primary: '#E11D48', secondary: '#fff' }, duration: 6000 },
         }} />
 
-        <Routes>
-          {/* Publiques */}
-          <Route path="/login"    element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/"         element={<Navigate to="/login" replace />} />
+        <Suspense fallback={<Loader />}>
+          <Routes>
+            {/* Routes publiques */}
+            <Route path="/login"    element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/"         element={<Navigate to="/login" replace />} />
+            <Route path="/app"      element={<PrivateRoute><RoleRedirect /></PrivateRoute>} />
 
-          {/* Redirect après login */}
-          <Route path="/app" element={<PrivateRoute><RoleRedirect /></PrivateRoute>} />
+            {/* Patient */}
+            <Route path="/patient/*" element={
+              <PrivateRoute roles={['patient']}>
+                <AppLayout role="patient"><DashboardPatient /></AppLayout>
+              </PrivateRoute>
+            } />
 
-          {/* Patient */}
-          <Route path="/patient/*" element={
-            <PrivateRoute roles={['patient']}>
-              <AppLayout role="patient"><DashboardPatient /></AppLayout>
-            </PrivateRoute>
-          } />
+            {/* Clinique */}
+            <Route path="/clinique/*" element={
+              <PrivateRoute roles={['clinique']}>
+                <AppLayout role="clinique"><DashboardClinique /></AppLayout>
+              </PrivateRoute>
+            } />
 
-          {/* Clinique */}
-          <Route path="/clinique/*" element={
-            <PrivateRoute roles={['clinique']}>
-              <AppLayout role="clinique"><DashboardClinique /></AppLayout>
-            </PrivateRoute>
-          } />
+            {/* Pharmacie */}
+            <Route path="/pharmacie/*" element={
+              <PrivateRoute roles={['pharmacie']}>
+                <AppLayout role="pharmacie"><DashboardPharmacie /></AppLayout>
+              </PrivateRoute>
+            } />
 
-          {/* Pharmacie */}
-          <Route path="/pharmacie/*" element={
-            <PrivateRoute roles={['pharmacie']}>
-              <AppLayout role="pharmacie"><DashboardPharmacie /></AppLayout>
-            </PrivateRoute>
-          } />
+            {/* Livreur */}
+            <Route path="/livreur/*" element={
+              <PrivateRoute roles={['livreur']}>
+                <AppLayout role="livreur"><DashboardLivreur /></AppLayout>
+              </PrivateRoute>
+            } />
 
-          {/* Livreur */}
-          <Route path="/livreur/*" element={
-            <PrivateRoute roles={['livreur']}>
-              <AppLayout role="livreur"><DashboardLivreur /></AppLayout>
-            </PrivateRoute>
-          } />
+            {/* Admin */}
+            <Route path="/admin/*" element={
+              <PrivateRoute roles={['admin']}>
+                <AppLayout role="admin"><DashboardAdmin /></AppLayout>
+              </PrivateRoute>
+            } />
 
-          {/* Admin */}
-          <Route path="/admin/*" element={
-            <PrivateRoute roles={['admin']}>
-              <AppLayout role="admin"><DashboardAdmin /></AppLayout>
-            </PrivateRoute>
-          } />
+            {/* Assureur */}
+            <Route path="/assureur/*" element={
+              <PrivateRoute roles={['assureur']}>
+                <AppLayout role="assureur"><DashboardAssureur /></AppLayout>
+              </PrivateRoute>
+            } />
 
-          {/* Assureur */}
-          <Route path="/assureur/*" element={
-            <PrivateRoute roles={['assureur']}>
-              <AppLayout role="assureur"><DashboardAssureur /></AppLayout>
-            </PrivateRoute>
-          } />
-
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
+            {/* 404 */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </QueryClientProvider>
   );

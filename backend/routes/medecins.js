@@ -3,13 +3,55 @@ const { query } = require('../config/db');
 const { auth, authorize } = require('../middleware/auth');
 const { v4: uuid } = require('uuid');
 
-// GET /api/medecins
+const getCliniqueId = async (user_id) => {
+  const r = await query('SELECT id FROM cliniques WHERE user_id=$1', [user_id]);
+  return r.rows[0]?.id || null;
+};
+
 router.get('/', auth, async (req, res) => {
   try {
-    res.json({ success: true, data: [], message: 'Route medecins — à implémenter selon vos besoins' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
+    const cid = await getCliniqueId(req.user.id);
+    if (!cid) return res.json({ success: true, data: [] });
+    const r = await query('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom', [cid]);
+    res.json({ success: true, data: r.rows });
+  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+});
+
+router.post('/', auth, authorize('clinique'), async (req, res) => {
+  const { prenom, nom, specialite, tarif, experience_ans, numero_ordre, horaires_debut, horaires_fin } = req.body;
+  if (!prenom || !nom || !specialite) return res.status(400).json({ success: false, message: 'Prénom, nom et spécialité requis.' });
+  try {
+    const cid = await getCliniqueId(req.user.id);
+    if (!cid) return res.status(404).json({ success: false, message: 'Clinique introuvable.' });
+    const id = uuid();
+    await query(`INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,numero_ordre,horaires_debut,horaires_fin,jours_travail,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Disponible')`,
+      [id, cid, prenom, nom, specialite, tarif||15000, experience_ans||0, numero_ordre||null,
+       horaires_debut||'08:00', horaires_fin||'17:00', ['Lundi','Mardi','Mercredi','Jeudi','Vendredi']]);
+    res.status(201).json({ success: true, data: { id }, message: `Dr. ${prenom} ${nom} ajouté à l\'équipe.` });
+  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+});
+
+router.put('/:id', auth, authorize('clinique'), async (req, res) => {
+  const { statut, tarif, horaires_debut, horaires_fin } = req.body;
+  try {
+    const sets = []; const vals = []; let i = 1;
+    if (statut !== undefined) { sets.push(`statut=$${i++}`); vals.push(statut); }
+    if (tarif !== undefined)  { sets.push(`tarif=$${i++}`); vals.push(tarif); }
+    if (horaires_debut)       { sets.push(`horaires_debut=$${i++}`); vals.push(horaires_debut); }
+    if (horaires_fin)         { sets.push(`horaires_fin=$${i++}`); vals.push(horaires_fin); }
+    if (!sets.length) return res.json({ success: true });
+    vals.push(req.params.id);
+    await query(`UPDATE medecins SET ${sets.join(',')} WHERE id=$${i}`, vals);
+    res.json({ success: true, message: 'Médecin mis à jour.' });
+  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+});
+
+router.delete('/:id', auth, authorize('clinique','admin'), async (req, res) => {
+  try {
+    await query('DELETE FROM medecins WHERE id=$1', [req.params.id]);
+    res.json({ success: true, message: 'Médecin retiré.' });
+  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
 });
 
 module.exports = router;

@@ -1,21 +1,55 @@
 const { Pool } = require('pg');
-require('dotenv').config();
 
-const pool = new Pool({
-  host:     process.env.DB_HOST     || 'localhost',
-  port:     process.env.DB_PORT     || 5432,
-  database: process.env.DB_NAME     || 'mediconnect_db',
-  user:     process.env.DB_USER     || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  // Modification ici : Neon nécessite SSL même en dev si on utilise l'URL distante
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000, // Augmenté un peu pour le cloud
+// ── Configuration du pool PostgreSQL ─────────────────────────────
+// Priorité DATABASE_URL (Neon, Supabase, Railway, Render)
+// Fallback vers variables séparées (dev local)
+
+const getPoolConfig = () => {
+  if (process.env.DATABASE_URL) {
+    return {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      max: 10,
+      min: 0,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000,
+      allowExitOnIdle: true,
+    };
+  }
+  return {
+    host:     process.env.DB_HOST     || 'localhost',
+    port:     parseInt(process.env.DB_PORT  || '5432'),
+    database: process.env.DB_NAME     || 'mediconnect_db',
+    user:     process.env.DB_USER     || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+    ssl:      process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 10000,
+  };
+};
+
+const pool = new Pool(getPoolConfig());
+
+pool.on('error', (err) => {
+  console.error('[DB] Erreur pool inattendue:', err.message);
+  // NE PAS appeler process.exit() ici — tue les fonctions Vercel serverless
 });
 
-pool.on('connect', () => console.log('✅ PostgreSQL connecté (Cloud)'));
-pool.on('error',  (err) => console.error('❌ Erreur PostgreSQL:', err));
+// Wrapper query avec gestion d'erreur améliorée
+const query = async (text, params) => {
+  const start = Date.now();
+  try {
+    const res = await pool.query(text, params);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[DB] ${Date.now() - start}ms`, text.slice(0, 80));
+    }
+    return res;
+  } catch (err) {
+    console.error('[DB] Erreur query:', err.message, '\nSQL:', text.slice(0, 100));
+    throw err;
+  }
+};
 
-const query = (text, params) => pool.query(text, params);
 module.exports = { pool, query };
