@@ -1,24 +1,31 @@
 const { Pool } = require('pg');
 
 // ── Configuration du pool PostgreSQL ─────────────────────────────
-// Priorité DATABASE_URL (Neon, Supabase, Railway, Render)
-// Fallback vers variables séparées (dev local)
+// Neon exige channel_binding=disable sur Vercel serverless
+// DATABASE_URL prioritaire, fallback variables séparées
 
 const getPoolConfig = () => {
   if (process.env.DATABASE_URL) {
+    // Nettoyer l'URL : retirer channel_binding si présent, forcer sslmode=require
+    let url = process.env.DATABASE_URL;
+    url = url.replace(/[&?]channel_binding=[^&]*/g, '');
+    if (!url.includes('sslmode=')) {
+      url += (url.includes('?') ? '&' : '?') + 'sslmode=require';
+    }
     return {
-      connectionString: process.env.DATABASE_URL,
+      connectionString: url,
       ssl: { rejectUnauthorized: false },
-      max: 10,
+      max: 5,          // Réduit pour Neon serverless (limite de connexions)
       min: 0,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,
       allowExitOnIdle: true,
     };
   }
+  // Fallback variables séparées (dev local)
   return {
     host:     process.env.DB_HOST     || 'localhost',
-    port:     parseInt(process.env.DB_PORT  || '5432'),
+    port:     parseInt(process.env.DB_PORT || '5432'),
     database: process.env.DB_NAME     || 'mediconnect_db',
     user:     process.env.DB_USER     || 'postgres',
     password: process.env.DB_PASSWORD || '',
@@ -34,7 +41,7 @@ const pool = new Pool(getPoolConfig());
 
 pool.on('error', (err) => {
   console.error('[DB] Erreur pool inattendue:', err.message);
-  // NE PAS appeler process.exit() ici — tue les fonctions Vercel serverless
+  // NE PAS appeler process.exit() — tue les fonctions Vercel serverless
 });
 
 // Wrapper query avec gestion d'erreur améliorée
