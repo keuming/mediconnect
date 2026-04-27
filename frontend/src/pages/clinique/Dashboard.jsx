@@ -535,6 +535,191 @@ function PageStats() {
   );
 }
 
+
+// ════════════════════════════════════════════════════════════════════
+//  PAGE ASSURANCES v2
+// ════════════════════════════════════════════════════════════════════
+function PageAssurance() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ patient_nom: "", compagnie: "NSIA Assurances", numero_police: "", taux_couverture: 80, montant_plafond: 500000 });
+  const { data, isLoading } = useQuery({ queryKey: ["cl-dossiers"], queryFn: () => cliniqueAPI.dossiers().then(r => r.data.data || []) });
+  const addMut = useMutation({
+    mutationFn: d => cliniqueAPI.addDossier(d),
+    onSuccess: () => { toast.success("Dossier soumis à l'assureur !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); },
+    onError: e => toast.error(e.response?.data?.message || "Erreur"),
+  });
+  const updMut = useMutation({
+    mutationFn: ({ id, statut }) => cliniqueAPI.updateDossier(id, { statut }),
+    onSuccess: () => { toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); },
+  });
+  const delMut = useMutation({
+    mutationFn: id => cliniqueAPI.deleteDossier(id),
+    onSuccess: () => { toast.success("Dossier supprimé"); qc.invalidateQueries(["cl-dossiers"]); },
+  });
+
+  const dossiers = data || [];
+  const compagnies = ["NSIA Assurances", "Allianz CI", "AXA CI", "CNAM (CMU)", "SANLAM", "Saham Assurances", "Atlantique Assurances"];
+  const statutColor = { soumis: "blue", en_attente: "amber", valide: "green", rejete: "red" };
+
+  return (
+    <div>
+      <PageHeader title="🛡️ Assurances v2 — Tiers-Payant" subtitle="Gestion des dossiers de remboursement et conventions"
+        actions={<Btn onClick={() => setShowAdd(true)}>+ Nouveau dossier</Btn>} />
+
+      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
+        <Card label="Total dossiers" value={dossiers.length} icon="📁" />
+        <Card label="Validés" value={dossiers.filter(d => d.statut === "valide").length} icon="✅" color="#0A8F58" />
+        <Card label="En attente" value={dossiers.filter(d => d.statut === "en_attente" || d.statut === "soumis").length} icon="⏳" color="#D97706" />
+        <Card label="Rejetés" value={dossiers.filter(d => d.statut === "rejete").length} icon="❌" color="#E11D48" />
+      </Grid>
+
+      <Grid cols={3} gap={14} style={{ marginBottom: 20 }}>
+        {compagnies.map(c => {
+          const count = dossiers.filter(d => d.compagnie === c).length;
+          const valides = dossiers.filter(d => d.compagnie === c && d.statut === "valide").length;
+          return (
+            <Panel key={c}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                <span style={{ fontSize: 28 }}>🛡️</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F4F8" }}>{c}</div>
+                  <div style={{ fontSize: 11, color: "#8BA0B5" }}>{count} dossier(s) · {valides} validé(s)</div>
+                </div>
+              </div>
+              <ProgressBar value={valides} max={Math.max(count, 1)} color="#0A8F58" />
+              <div style={{ fontSize: 11, color: "#4E657A", marginTop: 6 }}>
+                Taux validation : {count > 0 ? Math.round(valides/count*100) : 0}%
+              </div>
+            </Panel>
+          );
+        })}
+      </Grid>
+
+      {isLoading ? <Loader /> : (
+        <Panel title={`📁 Dossiers de remboursement (${dossiers.length})`}>
+          <Table emptyMessage="Aucun dossier soumis" columns={[
+            { key: "reference", label: "Référence", render: v => <span style={{ fontFamily: "monospace", fontSize: 12, color: "#0A8F58" }}>{v || "—"}</span> },
+            { key: "patient_nom", label: "Patient", render: (v, r) => <><div style={{ fontWeight: 700 }}>{v || r.patient_id || "—"}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{r.numero_police}</div></> },
+            { key: "compagnie", label: "Compagnie" },
+            { key: "diagnostic", label: "Diagnostic", render: v => <span style={{ fontSize: 12, color: "#8BA0B5" }}>{v?.slice(0, 40) || "—"}</span> },
+            { key: "montant_total", label: "Total", render: v => <span style={{ fontWeight: 700 }}>{Number(v||0).toLocaleString()} F</span> },
+            { key: "montant_assur", label: "Part ass.", render: v => <span style={{ color: "#0A8F58" }}>{Number(v||0).toLocaleString()} F</span> },
+            { key: "ticket_moder", label: "Ticket mod.", render: v => <span style={{ color: "#D97706" }}>{Number(v||0).toLocaleString()} F</span> },
+            { key: "statut", label: "Statut", render: v => <Badge color={statutColor[v] || "gray"}>{v}</Badge> },
+            { key: "id", label: "Actions", render: (id, row) => (
+              <div style={{ display: "flex", gap: 6 }}>
+                {row.statut === "soumis" && <Btn variant="teal" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "en_attente" })}>→ Soumettre</Btn>}
+                {row.statut === "en_attente" && <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#0A8F58" }} onClick={() => updMut.mutate({ id, statut: "valide" })}>✓ Valider</Btn>}
+                <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Supprimer ce dossier ?") && delMut.mutate(id)}>✕</Btn>
+              </div>
+            )},
+          ]} rows={dossiers} />
+        </Panel>
+      )}
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="🛡️ Nouveau dossier assurance">
+        <Input label="Patient *" required value={form.patient_nom} onChange={e => setForm(p => ({ ...p, patient_nom: e.target.value }))} placeholder="Nom du patient" />
+        <Grid cols={2} gap={12}>
+          <Select label="Compagnie d'assurance *" required value={form.compagnie} onChange={e => setForm(p => ({ ...p, compagnie: e.target.value }))} options={compagnies} />
+          <Input label="N° Police / Matricule *" required value={form.numero_police} onChange={e => setForm(p => ({ ...p, numero_police: e.target.value }))} placeholder="POL-2024-XXXXX" />
+        </Grid>
+        <Grid cols={2} gap={12}>
+          <Input label="Taux de couverture (%)" type="number" min="0" max="100" value={form.taux_couverture} onChange={e => setForm(p => ({ ...p, taux_couverture: +e.target.value }))} />
+          <Input label="Montant total actes (FCFA) *" required type="number" value={form.montant_plafond} onChange={e => setForm(p => ({ ...p, montant_plafond: +e.target.value }))} />
+        </Grid>
+        <div style={{ background: "rgba(10,143,88,.07)", border: "1px solid rgba(10,143,88,.2)", borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 13 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ color: "#8BA0B5" }}>Part assureur ({form.taux_couverture}%)</span>
+            <span style={{ color: "#0A8F58", fontWeight: 700 }}>{Math.round(form.montant_plafond * form.taux_couverture / 100).toLocaleString()} FCFA</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: "#8BA0B5" }}>Ticket modérateur ({100 - form.taux_couverture}%)</span>
+            <span style={{ color: "#D97706", fontWeight: 700 }}>{Math.round(form.montant_plafond * (100 - form.taux_couverture) / 100).toLocaleString()} FCFA</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => {
+            if (!form.patient_nom || !form.numero_police || !form.montant_plafond) { toast.error("Patient, n° police et montant requis"); return; }
+            addMut.mutate({ ...form, montant_total: form.montant_plafond, montant_assur: Math.round(form.montant_plafond * form.taux_couverture / 100), ticket_moder: Math.round(form.montant_plafond * (100 - form.taux_couverture) / 100), compagnie: form.compagnie, diagnostic: "Actes médicaux" });
+          }}>Soumettre le dossier</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  PAGE DOSSIERS ASSURANCE
+// ════════════════════════════════════════════════════════════════════
+function PageDossiersAss() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["cl-dossiers"], queryFn: () => cliniqueAPI.dossiers().then(r => r.data.data || []) });
+  const updMut = useMutation({
+    mutationFn: ({ id, statut, motif_rejet }) => cliniqueAPI.updateDossier(id, { statut, motif_rejet }),
+    onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-dossiers"]); },
+  });
+  const delMut = useMutation({
+    mutationFn: id => cliniqueAPI.deleteDossier(id),
+    onSuccess: () => { toast.success("Dossier supprimé"); qc.invalidateQueries(["cl-dossiers"]); },
+  });
+
+  const dossiers = data || [];
+  const enAttente = dossiers.filter(d => d.statut === "soumis" || d.statut === "en_attente");
+  const valides = dossiers.filter(d => d.statut === "valide");
+  const rejetes = dossiers.filter(d => d.statut === "rejete");
+  const totalARecup = valides.reduce((s, d) => s + (+d.montant_assur || 0), 0);
+
+  return (
+    <div>
+      <PageHeader title="📁 Dossiers Assurance" subtitle="Suivi des remboursements tiers-payant" />
+
+      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
+        <Card label="En attente" value={enAttente.length} icon="⏳" color="#D97706" sub="À traiter" />
+        <Card label="Validés" value={valides.length} icon="✅" color="#0A8F58" sub="Remboursements OK" />
+        <Card label="Rejetés" value={rejetes.length} icon="❌" color="#E11D48" sub="À contester" />
+        <Card label="À récupérer" value={`${(totalARecup/1000).toFixed(0)}k F`} icon="💰" color="#0A8F58" sub="Part assureur validée" />
+      </Grid>
+
+      {enAttente.length > 0 && (
+        <Panel title={`⏳ En attente de traitement (${enAttente.length})`} accent="amber" style={{ marginBottom: 16 }}>
+          <Table emptyMessage="Aucun dossier en attente" columns={[
+            { key: "reference", label: "Réf.", render: v => <span style={{ fontFamily: "monospace", color: "#D97706" }}>{v}</span> },
+            { key: "patient_nom", label: "Patient", render: (v, r) => v || r.patient_id || "—" },
+            { key: "compagnie", label: "Compagnie" },
+            { key: "montant_total", label: "Montant", render: v => `${Number(v||0).toLocaleString()} F` },
+            { key: "montant_assur", label: "Part ass.", render: v => <span style={{ color: "#0A8F58", fontWeight: 700 }}>{Number(v||0).toLocaleString()} F</span> },
+            { key: "statut", label: "Statut", render: v => <Badge color="amber">{v}</Badge> },
+            { key: "id", label: "Actions", render: (id) => (
+              <div style={{ display: "flex", gap: 6 }}>
+                <Btn variant="teal" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "valide" })}>✓ Valider</Btn>
+                <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => { const m = window.prompt("Motif du rejet :"); if (m !== null) updMut.mutate({ id, statut: "rejete", motif_rejet: m }); }}>✕ Rejeter</Btn>
+              </div>
+            )},
+          ]} rows={enAttente} />
+        </Panel>
+      )}
+
+      {isLoading ? <Loader /> : (
+        <Panel title={`📋 Historique complet (${dossiers.length})`}>
+          <Table emptyMessage="Aucun dossier" columns={[
+            { key: "reference", label: "Réf.", render: v => <span style={{ fontFamily: "monospace", fontSize: 12, color: "#0A8F58" }}>{v || "—"}</span> },
+            { key: "patient_nom", label: "Patient", render: (v, r) => v || r.patient_id || "—" },
+            { key: "compagnie", label: "Compagnie" },
+            { key: "montant_total", label: "Total", render: v => `${Number(v||0).toLocaleString()} F` },
+            { key: "montant_assur", label: "Part ass.", render: v => <span style={{ color: "#0A8F58" }}>{Number(v||0).toLocaleString()} F</span> },
+            { key: "ticket_moder", label: "Ticket", render: v => <span style={{ color: "#D97706" }}>{Number(v||0).toLocaleString()} F</span> },
+            { key: "statut", label: "Statut", render: v => <Badge color={{ soumis:"blue", en_attente:"amber", valide:"green", rejete:"red" }[v] || "gray"}>{v}</Badge> },
+            { key: "motif_rejet", label: "Motif rejet", render: v => v ? <span style={{ color: "#E11D48", fontSize: 11 }}>{v}</span> : "—" },
+            { key: "id", label: "", render: (id) => <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Supprimer ?") && delMut.mutate(id)}>✕</Btn> },
+          ]} rows={dossiers} />
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 // ── ROUTER ────────────────────────────────────────────────────────
 export default function DashboardClinique() {
   return (
@@ -548,6 +733,8 @@ export default function DashboardClinique() {
       <Route path="consultation" element={<PageConsultation />} />
       <Route path="caisse"       element={<PageCaisse />} />
       <Route path="stats"        element={<PageStats />} />
+      <Route path="assurance"    element={<PageAssurance />} />
+      <Route path="dossiers-ass" element={<PageDossiersAss />} />
       <Route path="*" element={<div style={{ textAlign: "center", padding: 60, color: "#4E657A" }}><div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div><div>Section en développement</div></div>} />
     </Routes>
   );
