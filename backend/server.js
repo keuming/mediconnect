@@ -3,30 +3,31 @@ require('dotenv').config();
 const express   = require('express');
 const helmet    = require('helmet');
 const morgan    = require('morgan');
-const http      = require('http');
-const { Server } = require('socket.io');
 const rateLimit = require('express-rate-limit');
 const path      = require('path');
 
-// ── Validation JWT_SECRET ─────────────────────────────────────────
 if (!process.env.JWT_SECRET) {
-  console.error('❌ JWT_SECRET manquant — ajoutez-le dans les variables Vercel');
-  process.exit(1);
-}
-if (process.env.JWT_SECRET.includes('votre_secret')) {
-  console.error('❌ JWT_SECRET contient la valeur par défaut — changez-la !');
-  process.exit(1);
+  console.error('[WARN] JWT_SECRET manquant');
 }
 
 const isProd = process.env.NODE_ENV === 'production';
-const app    = express();
-const server = http.createServer(app);
+const app = express();
 
-// ── Socket.IO ─────────────────────────────────────────────────────
-const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET','POST'], credentials: true },
-  transports: ['polling', 'websocket'],
-  allowEIO3: true,
+// ════════════════════════════════════════════════════════════════
+// CORS — PREMIER MIDDLEWARE ABSOLU — avant helmet, morgan, tout
+// ════════════════════════════════════════════════════════════════
+app.use(function(req, res, next) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  // Répondre immédiatement aux preflight sans passer par les autres middlewares
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  next();
 });
 
 // ── Sécurité ──────────────────────────────────────────────────────
@@ -35,18 +36,6 @@ app.use(helmet({
   contentSecurityPolicy: false,
 }));
 
-// ── CORS — doit être EN PREMIER, avant tout ───────────────────────
-app.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin',      origin);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods',     'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers',     'Origin,Content-Type,Accept,Authorization,X-Requested-With');
-  res.setHeader('Access-Control-Max-Age',           '86400');
-  if (req.method === 'OPTIONS') return res.status(204).end();
-  next();
-});
-
 // ── Logging ───────────────────────────────────────────────────────
 app.use(morgan(isProd ? 'tiny' : 'dev'));
 
@@ -54,26 +43,26 @@ app.use(morgan(isProd ? 'tiny' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ── Uploads statiques (tmp sur Vercel) ────────────────────────────
-const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
-app.use('/uploads', express.static(uploadDir));
+// ── Fichiers statiques ────────────────────────────────────────────
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ── Rate limiting ─────────────────────────────────────────────────
-const limiterAuth = rateLimit({
+// ── Rate limiting (APRÈS le CORS) ─────────────────────────────────
+app.use('/api/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isProd ? 30 : 500,
-  standardHeaders: true, legacyHeaders: false,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { success: false, message: 'Trop de tentatives. Réessayez dans 15 minutes.' },
-  skip: (req) => !isProd, // Pas de limite en dev
-});
-const limiterApi = rateLimit({
-  windowMs: 60 * 1000,
-  max: isProd ? 500 : 5000,
-  standardHeaders: true, legacyHeaders: false,
-});
+  skip: (req) => req.method === 'OPTIONS',
+}));
 
-app.use('/api/auth', limiterAuth);
-app.use('/api/',     limiterApi);
+app.use('/api/', rateLimit({
+  windowMs: 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
+}));
 
 // ── Routes API ────────────────────────────────────────────────────
 app.use('/api/auth',          require('./routes/auth'));
@@ -98,54 +87,38 @@ app.get('/api/health', async (req, res) => {
   try {
     const { query } = require('./config/db');
     await query('SELECT 1');
-    res.json({ success: true, status: 'ok', db: 'connected', env: process.env.NODE_ENV, ts: new Date().toISOString() });
+    res.json({
+      success: true, status: 'ok', db: 'connected',
+      env: process.env.NODE_ENV || 'unknown',
+      jwt: process.env.JWT_SECRET ? 'configured' : 'MISSING',
+      ts: new Date().toISOString(),
+    });
   } catch (err) {
     res.status(503).json({ success: false, status: 'degraded', db: 'error', error: err.message });
   }
 });
 
-app.get('/', (req, res) => res.json({ success: true, message: 'MediConnect API v2', health: '/api/health' }));
-
-// ── Socket.IO GPS ─────────────────────────────────────────────────
-const livreurPositions = {};
-io.on('connection', (socket) => {
-  socket.on('livreur:position', (data) => {
-    if (!data?.livreur_id) return;
-    livreurPositions[data.livreur_id] = { ...data, ts: Date.now() };
-    io.emit('livreur:positions', Object.values(livreurPositions));
-  });
-  socket.on('join:clinique', (id) => id && socket.join('clinique:' + id));
-  socket.on('join:patient',  (id) => id && socket.join('patient:'  + id));
-  socket.on('notification:send', (data) => {
-    if (data?.patient_id) io.to('patient:' + data.patient_id).emit('notification:new', data);
-  });
+app.get('/', (req, res) => {
+  res.json({ success: true, message: 'MediConnect API v2', health: '/api/health' });
 });
 
 // ── Erreur globale ────────────────────────────────────────────────
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  const status = err.status || err.statusCode || 500;
-  console.error('[SERVER ERROR]', status, err.message);
-  res.status(status).json({
-    success: false,
-    message: isProd && status >= 500 ? 'Erreur interne du serveur' : (err.message || 'Erreur interne'),
-  });
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  const status = err.status || 500;
+  console.error('[ERROR]', req.method, req.originalUrl, status, err.message);
+  res.status(status).json({ success: false, message: isProd && status >= 500 ? 'Erreur interne' : err.message });
 });
 
-// ── 404 ───────────────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route introuvable: ${req.method} ${req.originalUrl}` });
+  res.status(404).json({ success: false, message: 'Route introuvable: ' + req.method + ' ' + req.originalUrl });
 });
 
-// ── Démarrage local (Vercel démarre lui-même) ─────────────────────
+// ── Démarrage local ───────────────────────────────────────────────
 if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT || '5000', 10);
-  server.listen(PORT, () => {
-    console.log(`\n🚀 MediConnect Backend — http://localhost:${PORT}/api/health`);
-    console.log(`   Env: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`   DB:  ${process.env.DATABASE_URL ? 'DATABASE_URL (cloud)' : 'Variables séparées'}\n`);
+  app.listen(PORT, () => {
+    console.log('\n🚀 MediConnect Backend — http://localhost:' + PORT + '/api/health');
   });
 }
 
-// ── Exports (Vercel a besoin de l'app Express, pas du server HTTP) ─
 module.exports = app;
