@@ -17,11 +17,11 @@ const useAuthStore = create((set, get) => ({
       set({ user: data.user, token: data.token, loading: false, error: null });
       return { success: true };
     } catch (err) {
-      const msg = err.response?.data?.message
-        || (err.code === 'ERR_NETWORK' ? 'Serveur inaccessible — vérifiez votre connexion' : null)
-        || (err.code === 'ECONNABORTED' ? 'Délai d'attente dépassé — réessayez' : null)
-        || err.message
-        || 'Erreur de connexion';
+      let msg = 'Erreur de connexion';
+      if (err.response?.data?.message) msg = err.response.data.message;
+      else if (err.code === 'ERR_NETWORK') msg = 'Serveur inaccessible. Vérifiez votre connexion.';
+      else if (err.code === 'ECONNABORTED') msg = 'Délai dépassé. Réessayez.';
+      else if (err.message) msg = err.message;
       set({ loading: false, error: msg });
       return { success: false, message: msg };
     }
@@ -37,10 +37,10 @@ const useAuthStore = create((set, get) => ({
       set({ user: data.user, token: data.token, loading: false, error: null });
       return { success: true };
     } catch (err) {
-      const msg = err.response?.data?.message
-        || (err.code === 'ERR_NETWORK' ? 'Serveur inaccessible' : null)
-        || err.message
-        || "Erreur lors de l'inscription";
+      let msg = "Erreur lors de l'inscription";
+      if (err.response?.data?.message) msg = err.response.data.message;
+      else if (err.code === 'ERR_NETWORK') msg = 'Serveur inaccessible.';
+      else if (err.message) msg = err.message;
       set({ loading: false, error: msg });
       return { success: false, message: msg };
     }
@@ -55,11 +55,9 @@ const useAuthStore = create((set, get) => ({
   isAuthenticated: () => {
     const { token, user } = get();
     if (!token || !user) return false;
-    // Vérifier que le token n'est pas expiré côté client
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       if (payload.exp && payload.exp * 1000 < Date.now()) {
-        // Token expiré — nettoyer
         localStorage.removeItem('mc_token');
         localStorage.removeItem('mc_user');
         return false;
