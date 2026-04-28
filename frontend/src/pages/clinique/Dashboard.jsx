@@ -20,6 +20,16 @@ function DashboardHome() {
   return (
     <div>
       <PageHeader title="Dashboard Clinique" subtitle={new Date().toLocaleDateString("fr-CI", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} />
+
+      {/* Rappel tarifaire */}
+      <div style={{ background:"rgba(13,148,136,.05)",border:"1px solid rgba(13,148,136,.15)",borderRadius:10,padding:"10px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:12,fontSize:12 }}>
+        <span style={{fontSize:18}}>ℹ️</span>
+        <span style={{color:"#8BA0B5"}}>
+          Votre abonnement MediConnect : <strong style={{color:"#0D9488"}}>3 000 FCFA/mois</strong> · Mise en service : <strong style={{color:"#F0F4F8"}}>100 000 FCFA</strong> (one-time) ·
+          Patients : <strong style={{color:"#0A8F58"}}>300 FCFA/mois</strong> standard · <strong style={{color:"#0A8F58"}}>500 FCFA/mois</strong> avec suivi privé
+        </span>
+      </div>
+
       <Grid cols={4} gap={14} style={{ marginBottom: 24 }}>
         <Card label="RDV aujourd'hui" value={s.rdv_today ?? 0} icon="📅" color="#0A8F58" sub="Rendez-vous" />
         <Card label="Médecins actifs" value={s.medecins_actifs ?? 0} icon="👨‍⚕️" color="#0D9488" sub="Disponibles" />
