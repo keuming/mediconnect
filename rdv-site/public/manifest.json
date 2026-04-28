@@ -1,0 +1,27 @@
+{
+  "short_name": "MediConnect RDV",
+  "name": "MediConnect — Prise de RDV en ligne",
+  "description": "Prenez rendez-vous en ligne dans les cliniques et établissements de soins en Afrique de l'Ouest",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0A8F58",
+  "background_color": "#060C12",
+  "orientation": "portrait-primary",
+  "categories": ["health", "medical"],
+  "lang": "fr",
+  "scope": "/"
+}
