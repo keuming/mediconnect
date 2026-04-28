@@ -81,6 +81,7 @@ app.use('/api/stock',         require('./routes/stock'));
 app.use('/api/caisse',        require('./routes/caisse'));
 app.use('/api/livreurs',      require('./routes/livreurs'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/public',       require('./routes/public'));      // Routes publiques (site RDV)
 
 // ── Health check ──────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
