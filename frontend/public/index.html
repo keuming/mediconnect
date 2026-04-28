@@ -5,8 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0A8F58" />
     <meta name="description" content="MediConnect v2 — La santé numérique pour l'Afrique de l'Ouest" />
+    
+    <link rel="manifest" href="/manifest.json" />
+    
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+
     <title>MediConnect v2</title>
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230A8F58'/><path d='M16 7v18M7 16h18' stroke='white' stroke-width='3.5' stroke-linecap='round'/></svg>" />
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW enregistré !', reg))
+            .catch(err => console.log('Erreur SW:', err));
+        });
+      }
+    </script>
   </head>
   <body>
     <noscript>MediConnect nécessite JavaScript pour fonctionner.</noscript>
