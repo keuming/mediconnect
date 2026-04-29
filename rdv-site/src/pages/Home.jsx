@@ -31,11 +31,11 @@ const V = {
 const btn = (extra={}) => ({ display:"inline-flex",alignItems:"center",gap:8,background:`linear-gradient(135deg,${V.green},${V.teal})`,color:"#fff",border:"none",borderRadius:12,padding:"14px 32px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:`0 6px 24px rgba(10,143,88,.35)`,transition:"all .2s",...extra });
 
 export default function Home() {
-  const nav = useNavigate();
+  const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [spec, setSpec] = useState(""); const [ville, setVille] = useState("Abidjan");
   useEffect(() => { const fn = () => setScrolled(window.scrollY > 60); window.addEventListener("scroll",fn); return () => window.removeEventListener("scroll",fn); },[]);
-  const goRDV = () => nav("/rdv");
+  const goRDV = () => navigate("/rdv");
 
   const inputStyle = { width:"100%",background:V.input,border:`1.5px solid ${V.border}`,borderRadius:10,padding:"12px 14px",color:V.text,fontSize:14,outline:"none",fontFamily:"inherit",appearance:"none" };
   const labelStyle = { display:"block",fontSize:11,fontWeight:700,color:V.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6 };
