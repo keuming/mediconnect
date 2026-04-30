@@ -12,7 +12,7 @@ export default function Confirmation() {
   const navigate = useNavigate();
   const { state } = useLocation();
 
-  useEffect(() => { if (!state) navigate('/'); }, [state, nav]);
+  useEffect(() => { if (!state) navigate('/'); }, [state, navigate]);
   if (!state) return null;
 
   const { clinique, medecin, creneau, patient, specialite, reference, code_secret } = state;
