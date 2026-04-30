@@ -6,37 +6,34 @@ import useAuthStore from './context/authStore';
 
 import Login    from './pages/Login';
 import Register from './pages/Register';
-import DashboardPatient   from './pages/patient/Dashboard';
-import DashboardClinique  from './pages/clinique/Dashboard';
-import DashboardPharmacie from './pages/pharmacie/Dashboard';
-import DashboardLivreur   from './pages/livreur/Dashboard';
-import DashboardAdmin     from './pages/admin/Dashboard';
-import DashboardAssureur  from './pages/assureur/Dashboard';
+import DashboardPatient     from './pages/patient/Dashboard';
+import DashboardClinique    from './pages/clinique/Dashboard';
+import DashboardPharmacie   from './pages/pharmacie/Dashboard';
+import DashboardLivreur     from './pages/livreur/Dashboard';
+import DashboardAdmin       from './pages/admin/Dashboard';
+import DashboardAssureur    from './pages/assureur/Dashboard';
+import DashboardImagerie    from './pages/imagerie/Dashboard';
+import DashboardLaboratoire from './pages/laboratoire/Dashboard';
 import AppLayout from './components/layout/AppLayout';
 
-// ── React Query — config production ──────────────────────────────
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: (failureCount, error) => {
-        // Ne pas retry les 401/403/404
         const status = error?.response?.status;
         if (status === 401 || status === 403 || status === 404) return false;
-        return failureCount < 2; // Max 2 retries pour les autres erreurs
+        return failureCount < 2;
       },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
-      staleTime: 30 * 1000,      // 30s
-      cacheTime: 5 * 60 * 1000,  // 5min
+      staleTime: 30 * 1000,
+      cacheTime: 5 * 60 * 1000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
     },
-    mutations: {
-      retry: 0,
-    },
+    mutations: { retry: 0 },
   },
 });
 
-// ── Spinner ───────────────────────────────────────────────────────
 const Loader = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#060C12' }}>
     <div style={{ textAlign: 'center' }}>
@@ -46,7 +43,6 @@ const Loader = () => (
   </div>
 );
 
-// ── Route privée ─────────────────────────────────────────────────
 const PrivateRoute = ({ children, roles }) => {
   const { user, isAuthenticated } = useAuthStore();
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
@@ -54,17 +50,16 @@ const PrivateRoute = ({ children, roles }) => {
   return children;
 };
 
-// ── Redirect selon le rôle ────────────────────────────────────────
 const RoleRedirect = () => {
   const { user } = useAuthStore();
   const routes = {
     patient: '/patient', clinique: '/clinique', pharmacie: '/pharmacie',
     livreur: '/livreur', admin: '/admin', assureur: '/assureur',
+    imagerie: '/imagerie', laboratoire: '/laboratoire',
   };
   return <Navigate to={routes[user?.role] || '/login'} replace />;
 };
 
-// ── App ───────────────────────────────────────────────────────────
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -123,6 +118,20 @@ export default function App() {
             <Route path="/assureur/*" element={
               <PrivateRoute roles={['assureur']}>
                 <AppLayout role="assureur"><DashboardAssureur /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* Imagerie médicale */}
+            <Route path="/imagerie/*" element={
+              <PrivateRoute roles={['imagerie']}>
+                <AppLayout role="imagerie"><DashboardImagerie /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* Laboratoire */}
+            <Route path="/laboratoire/*" element={
+              <PrivateRoute roles={['laboratoire']}>
+                <AppLayout role="laboratoire"><DashboardLaboratoire /></AppLayout>
               </PrivateRoute>
             } />
 
