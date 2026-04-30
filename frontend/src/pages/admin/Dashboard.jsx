@@ -21,6 +21,13 @@ const TARIFS = {
   // Patient
   PATIENT_MENSUEL_STD:     300,   // Abonnement mensuel standard
   PATIENT_MENSUEL_PRO:     500,   // Avec suivi médecin privé
+
+  // Autres profils
+  PHARMACIE_MENSUEL:      5000,
+  LIVREUR_MENSUEL:        1000,
+  LABO_MENSUEL:           5000,
+  IMAGERIE_MENSUEL:       5000,
+  ASSUREUR_MENSUEL:      10000,
 };
 
 const fmt = (n) => Number(n || 0).toLocaleString("fr-CI");
@@ -715,6 +722,252 @@ function PageAssureurs() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  PAGE FACTURATION ADMIN
+// ════════════════════════════════════════════════════════════════════
+const MOYENS_PAIEMENT = [
+  { id: 'wave',      label: 'Wave',         icon: '🌊', color: '#1DA6F2' },
+  { id: 'orange',    label: 'Orange Money', icon: '🟠', color: '#FF6600' },
+  { id: 'moov',      label: 'Moov Money',   icon: '🔵', color: '#0066CC' },
+  { id: 'mtn',       label: 'MTN MoMo',     icon: '🟡', color: '#FFCC00' },
+  { id: 'visa',      label: 'Visa',         icon: '💳', color: '#1A1F71' },
+  { id: 'mastercard',label: 'Mastercard',   icon: '🔴', color: '#EB001B' },
+];
+
+function MobilePayModal({ facture, onClose }) {
+  const [moyen, setMoyen] = useState(null);
+  const [tel, setTel] = useState('');
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const m = MOYENS_PAIEMENT.find(x => x.id === moyen);
+
+  const handlePayer = () => {
+    setLoading(true);
+    setTimeout(() => { setLoading(false); setStep(3); }, 2000);
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div style={{ background:'#0E1620', border:'1px solid #1E2F42', borderRadius:20, width:'100%', maxWidth:460, overflow:'hidden' }}>
+        <div style={{ background:'linear-gradient(135deg,#0A8F58,#0D9488)', padding:'20px 24px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.7)', marginBottom:4 }}>Mobile Pay · Paiement sécurisé</div>
+            <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{fmt(facture?.montant)} FCFA</div>
+            <div style={{ fontSize:12, color:'rgba(255,255,255,.8)' }}>Facture #{facture?.numero}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:'50%', width:32, height:32, color:'#fff', cursor:'pointer', fontSize:16 }}>✕</button>
+        </div>
+        <div style={{ padding:24 }}>
+          {step===1 && (
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:'#F0F4F8', marginBottom:16 }}>Choisir un moyen de paiement</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+                {MOYENS_PAIEMENT.map(mp => (
+                  <button key={mp.id} onClick={()=>{ setMoyen(mp.id); setStep(2); }}
+                    style={{ background:mp.color+'15', border:`2px solid ${mp.color}40`, borderRadius:12, padding:'12px', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:22 }}>{mp.icon}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:mp.color }}>{mp.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ textAlign:'center', fontSize:11, color:'#4E657A' }}>🔒 Paiement sécurisé par Mobile Pay</div>
+            </div>
+          )}
+          {step===2 && m && (
+            <div>
+              <button onClick={()=>setStep(1)} style={{ background:'none', border:'none', color:'#0A8F58', cursor:'pointer', fontSize:13, marginBottom:16, padding:0 }}>← Retour</button>
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, padding:'10px 14px', background:m.color+'15', borderRadius:10 }}>
+                <span style={{ fontSize:24 }}>{m.icon}</span>
+                <span style={{ fontSize:14, fontWeight:700, color:m.color }}>{m.label}</span>
+              </div>
+              {(moyen==='visa'||moyen==='mastercard') ? (
+                <div>
+                  <input placeholder="Numéro de carte" style={{ width:'100%', background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', marginBottom:10, boxSizing:'border-box' }} />
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+                    <input placeholder="MM/AA" style={{ background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', boxSizing:'border-box' }} />
+                    <input placeholder="CVV" style={{ background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', boxSizing:'border-box' }} />
+                  </div>
+                </div>
+              ) : (
+                <input placeholder="Numéro de téléphone" value={tel} onChange={e=>setTel(e.target.value)}
+                  style={{ width:'100%', background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', marginBottom:16, boxSizing:'border-box' }} />
+              )}
+              <div style={{ background:'#141E2B', borderRadius:8, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between' }}>
+                <span style={{ fontSize:13, color:'#8BA0B5' }}>Total</span>
+                <span style={{ fontSize:15, fontWeight:800, color:'#0A8F58' }}>{fmt(facture?.montant)} FCFA</span>
+              </div>
+              <button onClick={handlePayer} disabled={loading}
+                style={{ width:'100%', background:`linear-gradient(135deg,${m.color},${m.color}CC)`, border:'none', borderRadius:10, padding:14, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer' }}>
+                {loading ? '⏳ Traitement...' : `💳 Payer ${fmt(facture?.montant)} FCFA`}
+              </button>
+            </div>
+          )}
+          {step===3 && (
+            <div style={{ textAlign:'center', padding:'20px 0' }}>
+              <div style={{ width:72, height:72, background:'linear-gradient(135deg,#0A8F58,#0D9488)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:32, margin:'0 auto 16px' }}>✅</div>
+              <div style={{ fontSize:22, fontWeight:800, color:'#F0F4F8', marginBottom:8 }}>Paiement réussi !</div>
+              <div style={{ fontSize:13, color:'#8BA0B5', marginBottom:20 }}>Facture #{facture?.numero} soldée</div>
+              <button onClick={onClose} style={{ background:'#0A8F58', border:'none', borderRadius:10, padding:'10px 28px', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>Fermer</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageFacturationAdmin() {
+  const { data: cliniquesData } = useQuery({ queryKey:["adm-cliniq"], queryFn:()=>adminAPI.cliniques().then(r=>r.data.data||[]) });
+  const { data: usersData }     = useQuery({ queryKey:["adm-users"],  queryFn:()=>adminAPI.users().then(r=>r.data.data||[])    });
+  const cliniques = cliniquesData || [];
+  const users     = usersData     || [];
+  const [factureActive, setFactureActive] = useState(null);
+  const [tarifEdit, setTarifEdit] = useState({ ...TARIFS });
+
+  // Simulation factures générées automatiquement après 25 jours
+  const facturesSimulees = [
+    ...cliniques.map((c,i)=>({ id:i+1, profil:'Clinique', nom:c.nom||'Clinique', montant:tarifEdit.CLINIQUE_MENSUEL, statut:i%2===0?'en_attente':'payee', echeance:'05/05/2026', numero:`MC-CLI-${String(i+1).padStart(3,'0')}`, service:'Abonnement Clinique' })),
+    { id:100, profil:'Pharmacie', nom:'Pharmacie Demo', montant:tarifEdit.PHARMACIE_MENSUEL, statut:'en_attente', echeance:'05/05/2026', numero:'MC-PHA-001', service:'Abonnement Pharmacie' },
+    { id:101, profil:'Laboratoire', nom:'Labo Demo', montant:tarifEdit.LABO_MENSUEL, statut:'payee', echeance:'05/05/2026', numero:'MC-LAB-001', service:'Abonnement Laboratoire' },
+  ];
+
+  const totalAttendu  = facturesSimulees.reduce((s,f)=>s+f.montant, 0);
+  const totalEncaisse = facturesSimulees.filter(f=>f.statut==='payee').reduce((s,f)=>s+f.montant, 0);
+  const totalImpaye   = facturesSimulees.filter(f=>f.statut==='en_attente').reduce((s,f)=>s+f.montant, 0);
+
+  return (
+    <div>
+      <PageHeader title="💳 Gestion Financière" subtitle="Facturation automatique · Mobile Pay · Configuration des tarifs" />
+
+      {/* KPIs */}
+      <Grid cols={3} gap={14} style={{ marginBottom:20 }}>
+        <Card label="Total attendu" value={fmt(totalAttendu)+" F"} icon="💰" color="#0A8F58" sub="Ce mois" />
+        <Card label="Encaissé" value={fmt(totalEncaisse)+" F"} icon="✅" color="#0D9488" sub="Factures payées" />
+        <Card label="Impayé" value={fmt(totalImpaye)+" F"} icon="⚠" color="#E11D48" sub="En attente" />
+      </Grid>
+
+      {/* Config tarifs */}
+      <div style={{ background:'#141E2B', border:'1px solid #1E2F42', borderRadius:14, padding:20, marginBottom:20 }}>
+        <div style={{ fontSize:14, fontWeight:800, color:'#F0F4F8', marginBottom:16 }}>⚙️ Configuration des tarifs (FCFA/mois)</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+          {[
+            ['Clinique', 'CLINIQUE_MENSUEL'],
+            ['Pharmacie', 'PHARMACIE_MENSUEL'],
+            ['Livreur', 'LIVREUR_MENSUEL'],
+            ['Patient', 'PATIENT_MENSUEL_STD'],
+            ['Laboratoire', 'LABO_MENSUEL'],
+            ['Imagerie', 'IMAGERIE_MENSUEL'],
+            ['Assureur', 'ASSUREUR_MENSUEL'],
+            ['Setup Clinique', 'CLINIQUE_SETUP'],
+          ].map(([label, key]) => (
+            <div key={key} style={{ background:'#0E1620', borderRadius:10, padding:'12px' }}>
+              <div style={{ fontSize:11, color:'#4E657A', marginBottom:6 }}>{label}</div>
+              <input
+                type="number"
+                value={tarifEdit[key]}
+                onChange={e => setTarifEdit(t=>({ ...t, [key]: Number(e.target.value) }))}
+                style={{ width:'100%', background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:'8px', color:'#0A8F58', fontWeight:800, fontSize:15, boxSizing:'border-box' }}
+              />
+            </div>
+          ))}
+        </div>
+        <button style={{ marginTop:14, background:'#0A8F58', border:'none', borderRadius:10, padding:'10px 24px', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+          💾 Enregistrer les tarifs
+        </button>
+      </div>
+
+      {/* Liste factures */}
+      <Panel title={`Factures générées (${facturesSimulees.length})`}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom:'2px solid #1E2F42' }}>
+              {['N° Facture','Profil','Établissement','Montant','Échéance','Statut','Action'].map(h=>(
+                <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {facturesSimulees.map((f,i)=>{
+              const sc = f.statut==='payee' ? '#0A8F58' : '#E11D48';
+              return (
+                <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
+                  <td style={{ padding:'10px', fontSize:13, fontWeight:700, color:'#2563EB', fontFamily:'monospace' }}>#{f.numero}</td>
+                  <td style={{ padding:'10px', fontSize:12 }}><Badge color={f.profil==='Clinique'?'green':'blue'}>{f.profil}</Badge></td>
+                  <td style={{ padding:'10px', fontSize:13, color:'#F0F4F8' }}>{f.nom}</td>
+                  <td style={{ padding:'10px', fontSize:14, fontWeight:800, color:'#0A8F58' }}>{fmt(f.montant)} F</td>
+                  <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{f.echeance}</td>
+                  <td style={{ padding:'10px' }}>
+                    <span style={{ fontSize:11, background:sc+'20', color:sc, borderRadius:20, padding:'3px 10px', fontWeight:700 }}>
+                      {f.statut==='payee' ? '✓ Payée' : '⚠ En attente'}
+                    </span>
+                  </td>
+                  <td style={{ padding:'10px' }}>
+                    {f.statut==='en_attente' && (
+                      <button onClick={()=>setFactureActive(f)}
+                        style={{ background:'linear-gradient(135deg,#0A8F58,#0D9488)', border:'none', borderRadius:8, padding:'6px 14px', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                        💳 Relancer
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Panel>
+
+      {factureActive && <MobilePayModal facture={factureActive} onClose={()=>setFactureActive(null)} />}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  PAGE BULLETINS MÉDICAUX (Admin)
+// ════════════════════════════════════════════════════════════════════
+function PageBulletins() {
+  const [bulletins] = useState(BULLETINS_DEMO);
+
+  return (
+    <div>
+      <PageHeader title="🔬 Bulletins médicaux" subtitle="Analyses et imagerie reçus des patients et cliniques" />
+      <Panel title={`Bulletins reçus (${bulletins.length})`}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom:'2px solid #1E2F42' }}>
+              {['N°','Type','Patient','Émetteur','Date','Fichier','Statut'].map(h=>(
+                <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {bulletins.map((b,i)=>(
+              <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
+                <td style={{ padding:'10px', fontSize:12, color:'#2563EB', fontFamily:'monospace' }}>#{b.id}</td>
+                <td style={{ padding:'10px' }}><Badge color={b.type==='Analyse'?'blue':'purple'}>{b.type}</Badge></td>
+                <td style={{ padding:'10px', fontSize:13, color:'#F0F4F8' }}>{b.patient}</td>
+                <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{b.emetteur}</td>
+                <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{b.date}</td>
+                <td style={{ padding:'10px' }}>
+                  <button style={{ background:'rgba(37,99,235,.1)', border:'1px solid rgba(37,99,235,.3)', borderRadius:8, padding:'4px 12px', color:'#2563EB', fontSize:12, cursor:'pointer' }}>
+                    📄 {b.fichier}
+                  </button>
+                </td>
+                <td style={{ padding:'10px' }}><Badge color={b.traite?'green':'orange'}>{b.traite?'Traité':'En attente'}</Badge></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
+  );
+}
+
+const BULLETINS_DEMO = [
+  { id:'BUL-001', type:'Analyse', patient:'Aya Konan', emetteur:'Polyclinique du Sud', date:'30/04/2026', fichier:'nfs_konan.pdf', traite:false },
+  { id:'BUL-002', type:'Imagerie', patient:'Moussa Diallo', emetteur:'Centre Radio Plateau', date:'29/04/2026', fichier:'radio_thorax.pdf', traite:true },
+  { id:'BUL-003', type:'Analyse', patient:'Fatou Bamba', emetteur:'Labo Moderne', date:'28/04/2026', fichier:'glycemie_bamba.pdf', traite:false },
+];
+
+// ════════════════════════════════════════════════════════════════════
 //  ROUTER
 // ════════════════════════════════════════════════════════════════════
 export default function Dashboard() {
@@ -725,6 +978,8 @@ export default function Dashboard() {
       <Route path="patients"          element={<PagePatients />} />
       <Route path="livreurs"          element={<PageLivreurs />} />
       <Route path="rdv-patients"      element={<PageGestionRDV />} />
+      <Route path="facturation"       element={<PageFacturationAdmin />} />
+      <Route path="bulletins"         element={<PageBulletins />} />
       <Route path="rapports"          element={<PageRapports />} />
       <Route path="assureurs"         element={<PageAssureurs />} />
       <Route path="*"                 element={<DashboardHome />} />
