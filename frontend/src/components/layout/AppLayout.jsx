@@ -45,6 +45,7 @@ const NAVS = {
     { path: '/admin/assureurs',       icon: '🛡️', label: 'Assureurs API' },
     { path: '/admin/patients',        icon: '👤', label: 'Patients' },
     { path: '/admin/livreurs',        icon: '🛵', label: 'Livreurs' },
+    { path: '/admin/rdv-patients',    icon: '📅', label: 'Gestion RDV' },
     { path: '/admin/rapports',        icon: '📈', label: 'Rapports' },
   ],
   assureur:  [
