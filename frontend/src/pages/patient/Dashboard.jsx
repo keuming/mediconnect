@@ -6,7 +6,7 @@ import { Card, Panel, ListItem, Avatar, Grid, PageHeader, Badge, Loader, Empty, 
 import toast from 'react-hot-toast';
 import useAuthStore from '../../context/authStore';
 import PageBulletins from '../Pagebulletins/PageBulletins';
-import PageAbonnement from '../facturation/Facturation';
+import PageFactures from '../facturation/Facturation';
 
 const fmt = (n) => Number(n||0).toLocaleString('fr-CI');
 
@@ -146,8 +146,8 @@ export default function Dashboard() {
       <Route path="rdv" element={<PageRdvs />} />
       <Route path="ordonnances" element={<PageOrdonnances />} />
       <Route path="dossier" element={<PageDossier />} />
-      <Route path="bulletins"   element={<PageBulletins role="patient" />} />
-      <Route path="facturation" element={<PageAbonnement role="patient" tarif={300} service="Abonnement Patient MediConnect" />} />
+      <Route path="bulletins" element={<PageBulletins role="patient" />} />
+      <Route path="facturation" element={<PageFactures role="patient" tarif={300} service="Abonnement Patient MediConnect" />} />
       <Route path="*" element={<div style={{ textAlign: 'center', padding: 60, color: '#4E657A' }}><div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div><div>Section en développement</div></div>} />
     </Routes>
   );
