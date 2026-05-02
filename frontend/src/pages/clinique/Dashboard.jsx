@@ -116,53 +116,154 @@ function PagePlanning() {
   );
 }
 
-// ── MÉDECINS ──────────────────────────────────────────────────────
+// ── MÉDECINS & PERSONNEL ─────────────────────────────────────────
+const TYPES_PERSONNEL = [
+  { value: 'medecin',           label: 'Médecin',               icon: '👨‍⚕️', color: '#0A8F58' },
+  { value: 'infirmier',         label: 'Infirmier(e)',           icon: '💉', color: '#0D9488' },
+  { value: 'laborantin',        label: 'Laborantin',            icon: '🧪', color: '#8B5CF6' },
+  { value: 'radiologue',        label: 'Radiologue',            icon: '🩻', color: '#2563EB' },
+  { value: 'agent_accueil',     label: "Agent d'accueil",       icon: '🙋', color: '#F59E0B' },
+  { value: 'secretaire',        label: 'Secrétaire médicale',   icon: '📋', color: '#D97706' },
+  { value: 'caissiere',         label: 'Caissier(e)',           icon: '💰', color: '#0A8F58' },
+  { value: 'directeur',         label: 'Directeur',             icon: '🏥', color: '#E11D48' },
+  { value: 'autre',             label: 'Autre',                 icon: '👤', color: '#8BA0B5' },
+];
+
+const SPECIALITES_MED = ["Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Dermatologie","Neurologie","Chirurgie","Ophtalmologie","ORL","Psychiatrie","Urologie","Gastro-entérologie","Orthopédie","Radiologie","Anesthésie","Urgences"];
+
 function PageMedecins() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ prenom: "", nom: "", specialite: "Cardiologie", tarif: 20000, experience_ans: 5, numero_ordre: "", horaires_debut: "08:00", horaires_fin: "17:00" });
+  const [filtreType, setFiltreType] = useState('tous');
+  const [form, setForm] = useState({
+    prenom: "", nom: "", type_personnel: "medecin", specialite: "Médecine générale",
+    tarif: 20000, experience_ans: 5, numero_ordre: "",
+    horaires_debut: "08:00", horaires_fin: "17:00", telephone: "", email: ""
+  });
   const { data, isLoading } = useQuery({ queryKey: ["cl-medecins"], queryFn: () => cliniqueAPI.medecins().then(r => r.data.data || []) });
-  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addMedecin(d), onSuccess: () => { toast.success("Médecin ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deleteMedecin(id), onSuccess: () => { toast.success("Médecin retiré"); qc.invalidateQueries(["cl-medecins"]); } });
+  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addMedecin(d), onSuccess: () => { toast.success("Personnel ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); setForm({ prenom:"",nom:"",type_personnel:"medecin",specialite:"Médecine générale",tarif:20000,experience_ans:5,numero_ordre:"",horaires_debut:"08:00",horaires_fin:"17:00",telephone:"",email:"" }); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
+  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deleteMedecin(id), onSuccess: () => { toast.success("Retiré"); qc.invalidateQueries(["cl-medecins"]); } });
   const updMut = useMutation({ mutationFn: ({ id, statut }) => cliniqueAPI.updateMedecin(id, { statut }), onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-medecins"]); } });
-  const meds = data || [];
-  const specs = ["Cardiologie","Pédiatrie","Gynécologie","Dermatologie","Neurologie","Médecine générale","Chirurgie","Ophtalmologie","ORL"];
+
+  const tout = data || [];
+  const personnel = filtreType === 'tous' ? tout : tout.filter(p => (p.type_personnel || 'medecin') === filtreType);
+
+  const typeInfo = (t) => TYPES_PERSONNEL.find(tp => tp.value === t) || TYPES_PERSONNEL[TYPES_PERSONNEL.length-1];
+
+  // Stats par type
+  const statsTypes = TYPES_PERSONNEL.map(t => ({ ...t, count: tout.filter(p => (p.type_personnel || 'medecin') === t.value).length })).filter(t => t.count > 0);
+
   return (
     <div>
-      <PageHeader title="👨‍⚕️ Médecins & RH" subtitle={`${meds.length} médecins`} actions={<Btn onClick={() => setShowAdd(true)}>+ Ajouter</Btn>} />
-      {isLoading ? <Loader /> : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-          {meds.length === 0 && <div style={{ gridColumn: "1/-1" }}><Empty icon="👨‍⚕️" title="Aucun médecin" subtitle="Ajoutez votre premier médecin" /></div>}
-          {meds.map(m => (
-            <Panel key={m.id}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                <Avatar text={`${m.prenom[0]}${m.nom[0]}`} size={44} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#F0F4F8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Dr. {m.prenom} {m.nom}</div>
-                  <div style={{ fontSize: 12, color: "#8BA0B5" }}>{m.specialite}</div>
-                </div>
-                <Badge color={stBadge(m.statut)}>{m.statut}</Badge>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 12, marginBottom: 12 }}>
-                {[["Expérience", `${m.experience_ans} ans`], ["Tarif", `${fmt(m.tarif)} F`], ["Horaires", `${m.horaires_debut?.slice(0,5)}–${m.horaires_fin?.slice(0,5)}`]].map(([k, v]) => (
-                  <div key={k}><span style={{ color: "#4E657A" }}>{k} : </span><span style={{ fontWeight: 600 }}>{v}</span></div>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Btn variant="outline" style={{ flex: 1, padding: "7px", fontSize: 12 }} onClick={() => updMut.mutate({ id: m.id, statut: m.statut === "Congé" ? "Disponible" : "Congé" })}>{m.statut === "Congé" ? "✓ Réactiver" : "☀ Congé"}</Btn>
-                <Btn variant="outline" style={{ padding: "7px 12px", fontSize: 12, color: "#E11D48" }} onClick={() => window.confirm(`Retirer Dr. ${m.nom} ?`) && delMut.mutate(m.id)}>✕</Btn>
-              </div>
-            </Panel>
+      <PageHeader title="👥 Personnel & RH" subtitle={`${tout.length} membre(s) du personnel`} actions={<Btn onClick={() => setShowAdd(true)}>+ Ajouter</Btn>} />
+
+      {/* Stats par type */}
+      {statsTypes.length > 0 && (
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:20 }}>
+          {statsTypes.map(t => (
+            <div key={t.value} onClick={() => setFiltreType(filtreType===t.value?'tous':t.value)}
+              style={{ background: filtreType===t.value ? t.color+'20' : '#141E2B', border:`1px solid ${filtreType===t.value ? t.color : '#1E2F42'}`, borderRadius:10, padding:'8px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{fontSize:18}}>{t.icon}</span>
+              <span style={{fontSize:13, color: filtreType===t.value ? t.color : '#8BA0B5', fontWeight: filtreType===t.value ? 700 : 400}}>{t.label}</span>
+              <span style={{background:t.color+'30', color:t.color, fontSize:11, fontWeight:800, borderRadius:20, padding:'1px 8px'}}>{t.count}</span>
+            </div>
           ))}
+          {filtreType !== 'tous' && (
+            <button onClick={() => setFiltreType('tous')} style={{background:'none', border:'1px solid #1E2F42', borderRadius:10, padding:'8px 14px', color:'#8BA0B5', fontSize:12, cursor:'pointer'}}>✕ Tous</button>
+          )}
         </div>
       )}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Ajouter un médecin">
-        <Grid cols={2} gap={12}><Input label="Prénom *" required value={form.prenom} onChange={e => setForm(p => ({ ...p, prenom: e.target.value }))} /><Input label="Nom *" required value={form.nom} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} /></Grid>
-        <Select label="Spécialité *" required value={form.specialite} onChange={e => setForm(p => ({ ...p, specialite: e.target.value }))} options={specs} />
-        <Grid cols={2} gap={12}><Input label="Tarif (FCFA)" type="number" value={form.tarif} onChange={e => setForm(p => ({ ...p, tarif: +e.target.value }))} /><Input label="Expérience (ans)" type="number" value={form.experience_ans} onChange={e => setForm(p => ({ ...p, experience_ans: +e.target.value }))} /></Grid>
-        <Grid cols={2} gap={12}><Input label="Heure début" type="time" value={form.horaires_debut} onChange={e => setForm(p => ({ ...p, horaires_debut: e.target.value }))} /><Input label="Heure fin" type="time" value={form.horaires_fin} onChange={e => setForm(p => ({ ...p, horaires_fin: e.target.value }))} /></Grid>
-        <Input label="N° Ordre médical" value={form.numero_ordre} onChange={e => setForm(p => ({ ...p, numero_ordre: e.target.value }))} placeholder="OM-2020-XXXXX" />
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => { if (!form.prenom || !form.nom) { toast.error("Prénom et nom requis"); return; } addMut.mutate(form); }}>Ajouter</Btn></div>
+
+      {isLoading ? <Loader /> : (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:16 }}>
+          {personnel.length === 0 && <div style={{ gridColumn:"1/-1" }}><Empty icon="👥" title="Aucun personnel" subtitle="Ajoutez votre premier membre" /></div>}
+          {personnel.map(m => {
+            const ti = typeInfo(m.type_personnel || 'medecin');
+            return (
+              <Panel key={m.id}>
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                  <div style={{ width:44, height:44, background:`linear-gradient(135deg,${ti.color},${ti.color}99)`, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
+                    {ti.icon}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:"#F0F4F8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {m.type_personnel === 'medecin' || m.type_personnel === 'radiologue' ? 'Dr. ' : ''}{m.prenom} {m.nom}
+                    </div>
+                    <div style={{ fontSize:11, color: ti.color, fontWeight:600 }}>{ti.label}</div>
+                    {m.specialite && <div style={{ fontSize:11, color:"#8BA0B5" }}>{m.specialite}</div>}
+                  </div>
+                  <Badge color={stBadge(m.statut)}>{m.statut}</Badge>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:12, marginBottom:12 }}>
+                  {m.type_personnel === 'medecin' && [["Expérience", `${m.experience_ans} ans`], ["Tarif", `${fmt(m.tarif)} F`]].map(([k,v]) => (
+                    <div key={k}><span style={{color:"#4E657A"}}>{k} : </span><span style={{fontWeight:600}}>{v}</span></div>
+                  ))}
+                  {[["Horaires", `${m.horaires_debut?.slice(0,5)||'08:00'}–${m.horaires_fin?.slice(0,5)||'17:00'}`]].map(([k,v]) => (
+                    <div key={k}><span style={{color:"#4E657A"}}>{k} : </span><span style={{fontWeight:600}}>{v}</span></div>
+                  ))}
+                  {m.telephone && <div><span style={{color:"#4E657A"}}>Tél : </span><span style={{fontWeight:600}}>{m.telephone}</span></div>}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <Btn variant="outline" style={{ flex:1, padding:"7px", fontSize:12 }} onClick={() => updMut.mutate({ id:m.id, statut: m.statut==="Congé"?"Disponible":"Congé" })}>{m.statut==="Congé"?"✓ Réactiver":"☀ Congé"}</Btn>
+                  <Btn variant="outline" style={{ padding:"7px 12px", fontSize:12, color:"#E11D48" }} onClick={() => window.confirm(`Retirer ${m.prenom} ${m.nom} ?`) && delMut.mutate(m.id)}>✕</Btn>
+                </div>
+              </Panel>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Ajouter un membre du personnel">
+        {/* Type de personnel */}
+        <div style={{marginBottom:14}}>
+          <label style={{display:'block', fontSize:11, fontWeight:700, color:'#8BA0B5', textTransform:'uppercase', letterSpacing:'.5px', marginBottom:8}}>TYPE DE PERSONNEL *</label>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8}}>
+            {TYPES_PERSONNEL.map(t => (
+              <div key={t.value} onClick={() => setForm(p => ({...p, type_personnel: t.value}))}
+                style={{background: form.type_personnel===t.value ? t.color+'20' : '#141E2B', border:`1.5px solid ${form.type_personnel===t.value ? t.color : '#1E2F42'}`, borderRadius:8, padding:'8px 6px', cursor:'pointer', textAlign:'center'}}>
+                <div style={{fontSize:20, marginBottom:4}}>{t.icon}</div>
+                <div style={{fontSize:10, color: form.type_personnel===t.value ? t.color : '#8BA0B5', fontWeight: form.type_personnel===t.value ? 700 : 400, lineHeight:1.2}}>{t.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Grid cols={2} gap={12}>
+          <Input label="Prénom *" required value={form.prenom} onChange={e => setForm(p => ({...p, prenom: e.target.value}))} />
+          <Input label="Nom *" required value={form.nom} onChange={e => setForm(p => ({...p, nom: e.target.value}))} />
+        </Grid>
+
+        {/* Spécialité — seulement pour médecin et radiologue */}
+        {(form.type_personnel === 'medecin' || form.type_personnel === 'radiologue') && (
+          <Select label="Spécialité *" required value={form.specialite} onChange={e => setForm(p => ({...p, specialite: e.target.value}))} options={SPECIALITES_MED} />
+        )}
+
+        {/* Tarif et expérience — seulement pour médecin */}
+        {form.type_personnel === 'medecin' && (
+          <Grid cols={2} gap={12}>
+            <Input label="Tarif consultation (FCFA)" type="number" value={form.tarif} onChange={e => setForm(p => ({...p, tarif: +e.target.value}))} />
+            <Input label="Expérience (ans)" type="number" value={form.experience_ans} onChange={e => setForm(p => ({...p, experience_ans: +e.target.value}))} />
+          </Grid>
+        )}
+
+        <Grid cols={2} gap={12}>
+          <Input label="Heure début" type="time" value={form.horaires_debut} onChange={e => setForm(p => ({...p, horaires_debut: e.target.value}))} />
+          <Input label="Heure fin" type="time" value={form.horaires_fin} onChange={e => setForm(p => ({...p, horaires_fin: e.target.value}))} />
+        </Grid>
+
+        <Grid cols={2} gap={12}>
+          <Input label="Téléphone" value={form.telephone} onChange={e => setForm(p => ({...p, telephone: e.target.value}))} placeholder="+225 07 00 00 00 00" />
+          <Input label="Email" type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} placeholder="email@clinique.ci" />
+        </Grid>
+
+        {(form.type_personnel === 'medecin') && (
+          <Input label="N° Ordre médical" value={form.numero_ordre} onChange={e => setForm(p => ({...p, numero_ordre: e.target.value}))} placeholder="OM-2020-XXXXX" />
+        )}
+
+        <div style={{display:"flex", gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={() => setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={() => { if (!form.prenom || !form.nom) { toast.error("Prénom et nom requis"); return; } addMut.mutate(form); }}>Ajouter</Btn>
+        </div>
       </Modal>
     </div>
   );
