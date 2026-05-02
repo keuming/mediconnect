@@ -1,8 +1,24 @@
-// ── routes/cliniques.js ──────────────────────────────────────────
 const router = require('express').Router();
 const { query } = require('../config/db');
 const { auth, authorize } = require('../middleware/auth');
-const { v4: uuid } = require('uuid');
+
+// GET /api/cliniques — liste toutes les cliniques (admin)
+router.get('/', auth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT c.id, c.nom, c.type, c.numero_agrement, c.assurances,
+              u.email, u.telephone, u.ville, u.prenom, u.nom as nom_contact,
+              u.created_at, u.is_active
+       FROM cliniques c
+       JOIN utilisateurs u ON u.id = c.user_id
+       ORDER BY u.created_at DESC`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('Erreur cliniques:', err);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
 
 // GET /api/cliniques/moi — dashboard de la clinique connectée
 router.get('/moi', auth, authorize('clinique'), async (req, res) => {
@@ -31,10 +47,10 @@ router.get('/stats', auth, authorize('clinique'), async (req, res) => {
     ]);
 
     res.json({ success: true, data: {
-      rdv_today:      +rdvCount.rows[0].count,
+      rdv_today:       +rdvCount.rows[0].count,
       medecins_actifs: +medecinCount.rows[0].count,
-      stock_alertes:  +stockAlerts.rows[0].count,
-      dossiers_rejetes: +dossierRejetes.rows[0].count,
+      stock_alertes:   +stockAlerts.rows[0].count,
+      dossiers_rejetes:+dossierRejetes.rows[0].count,
     }});
   } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
 });
