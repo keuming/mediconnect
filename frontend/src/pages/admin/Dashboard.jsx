@@ -968,6 +968,123 @@ const BULLETINS_DEMO = [
 ];
 
 // ════════════════════════════════════════════════════════════════════
+//  PAGE MÉDECINS INDÉPENDANTS (ADMIN)
+// ════════════════════════════════════════════════════════════════════
+const MEDECINS_PRIVES_DEMO = [
+  { id:1, prenom:'Kouassi', nom:'Ange', specialite:'Cardiologie', ville:'Cocody', email:'dr.kouassi@demo.ci', patients:45, statut:'actif', setup_paye:true, mensuel_paye:true, date_inscription:'15/04/2026' },
+  { id:2, prenom:'Bamba', nom:'Mariame', specialite:'Médecine générale', ville:'Plateau', email:'dr.bamba@demo.ci', patients:120, statut:'actif', setup_paye:true, mensuel_paye:false, date_inscription:'10/04/2026' },
+  { id:3, prenom:'Diallo', nom:'Seydou', specialite:'Pédiatrie', ville:'Marcory', email:'dr.diallo@demo.ci', patients:0, statut:'en_attente', setup_paye:false, mensuel_paye:false, date_inscription:'01/05/2026' },
+];
+
+const DEMANDES_DEMO = [
+  { id:'DEM-001', patient:'Aya Konan', medecin:'Dr. Kouassi Ange', date:'01/05/2026', statut:'en_attente', paiement:'paye', montant:1000 },
+  { id:'DEM-002', patient:'Moussa Diallo', medecin:'Dr. Bamba Mariame', date:'30/04/2026', statut:'accepte', paiement:'paye', montant:1000 },
+  { id:'DEM-003', patient:'Fatou Bamba', medecin:'Dr. Kouassi Ange', date:'29/04/2026', statut:'refuse', paiement:'paye', montant:1000 },
+];
+
+function PageMedecinsPrivesAdmin() {
+  const [onglet, setOnglet] = useState('medecins');
+
+  const revenuSetup    = MEDECINS_PRIVES_DEMO.filter(m => m.setup_paye).length * 10000;
+  const revenuMensuel  = MEDECINS_PRIVES_DEMO.filter(m => m.mensuel_paye).length * 1000;
+  const revenuDemandes = DEMANDES_DEMO.filter(d => d.paiement === 'paye').length * 1000;
+
+  return (
+    <div>
+      <PageHeader title="👨‍⚕️ Médecins Indépendants" subtitle="Monitoring et facturation des médecins privés MediConnect" />
+
+      {/* KPIs */}
+      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
+        <Card label="Médecins actifs" value={MEDECINS_PRIVES_DEMO.filter(m=>m.statut==='actif').length} icon="👨‍⚕️" color="#0A8F58" />
+        <Card label="Revenus setup" value={fmt(revenuSetup)+' F'} icon="💳" color="#0D9488" sub="10 000 F × inscriptions" />
+        <Card label="Revenus mensuels" value={fmt(revenuMensuel)+' F'} icon="📅" color="#2563EB" sub="1 000 F/mois" />
+        <Card label="Mise en relation" value={fmt(revenuDemandes)+' F'} icon="🤝" color="#8B5CF6" sub="1 000 F × demandes" />
+      </Grid>
+
+      {/* Onglets */}
+      <div style={{ display:'flex', gap:4, background:'#0E1620', borderRadius:12, padding:4, marginBottom:20, width:'fit-content' }}>
+        {[['medecins',`👨‍⚕️ Médecins (${MEDECINS_PRIVES_DEMO.length})`],['demandes',`📋 Demandes (${DEMANDES_DEMO.length})`]].map(([v,l])=>(
+          <button key={v} onClick={()=>setOnglet(v)}
+            style={{ background:onglet===v?'#0A8F58':'none', border:'none', borderRadius:8, padding:'8px 20px', color:onglet===v?'#fff':'#8BA0B5', fontSize:13, fontWeight:onglet===v?700:400, cursor:'pointer' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* Liste médecins */}
+      {onglet==='medecins' && (
+        <Panel title="Liste des médecins indépendants">
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom:'2px solid #1E2F42' }}>
+                {['Médecin','Spécialité','Ville','Patients','Setup','Mensuel','Statut'].map(h=>(
+                  <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {MEDECINS_PRIVES_DEMO.map((m,i)=>(
+                <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
+                  <td style={{ padding:'10px' }}>
+                    <div style={{ fontSize:14, fontWeight:700, color:'#F0F4F8' }}>Dr. {m.prenom} {m.nom}</div>
+                    <div style={{ fontSize:11, color:'#4E657A' }}>{m.email}</div>
+                  </td>
+                  <td style={{ padding:'10px', fontSize:13, color:'#8BA0B5' }}>{m.specialite}</td>
+                  <td style={{ padding:'10px', fontSize:13, color:'#8BA0B5' }}>{m.ville}</td>
+                  <td style={{ padding:'10px', fontSize:14, fontWeight:700, color:'#2563EB' }}>{m.patients}</td>
+                  <td style={{ padding:'10px' }}>
+                    <Badge color={m.setup_paye?'green':'red'}>{m.setup_paye?'✓ Payé':'⚠ Impayé'}</Badge>
+                  </td>
+                  <td style={{ padding:'10px' }}>
+                    <Badge color={m.mensuel_paye?'green':'red'}>{m.mensuel_paye?'✓ Payé':'⚠ Impayé'}</Badge>
+                  </td>
+                  <td style={{ padding:'10px' }}>
+                    <Badge color={m.statut==='actif'?'green':'amber'}>{m.statut==='actif'?'Actif':'En attente'}</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+
+      {/* Liste demandes */}
+      {onglet==='demandes' && (
+        <Panel title="Demandes de suivi privé">
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom:'2px solid #1E2F42' }}>
+                {['N°','Patient','Médecin','Date','Paiement','Statut'].map(h=>(
+                  <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {DEMANDES_DEMO.map((d,i)=>(
+                <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
+                  <td style={{ padding:'10px', fontSize:12, color:'#2563EB', fontFamily:'monospace' }}>#{d.id}</td>
+                  <td style={{ padding:'10px', fontSize:13, fontWeight:700, color:'#F0F4F8' }}>{d.patient}</td>
+                  <td style={{ padding:'10px', fontSize:13, color:'#8BA0B5' }}>{d.medecin}</td>
+                  <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{d.date}</td>
+                  <td style={{ padding:'10px' }}>
+                    <Badge color={d.paiement==='paye'?'green':'red'}>{d.paiement==='paye'?`✓ ${fmt(d.montant)} F`:'⚠ Non payé'}</Badge>
+                  </td>
+                  <td style={{ padding:'10px' }}>
+                    <Badge color={d.statut==='accepte'?'green':d.statut==='refuse'?'red':'amber'}>
+                      {d.statut==='accepte'?'✓ Accepté':d.statut==='refuse'?'✗ Refusé':'⏳ En attente'}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  ROUTER
 // ════════════════════════════════════════════════════════════════════
 export default function Dashboard() {
@@ -978,6 +1095,7 @@ export default function Dashboard() {
       <Route path="patients"          element={<PagePatients />} />
       <Route path="livreurs"          element={<PageLivreurs />} />
       <Route path="rdv-patients"      element={<PageGestionRDV />} />
+      <Route path="medecins-prives"   element={<PageMedecinsPrivesAdmin />} />
       <Route path="facturation"       element={<PageFacturationAdmin />} />
       <Route path="bulletins"         element={<PageBulletins />} />
       <Route path="rapports"          element={<PageRapports />} />

@@ -4,11 +4,14 @@ import toast from 'react-hot-toast';
 import useAuthStore from '../context/authStore';
 
 const ROLES = [
-  { value: 'patient',   label: 'Patient',         icon: '👤', desc: 'Prendre des RDV, gérer mes ordonnances' },
-  { value: 'clinique',  label: 'Clinique / Hôpital', icon: '🏥', desc: 'Gérer planning, EMR, facturation' },
-  { value: 'pharmacie', label: 'Pharmacie',        icon: '💊', desc: 'Ordonnances, devis, livraisons' },
-  { value: 'livreur',   label: 'Livreur',          icon: '🛵', desc: 'Gérer mes missions de livraison' },
-  { value: 'assureur',  label: 'Assureur',         icon: '🛡️', desc: 'Traiter les dossiers tiers-payant' },
+  { value: 'patient',        label: 'Patient',              icon: '👤', desc: 'Prendre des RDV, gérer mes ordonnances' },
+  { value: 'clinique',       label: 'Clinique / Hôpital',   icon: '🏥', desc: 'Gérer planning, EMR, facturation' },
+  { value: 'pharmacie',      label: 'Pharmacie',            icon: '💊', desc: 'Ordonnances, devis, livraisons' },
+  { value: 'livreur',        label: 'Livreur',              icon: '🛵', desc: 'Gérer mes missions de livraison' },
+  { value: 'assureur',       label: 'Assureur',             icon: '🛡️', desc: 'Traiter les dossiers tiers-payant' },
+  { value: 'medecin_prive',  label: 'Médecin Indépendant',  icon: '👨‍⚕️', desc: 'Suivi privé de patients · 10 000 F setup + 1 000 F/mois' },
+  { value: 'imagerie',       label: 'Imagerie Médicale',    icon: '🩻', desc: 'Radiologie, IRM, Scanner' },
+  { value: 'laboratoire',    label: 'Laboratoire',          icon: '🧪', desc: 'Analyses biologiques' },
 ];
 
 export default function Register() {
@@ -123,6 +126,25 @@ export default function Register() {
               <>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 10 }}>💊 Informations de la pharmacie</div>
                 <input value={extraForm.nom_ph} onChange={e => setExtra({ ...extraForm, nom_ph: e.target.value })} placeholder="Nom de la pharmacie *" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+              </>
+            )}
+            {role === 'medecin_prive' && (
+              <>
+                <div style={{ background: 'rgba(10,143,88,.08)', border: '1px solid rgba(10,143,88,.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0A8F58', marginBottom: 4 }}>👨‍⚕️ Médecin Indépendant MediConnect</div>
+                  <div style={{ fontSize: 12, color: '#8BA0B5' }}>Frais de création de compte : <strong style={{ color: '#F0F4F8' }}>10 000 FCFA</strong> (payable après inscription)</div>
+                  <div style={{ fontSize: 12, color: '#8BA0B5' }}>Abonnement mensuel : <strong style={{ color: '#F0F4F8' }}>1 000 FCFA/mois</strong></div>
+                </div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Spécialité *</label>
+                <select value={extraForm.specialite || ''} onChange={e => setExtra({ ...extraForm, specialite: e.target.value })}
+                  style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }}>
+                  <option value="">Choisir une spécialité</option>
+                  {['Médecine générale','Cardiologie','Pédiatrie','Gynécologie','Dermatologie','Ophtalmologie','ORL','Orthopédie','Neurologie','Psychiatrie','Urologie','Gastro-entérologie'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>N° Ordre des Médecins</label>
+                <input value={extraForm.num_ordre || ''} onChange={e => setExtra({ ...extraForm, num_ordre: e.target.value })} placeholder="ORD-CI-XXXX" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Tarif consultation (FCFA)</label>
+                <input type="number" value={extraForm.tarif_consultation || ''} onChange={e => setExtra({ ...extraForm, tarif_consultation: e.target.value })} placeholder="Ex: 15000" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
               </>
             )}
             <div style={{ fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 10 }}>🔒 Sécurité</div>

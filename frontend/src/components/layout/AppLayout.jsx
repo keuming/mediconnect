@@ -5,14 +5,15 @@ import useAuthStore from '../../context/authStore';
 
 const NAVS = {
   patient:   [
-    { path: '/patient',             icon: '📊', label: 'Dashboard' },
-    { path: '/patient/rdv',         icon: '📅', label: 'Mes RDV' },
-    { path: '/patient/ordonnances', icon: '💊', label: 'Ordonnances' },
-    { path: '/patient/bulletins',   icon: '🔬', label: 'Bulletins médicaux', badge: 'NEW' },
-    { path: '/patient/commandes',   icon: '🛵', label: 'Commandes' },
-    { path: '/patient/assurance',   icon: '🛡️', label: 'Assurance' },
-    { path: '/patient/dossier',     icon: '📋', label: 'Mon dossier' },
-    { path: '/patient/facturation', icon: '🧾', label: 'Mes Factures' },
+    { path: '/patient',                 icon: '📊', label: 'Dashboard' },
+    { path: '/patient/rdv',             icon: '📅', label: 'Mes RDV' },
+    { path: '/patient/ordonnances',     icon: '💊', label: 'Ordonnances' },
+    { path: '/patient/bulletins',       icon: '🔬', label: 'Bulletins médicaux', badge: 'NEW' },
+    { path: '/patient/medecins-prives', icon: '👨‍⚕️', label: 'Médecins Privés', badge: 'NEW' },
+    { path: '/patient/commandes',       icon: '🛵', label: 'Commandes' },
+    { path: '/patient/assurance',       icon: '🛡️', label: 'Assurance' },
+    { path: '/patient/dossier',         icon: '📋', label: 'Mon dossier' },
+    { path: '/patient/facturation',     icon: '🧾', label: 'Mes Factures' },
   ],
   clinique:  [
     { path: '/clinique',                  icon: '📊', label: 'Dashboard' },
@@ -59,15 +60,22 @@ const NAVS = {
     { path: '/laboratoire/patients',    icon: '👤', label: 'Patients' },
     { path: '/laboratoire/abonnement',  icon: '💳', label: 'Mon Abonnement' },
   ],
+  medecin_prive: [
+    { path: '/medecin-prive',            icon: '📊', label: 'Dashboard' },
+    { path: '/medecin-prive/demandes',   icon: '📋', label: 'Demandes patients', badge: 'NEW' },
+    { path: '/medecin-prive/patients',   icon: '👥', label: 'Mes patients' },
+    { path: '/medecin-prive/abonnement', icon: '💳', label: 'Mon Abonnement' },
+  ],
   admin:     [
-    { path: '/admin',                   icon: '📊', label: 'Dashboard' },
-    { path: '/admin/etablissements',    icon: '🏥', label: 'Établissements' },
-    { path: '/admin/assureurs',         icon: '🛡️', label: 'Assureurs API' },
-    { path: '/admin/patients',          icon: '👤', label: 'Patients' },
-    { path: '/admin/livreurs',          icon: '🛵', label: 'Livreurs' },
-    { path: '/admin/rdv-patients',      icon: '📅', label: 'Gestion RDV' },
-    { path: '/admin/facturation',       icon: '💳', label: 'Facturation', badge: 'NEW' },
-    { path: '/admin/rapports',          icon: '📈', label: 'Rapports' },
+    { path: '/admin',                    icon: '📊', label: 'Dashboard' },
+    { path: '/admin/etablissements',     icon: '🏥', label: 'Établissements' },
+    { path: '/admin/assureurs',          icon: '🛡️', label: 'Assureurs API' },
+    { path: '/admin/patients',           icon: '👤', label: 'Patients' },
+    { path: '/admin/livreurs',           icon: '🛵', label: 'Livreurs' },
+    { path: '/admin/rdv-patients',       icon: '📅', label: 'Gestion RDV' },
+    { path: '/admin/medecins-prives',    icon: '👨‍⚕️', label: 'Médecins Privés', badge: 'NEW' },
+    { path: '/admin/facturation',        icon: '💳', label: 'Facturation', badge: 'NEW' },
+    { path: '/admin/rapports',           icon: '📈', label: 'Rapports' },
   ],
   assureur:  [
     { path: '/assureur',              icon: '📊', label: 'Dashboard' },
@@ -83,6 +91,7 @@ const ROLE_LABELS = {
   pharmacie: 'Espace Pharmacie', livreur: 'Espace Livreur',
   admin: 'Administration', assureur: 'Espace Assureur',
   imagerie: 'Espace Imagerie', laboratoire: 'Espace Laboratoire',
+  medecin_prive: 'Médecin Indépendant',
 };
 
 export default function AppLayout({ role, children }) {

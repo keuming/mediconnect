@@ -14,6 +14,7 @@ import DashboardAdmin       from './pages/admin/Dashboard';
 import DashboardAssureur    from './pages/assureur/Dashboard';
 import DashboardImagerie    from './pages/imagerie/Dashboard';
 import DashboardLaboratoire from './pages/laboratoire/Dashboard';
+import DashboardMedecinPrive from './pages/medecin-prive/Dashboard';
 import AppLayout from './components/layout/AppLayout';
 
 const queryClient = new QueryClient({
@@ -56,6 +57,7 @@ const RoleRedirect = () => {
     patient: '/patient', clinique: '/clinique', pharmacie: '/pharmacie',
     livreur: '/livreur', admin: '/admin', assureur: '/assureur',
     imagerie: '/imagerie', laboratoire: '/laboratoire',
+    medecin_prive: '/medecin-prive',
   };
   return <Navigate to={routes[user?.role] || '/login'} replace />;
 };
@@ -132,6 +134,13 @@ export default function App() {
             <Route path="/laboratoire/*" element={
               <PrivateRoute roles={['laboratoire']}>
                 <AppLayout role="laboratoire"><DashboardLaboratoire /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* Médecin Indépendant */}
+            <Route path="/medecin-prive/*" element={
+              <PrivateRoute roles={['medecin_prive']}>
+                <AppLayout role="medecin_prive"><DashboardMedecinPrive /></AppLayout>
               </PrivateRoute>
             } />
 
