@@ -18,18 +18,23 @@ router.get('/', auth, async (req, res) => {
 });
 
 router.post('/', auth, authorize('clinique'), async (req, res) => {
-  const { prenom, nom, specialite, tarif, experience_ans, numero_ordre, horaires_debut, horaires_fin } = req.body;
-  if (!prenom || !nom || !specialite) return res.status(400).json({ success: false, message: 'Prénom, nom et spécialité requis.' });
+  const { prenom, nom, specialite, tarif, experience_ans, numero_ordre, horaires_debut, horaires_fin, type_personnel, telephone, email } = req.body;
+  if (!prenom || !nom) return res.status(400).json({ success: false, message: 'Prénom et nom requis.' });
   try {
     const cid = await getCliniqueId(req.user.id);
     if (!cid) return res.status(404).json({ success: false, message: 'Clinique introuvable.' });
     const id = uuid();
-    await query(`INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,numero_ordre,horaires_debut,horaires_fin,jours_travail,statut)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Disponible')`,
-      [id, cid, prenom, nom, specialite, tarif||15000, experience_ans||0, numero_ordre||null,
-       horaires_debut||'08:00', horaires_fin||'17:00', ['Lundi','Mardi','Mercredi','Jeudi','Vendredi']]);
-    res.status(201).json({ success: true, data: { id }, message: `Dr. ${prenom} ${nom} ajouté à l\'équipe.` });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+    await query(`INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,numero_ordre,horaires_debut,horaires_fin,jours_travail,statut,type_personnel,telephone,email)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Disponible',$12,$13,$14)`,
+      [id, cid, prenom, nom, specialite||null, tarif||0, experience_ans||0, numero_ordre||null,
+       horaires_debut||'08:00', horaires_fin||'17:00', ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],
+       type_personnel||'medecin', telephone||null, email||null]);
+    const label = type_personnel === 'medecin' ? `Dr. ${prenom} ${nom}` : `${prenom} ${nom}`;
+    res.status(201).json({ success: true, data: { id }, message: `${label} ajouté(e) à l'équipe.` });
+  } catch (err) {
+    console.error('Erreur ajout médecin:', err);
+    res.status(500).json({ success: false, message: 'Erreur: ' + err.message });
+  }
 });
 
 router.put('/:id', auth, authorize('clinique'), async (req, res) => {
