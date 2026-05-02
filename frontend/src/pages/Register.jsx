@@ -147,6 +147,34 @@ export default function Register() {
                 <input type="number" value={extraForm.tarif_consultation || ''} onChange={e => setExtra({ ...extraForm, tarif_consultation: e.target.value })} placeholder="Ex: 15000" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
               </>
             )}
+            {role === 'imagerie' && (
+              <>
+                <div style={{ background: 'rgba(139,92,246,.08)', border: '1px solid rgba(139,92,246,.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#8B5CF6', marginBottom: 4 }}>🩻 Centre d'Imagerie Médicale</div>
+                  <div style={{ fontSize: 12, color: '#8BA0B5' }}>Abonnement mensuel : <strong style={{ color: '#F0F4F8' }}>5 000 FCFA/mois</strong></div>
+                </div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Nom du centre *</label>
+                <input value={extraForm.nom_etab || ''} onChange={e => setExtra({ ...extraForm, nom_etab: e.target.value })} placeholder="Ex: Centre Imagerie Plateau" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Types d'examens</label>
+                <input value={extraForm.types_examens || ''} onChange={e => setExtra({ ...extraForm, types_examens: e.target.value })} placeholder="Ex: Radiologie, IRM, Scanner, Échographie" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>N° Agrément</label>
+                <input value={extraForm.agrement || ''} onChange={e => setExtra({ ...extraForm, agrement: e.target.value })} placeholder="AGR-IMG-XXXX" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+              </>
+            )}
+            {role === 'laboratoire' && (
+              <>
+                <div style={{ background: 'rgba(13,148,136,.08)', border: '1px solid rgba(13,148,136,.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0D9488', marginBottom: 4 }}>🧪 Laboratoire d'Analyses</div>
+                  <div style={{ fontSize: 12, color: '#8BA0B5' }}>Abonnement mensuel : <strong style={{ color: '#F0F4F8' }}>5 000 FCFA/mois</strong></div>
+                </div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Nom du laboratoire *</label>
+                <input value={extraForm.nom_etab || ''} onChange={e => setExtra({ ...extraForm, nom_etab: e.target.value })} placeholder="Ex: Laboratoire Moderne" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>Types d'analyses</label>
+                <input value={extraForm.types_analyses || ''} onChange={e => setExtra({ ...extraForm, types_analyses: e.target.value })} placeholder="Ex: NFS, Glycémie, Bilan lipidique..." style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 5 }}>N° Autorisation</label>
+                <input value={extraForm.num_auto || ''} onChange={e => setExtra({ ...extraForm, num_auto: e.target.value })} placeholder="AUTO-LAB-XXXX" style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box', marginBottom: 14 }} />
+              </>
+            )}
             <div style={{ fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 10 }}>🔒 Sécurité</div>
             <div style={{ position: 'relative', marginBottom: 14 }}>
               <input type={show ? 'text' : 'password'} placeholder="Mot de passe (min. 8 caractères)" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} style={{ width: '100%', background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 9, padding: '10px 44px 10px 14px', color: '#F0F4F8', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
