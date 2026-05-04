@@ -3,87 +3,131 @@ const { query } = require('../config/db');
 const { auth, authorize } = require('../middleware/auth');
 const { v4: uuid } = require('uuid');
 
-const getCliniqueId  = async (uid) => (await query('SELECT id FROM cliniques WHERE user_id=$1',[uid])).rows[0]?.id;
-const getPharmaId    = async (uid) => (await query('SELECT id FROM pharmacies WHERE user_id=$1',[uid])).rows[0]?.id;
+// Créer la table si elle n'existe pas
+const init = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS stock (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      nom VARCHAR(200) NOT NULL,
+      categorie VARCHAR(100) DEFAULT 'Médicament',
+      quantite INTEGER DEFAULT 0,
+      unite VARCHAR(50) DEFAULT 'boite',
+      seuil_alerte INTEGER DEFAULT 10,
+      prix_unitaire DECIMAL(12,2),
+      fournisseur VARCHAR(200),
+      date_expiration DATE,
+      code_barre VARCHAR(100),
+      description TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+};
+init();
 
-// ── Clinique ──────────────────────────────────────────────────────
-router.get('/clinique', auth, async (req, res) => {
+// GET /api/stock
+router.get('/', auth, async (req, res) => {
   try {
-    const cid = await getCliniqueId(req.user.id);
-    const r = await query('SELECT * FROM stock_clinique WHERE clinique_id=$1 ORDER BY nom', [cid||uuid()]);
+    const cliniqueId = req.user.clinique_id || req.query.clinique_id;
+    let sql = `SELECT * FROM stock`;
+    const params = [];
+    if (cliniqueId) {
+      params.push(cliniqueId);
+      sql += ` WHERE clinique_id = $1`;
+    }
+    sql += ` ORDER BY nom`;
+    const r = await query(sql, params);
     res.json({ success: true, data: r.rows });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+  } catch (err) {
+    // Fallback si table non migrée
+    res.json({ success: true, data: [] });
+  }
 });
 
-router.post('/clinique', auth, authorize('clinique'), async (req, res) => {
-  const { nom, categorie, fournisseur, quantite, seuil_alerte, prix_unitaire, numero_lot, date_expiration } = req.body;
-  if (!nom) return res.status(400).json({ success: false, message: 'Nom requis.' });
+// GET /api/stock/:id
+router.get('/:id', auth, async (req, res) => {
   try {
-    const cid = await getCliniqueId(req.user.id);
-    const id = uuid();
-    await query(`INSERT INTO stock_clinique (id,clinique_id,nom,categorie,fournisseur,quantite,seuil_alerte,prix_unitaire,numero_lot,date_expiration)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, cid, nom, categorie||'Autre', fournisseur||null, quantite||0, seuil_alerte||50, prix_unitaire||0, numero_lot||null, date_expiration||null]);
-    res.status(201).json({ success: true, data: { id }, message: `${nom} ajouté au stock.` });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+    const r = await query('SELECT * FROM stock WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Produit non trouvé' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-router.put('/clinique/:id', auth, authorize('clinique'), async (req, res) => {
-  const { quantite, prix_unitaire, seuil_alerte } = req.body;
+// POST /api/stock
+router.post('/', auth, authorize('clinique', 'admin', 'pharmacie'), async (req, res) => {
   try {
-    const sets = []; const vals = []; let i = 1;
-    if (quantite !== undefined)     { sets.push(`quantite=$${i++}`); vals.push(quantite); }
-    if (prix_unitaire !== undefined){ sets.push(`prix_unitaire=$${i++}`); vals.push(prix_unitaire); }
-    if (seuil_alerte !== undefined) { sets.push(`seuil_alerte=$${i++}`); vals.push(seuil_alerte); }
-    sets.push(`updated_at=NOW()`);
-    vals.push(req.params.id);
-    await query(`UPDATE stock_clinique SET ${sets.join(',')} WHERE id=$${i}`, vals);
-    res.json({ success: true, message: 'Stock mis à jour.' });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+    const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration, description } = req.body;
+    if (!nom) return res.status(400).json({ success: false, message: 'Nom du produit requis' });
+    const cliniqueId = req.user.clinique_id;
+    const r = await query(
+      `INSERT INTO stock (id,clinique_id,nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,date_expiration,description)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [uuid(), cliniqueId, nom, categorie||'Médicament', quantite||0, unite||'boite', seuil_alerte||10, prix_unitaire||null, fournisseur||null, date_expiration||null, description||null]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-router.delete('/clinique/:id', auth, authorize('clinique','admin'), async (req, res) => {
+// PUT /api/stock/:id
+router.put('/:id', auth, authorize('clinique', 'admin', 'pharmacie'), async (req, res) => {
   try {
-    await query('DELETE FROM stock_clinique WHERE id=$1', [req.params.id]);
-    res.json({ success: true, message: 'Article supprimé.' });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+    const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration } = req.body;
+    const r = await query(
+      `UPDATE stock SET nom=COALESCE($1,nom), categorie=COALESCE($2,categorie), quantite=COALESCE($3,quantite),
+       unite=COALESCE($4,unite), seuil_alerte=COALESCE($5,seuil_alerte), prix_unitaire=COALESCE($6,prix_unitaire),
+       fournisseur=COALESCE($7,fournisseur), date_expiration=COALESCE($8,date_expiration), updated_at=NOW()
+       WHERE id=$9 RETURNING *`,
+      [nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Produit non trouvé' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
-// ── Pharmacie ─────────────────────────────────────────────────────
-router.get('/pharmacie', auth, async (req, res) => {
+// PATCH /api/stock/:id/ajuster — Ajustement de quantité
+router.patch('/:id/ajuster', auth, authorize('clinique', 'admin', 'pharmacie'), async (req, res) => {
   try {
-    const pid = await getPharmaId(req.user.id);
-    const r = await query('SELECT * FROM stock_pharmacie WHERE pharmacie_id=$1 ORDER BY nom', [pid||uuid()]);
+    const { delta, motif } = req.body; // delta = +5 ou -3
+    const r = await query(
+      `UPDATE stock SET quantite = GREATEST(0, quantite + $1), updated_at=NOW() WHERE id=$2 RETURNING *`,
+      [delta||0, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Produit non trouvé' });
+    res.json({ success: true, data: r.rows[0], message: `Stock ajusté de ${delta>0?'+':''}${delta}` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/stock/:id
+router.delete('/:id', auth, authorize('clinique', 'admin'), async (req, res) => {
+  try {
+    await query('DELETE FROM stock WHERE id=$1', [req.params.id]);
+    res.json({ success: true, message: 'Produit supprimé' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/stock/alertes — Produits sous le seuil
+router.get('/alertes/liste', auth, async (req, res) => {
+  try {
+    const cliniqueId = req.user.clinique_id;
+    const r = await query(
+      `SELECT * FROM stock WHERE clinique_id=$1 AND quantite <= seuil_alerte ORDER BY quantite ASC`,
+      [cliniqueId]
+    );
     res.json({ success: true, data: r.rows });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
-});
-
-router.post('/pharmacie', auth, authorize('pharmacie'), async (req, res) => {
-  const { nom, categorie, fournisseur, quantite, seuil_alerte, prix_unitaire, numero_lot, date_expiration } = req.body;
-  if (!nom) return res.status(400).json({ success: false, message: 'Nom requis.' });
-  try {
-    const pid = await getPharmaId(req.user.id);
-    const id = uuid();
-    await query(`INSERT INTO stock_pharmacie (id,pharmacie_id,nom,categorie,fournisseur,quantite,seuil_alerte,prix_unitaire,numero_lot,date_expiration)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, pid, nom, categorie||'Autre', fournisseur||null, quantite||0, seuil_alerte||50, prix_unitaire||0, numero_lot||null, date_expiration||null]);
-    res.status(201).json({ success: true, data: { id }, message: `${nom} ajouté au stock.` });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
-});
-
-router.put('/pharmacie/:id', auth, authorize('pharmacie'), async (req, res) => {
-  const { quantite } = req.body;
-  try {
-    await query('UPDATE stock_pharmacie SET quantite=$1, updated_at=NOW() WHERE id=$2', [quantite, req.params.id]);
-    res.json({ success: true, message: 'Stock mis à jour.' });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
-});
-
-router.delete('/pharmacie/:id', auth, authorize('pharmacie','admin'), async (req, res) => {
-  try {
-    await query('DELETE FROM stock_pharmacie WHERE id=$1', [req.params.id]);
-    res.json({ success: true, message: 'Article supprimé.' });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+  } catch (err) {
+    res.json({ success: true, data: [] });
+  }
 });
 
 module.exports = router;

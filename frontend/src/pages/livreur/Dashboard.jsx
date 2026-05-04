@@ -5,7 +5,6 @@ import toast from "react-hot-toast";
 import useAuthStore from "../../context/authStore";
 import api from "../../services/api";
 import { Card, Panel, ListItem, Grid, PageHeader, Badge, Loader, Empty, Btn } from "../../components/common/UI";
-import PageAbonnement from '../facturation/Facturation';
 
 // ── Tarification livraison ────────────────────────────────────────
 const TARIF = {
@@ -328,7 +327,6 @@ export default function Dashboard() {
       <Route path="en-cours"   element={<PageEnCours />} />
       <Route path="historique" element={<PageHistorique />} />
       <Route path="gains"      element={<PageGains />} />
-      <Route path="abonnement" element={<PageAbonnement role="livreur" tarif={1000} service="Abonnement Livreur MediConnect" />} />
       <Route path="*"          element={<DashboardHome />} />
     </Routes>
   );

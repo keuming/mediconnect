@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "MediConnect",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D1B2A"
+    },
+    "android": {
+      "package": "com.mediconnect.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D1B2A"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "dacdbe86-1647-46be-bbf2-c6d1428fdf0d"
+      }
+    }
+  }
+}

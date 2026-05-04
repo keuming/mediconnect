@@ -69,6 +69,24 @@ router.post('/register', async (req, res) => {
          VALUES ($1,$2,$3,$4)`,
         [userId, extra.nom_ass || nom, extra.type_conn || 'manuel', extra.cima || null]
       );
+    } else if (role === 'medecin_prive') {
+      await query(
+        `INSERT INTO medecins_prives (user_id, specialite, num_ordre, tarif_consultation, statut)
+         VALUES ($1,$2,$3,$4,'en_attente')`,
+        [userId, extra.specialite || null, extra.num_ordre || null, extra.tarif_consultation || 0]
+      );
+    } else if (role === 'imagerie') {
+      await query(
+        `INSERT INTO centres_imagerie (user_id, nom, types_examens, numero_agrement)
+         VALUES ($1,$2,$3,$4)`,
+        [userId, extra.nom_etab || (prenom + ' ' + nom), extra.types_examens || null, extra.agrement || null]
+      );
+    } else if (role === 'laboratoire') {
+      await query(
+        `INSERT INTO laboratoires (user_id, nom, types_analyses, numero_autorisation)
+         VALUES ($1,$2,$3,$4)`,
+        [userId, extra.nom_etab || (prenom + ' ' + nom), extra.types_analyses || null, extra.num_auto || null]
+      );
     }
 
     const token = genToken(userId);
