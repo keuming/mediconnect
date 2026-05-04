@@ -30,8 +30,8 @@ router.get('/stats', auth, async (req, res) => {
     const cliniqueId = req.user?.clinique_id;
     const [med, rdv, pat] = await Promise.all([
       query('SELECT COUNT(*) as count FROM medecins WHERE clinique_id=$1 AND statut=$2', [cliniqueId,'Disponible']).catch(()=>({rows:[{count:0}]})),
-      query('SELECT COUNT(*) as count FROM rendez_vous WHERE clinique_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE)', [cliniqueId]).catch(()=>({rows:[{count:0}]})),
-      query('SELECT COUNT(*) as count FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)', [cliniqueId]).catch(()=>({rows:[{count:0}]})),
+      query("SELECT COUNT(*) as count FROM rendez_vous WHERE clinique_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE)", [cliniqueId]).catch(()=>({rows:[{count:0}]})),
+      query("SELECT COUNT(*) as count FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [cliniqueId]).catch(()=>({rows:[{count:0}]})),
     ]);
     res.json({ success:true, data:{
       medecins_actifs: med.rows[0]?.count||0,
