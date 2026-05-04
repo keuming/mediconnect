@@ -28,6 +28,22 @@ const init = async () => {
 };
 init();
 
+
+// GET /api/factures/clinique — alias pour compatibilité
+router.get('/clinique', auth, async (req, res) => {
+  try {
+    const cliniqueId = req.user?.clinique_id;
+    let sql = 'SELECT * FROM factures WHERE 1=1';
+    const params = [];
+    if (cliniqueId) { params.push(cliniqueId); sql += ` AND clinique_id=$${params.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await query(sql, params);
+    res.json({ success:true, data:r.rows });
+  } catch(err) {
+    res.json({ success:true, data:[] });
+  }
+});
+
 // GET /api/factures
 router.get('/', auth, async (req, res) => {
   try {

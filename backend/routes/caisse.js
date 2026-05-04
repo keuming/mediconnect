@@ -39,6 +39,23 @@ const init = async () => {
 };
 init();
 
+
+// GET /api/caisse/clinique — alias pour compatibilité
+router.get('/clinique', auth, async (req, res) => {
+  try {
+    const cliniqueId = req.user?.clinique_id;
+    if (!cliniqueId) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
+    const r = await query(
+      "SELECT * FROM caisse_sessions WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' ORDER BY opened_at DESC LIMIT 1",
+      [cliniqueId]
+    );
+    if (!r.rows.length) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(err) {
+    res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
+  }
+});
+
 // GET /api/caisse — Session du jour
 router.get('/', auth, async (req, res) => {
   try {

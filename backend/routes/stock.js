@@ -26,6 +26,38 @@ const init = async () => {
 };
 init();
 
+// GET /api/stock/clinique — alias pour compatibilité frontend
+router.get('/clinique', auth, async (req, res) => {
+  try {
+    const cliniqueId = req.user?.clinique_id;
+    let sql = 'SELECT * FROM stock';
+    const params = [];
+    if (cliniqueId) { params.push(cliniqueId); sql += ' WHERE clinique_id = $1'; }
+    sql += ' ORDER BY nom';
+    const r = await query(sql, params);
+    res.json({ success: true, data: r.rows });
+  } catch (err) {
+    res.json({ success: true, data: [] });
+  }
+});
+
+// POST /api/stock/clinique — alias pour compatibilité frontend
+router.post('/clinique', auth, authorize('clinique', 'admin', 'pharmacie'), async (req, res) => {
+  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration } = req.body;
+  if (!nom) return res.status(400).json({ success: false, message: 'Nom requis' });
+  try {
+    const cliniqueId = req.user?.clinique_id;
+    const r = await query(
+      `INSERT INTO stock (id,clinique_id,nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,date_expiration)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [cliniqueId, nom, categorie||'Médicament', quantite||0, unite||'boite', seuil_alerte||10, prix_unitaire||null, fournisseur||null, date_expiration||null]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/stock
 router.get('/', auth, async (req, res) => {
   try {
