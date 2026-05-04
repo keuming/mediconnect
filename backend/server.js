@@ -162,6 +162,9 @@ const initTables = async () => {
     "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_fin TIME DEFAULT '17:00'",
     "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS note_moyenne DECIMAL(3,2)",
     "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    // Rendre patient_id nullable (ancienne contrainte NOT NULL)
+    "ALTER TABLE rendez_vous ALTER COLUMN patient_id DROP NOT NULL",
+    "ALTER TABLE rendez_vous ALTER COLUMN clinique_id DROP NOT NULL",
   ];
   for (const sql of alterations) {
     await db(sql).catch(() => {});
@@ -171,6 +174,9 @@ const initTables = async () => {
 
 // ── App Express ───────────────────────────────────────────────────
 const app = express();
+
+// Trust proxy Vercel (obligatoire pour express-rate-limit)
+app.set('trust proxy', 1);
 
 // CORS EN PREMIER
 app.use((req, res, next) => {
