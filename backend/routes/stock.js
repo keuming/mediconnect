@@ -3,6 +3,17 @@ const { query } = require('../config/db');
 const { auth, authorize } = require('../middleware/auth');
 const { v4: uuid } = require('uuid');
 
+
+// Valider et nettoyer une date (rejeter les valeurs partielles comme "2026-12")
+const validDate = (d) => {
+  if (!d || typeof d !== 'string') return null;
+  // Doit être au format YYYY-MM-DD (10 caractères)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return null;
+  return d;
+};
+
 // Créer la table si elle n'existe pas
 const init = async () => {
   await query(`
@@ -50,7 +61,7 @@ router.post('/clinique', auth, authorize('clinique', 'admin', 'pharmacie'), asyn
     const r = await query(
       `INSERT INTO stock (id,clinique_id,nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,date_expiration)
        VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [cliniqueId, nom, categorie||'Médicament', quantite||0, unite||'boite', seuil_alerte||10, prix_unitaire||null, fournisseur||null, date_expiration||null]
+      [cliniqueId, nom, categorie||'Médicament', quantite||0, unite||'boite', seuil_alerte||10, prix_unitaire||null, fournisseur||null, validDate(date_expiration)]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch (err) {
@@ -97,7 +108,7 @@ router.post('/', auth, authorize('clinique', 'admin', 'pharmacie'), async (req, 
     const r = await query(
       `INSERT INTO stock (id,clinique_id,nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,date_expiration,description)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [uuid(), cliniqueId, nom, categorie||'Médicament', quantite||0, unite||'boite', seuil_alerte||10, prix_unitaire||null, fournisseur||null, date_expiration||null, description||null]
+      [uuid(), cliniqueId, nom, categorie||'Médicament', quantite||0, unite||'boite', seuil_alerte||10, prix_unitaire||null, fournisseur||null, validDate(date_expiration), description||null]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch (err) {
@@ -114,7 +125,7 @@ router.put('/:id', auth, authorize('clinique', 'admin', 'pharmacie'), async (req
        unite=COALESCE($4,unite), seuil_alerte=COALESCE($5,seuil_alerte), prix_unitaire=COALESCE($6,prix_unitaire),
        fournisseur=COALESCE($7,fournisseur), date_expiration=COALESCE($8,date_expiration), updated_at=NOW()
        WHERE id=$9 RETURNING *`,
-      [nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration, req.params.id]
+      [nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, validDate(date_expiration), req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ success: false, message: 'Produit non trouvé' });
     res.json({ success: true, data: r.rows[0] });
