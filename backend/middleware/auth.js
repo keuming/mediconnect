@@ -1,18 +1,15 @@
 const jwt = require('jsonwebtoken');
-const { query } = require('../config/db');
 
-const auth = async (req, res, next) => {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer '))
-    return res.status(401).json({ success: false, message: 'Token manquant' });
-
+const auth = (req, res, next) => {
   try {
-    const token   = header.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const result  = await query('SELECT id, email, role, prenom, nom FROM utilisateurs WHERE id=$1 AND is_active=true', [decoded.id]);
-    if (!result.rows.length)
-      return res.status(401).json({ success: false, message: 'Utilisateur introuvable ou inactif' });
-    req.user = result.rows[0];
+    const header = req.headers.authorization || '';
+    if (!header.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, message: 'Token manquant' });
+    }
+    const token = header.slice(7);
+    const secret = process.env.JWT_SECRET || 'mediconnect_secret_dev';
+    const decoded = jwt.verify(token, secret);
+    req.user = decoded;
     next();
   } catch (err) {
     return res.status(401).json({ success: false, message: 'Token invalide ou expiré' });
@@ -20,8 +17,10 @@ const auth = async (req, res, next) => {
 };
 
 const authorize = (...roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role))
-    return res.status(403).json({ success: false, message: 'Accès non autorisé pour ce profil' });
+  if (!req.user) return res.status(401).json({ success: false, message: 'Non authentifié' });
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ success: false, message: `Accès refusé — rôle requis : ${roles.join(' ou ')}` });
+  }
   next();
 };
 
