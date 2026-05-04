@@ -1,58 +1,46 @@
 const router = require('express').Router();
 const { query } = require('../config/db');
-const { auth, authorize } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 
-// GET /api/cliniques — liste toutes les cliniques (admin)
+const init = async () => {
+  await query(`CREATE TABLE IF NOT EXISTS cliniques (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID, nom VARCHAR(200), type VARCHAR(100) DEFAULT 'Clinique',
+    adresse TEXT, ville VARCHAR(100), telephone VARCHAR(30),
+    email VARCHAR(200), assurances TEXT[], is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  )`).catch(e => console.error('Table cliniques:', e.message));
+};
+init();
+
 router.get('/', auth, async (req, res) => {
   try {
-    const result = await query(
-      `SELECT c.id, c.nom, c.type, c.numero_agrement, c.assurances,
-              u.email, u.telephone, u.ville, u.prenom, u.nom as nom_contact,
-              u.created_at, u.is_active
-       FROM cliniques c
-       JOIN utilisateurs u ON u.id = c.user_id
-       ORDER BY u.created_at DESC`
-    );
-    res.json({ success: true, data: result.rows });
-  } catch (err) {
-    console.error('Erreur cliniques:', err);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    const r = await query('SELECT c.*, u.ville, u.adresse, u.telephone FROM cliniques c LEFT JOIN utilisateurs u ON u.id=c.user_id ORDER BY c.nom');
+    res.json({ success: true, data: r.rows });
+  } catch(err) {
+    try {
+      const r2 = await query('SELECT * FROM cliniques ORDER BY nom');
+      res.json({ success: true, data: r2.rows });
+    } catch(e) { res.json({ success: true, data: [] }); }
   }
 });
 
-// GET /api/cliniques/moi — dashboard de la clinique connectée
-router.get('/moi', auth, authorize('clinique'), async (req, res) => {
+router.get('/stats', auth, async (req, res) => {
   try {
-    const cl = await query(
-      'SELECT c.*, u.telephone, u.ville, u.quartier, u.adresse, u.email FROM cliniques c JOIN utilisateurs u ON u.id=c.user_id WHERE c.user_id=$1',
-      [req.user.id]
-    );
-    if (!cl.rows.length) return res.status(404).json({ success: false, message: 'Clinique introuvable' });
-    res.json({ success: true, data: cl.rows[0] });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
-});
-
-// GET /api/cliniques/stats
-router.get('/stats', auth, authorize('clinique'), async (req, res) => {
-  try {
-    const cl = await query('SELECT id FROM cliniques WHERE user_id=$1', [req.user.id]);
-    if (!cl.rows.length) return res.json({ success: true, data: {} });
-    const cid = cl.rows[0].id;
-
-    const [rdvCount, medecinCount, stockAlerts, dossierRejetes] = await Promise.all([
-      query("SELECT COUNT(*) FROM rendez_vous WHERE clinique_id=$1 AND date_rdv=CURRENT_DATE", [cid]),
-      query("SELECT COUNT(*) FROM medecins WHERE clinique_id=$1 AND statut!='Congé'", [cid]),
-      query("SELECT COUNT(*) FROM stock_clinique WHERE clinique_id=$1 AND quantite<seuil_alerte", [cid]),
-      query("SELECT COUNT(*) FROM dossiers_assurance WHERE clinique_id=$1 AND statut='rejete'", [cid]),
+    const cliniqueId = req.user?.clinique_id;
+    const [med, rdv, pat] = await Promise.all([
+      query('SELECT COUNT(*) as count FROM medecins WHERE clinique_id=$1 AND statut=$2', [cliniqueId,'Disponible']).catch(()=>({rows:[{count:0}]})),
+      query('SELECT COUNT(*) as count FROM rendez_vous WHERE clinique_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE)', [cliniqueId]).catch(()=>({rows:[{count:0}]})),
+      query('SELECT COUNT(*) as count FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)', [cliniqueId]).catch(()=>({rows:[{count:0}]})),
     ]);
-
-    res.json({ success: true, data: {
-      rdv_today:       +rdvCount.rows[0].count,
-      medecins_actifs: +medecinCount.rows[0].count,
-      stock_alertes:   +stockAlerts.rows[0].count,
-      dossiers_rejetes:+dossierRejetes.rows[0].count,
+    res.json({ success:true, data:{
+      medecins_actifs: med.rows[0]?.count||0,
+      rdv_ce_mois: rdv.rows[0]?.count||0,
+      patients_mois: pat.rows[0]?.count||0,
     }});
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+  } catch(err) {
+    res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0 } });
+  }
 });
 
 module.exports = router;

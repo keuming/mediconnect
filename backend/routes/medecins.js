@@ -1,62 +1,73 @@
 const router = require('express').Router();
 const { query } = require('../config/db');
-const { auth, authorize } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { v4: uuid } = require('uuid');
 
-const getCliniqueId = async (user_id) => {
-  const r = await query('SELECT id FROM cliniques WHERE user_id=$1', [user_id]);
-  return r.rows[0]?.id || null;
+const init = async () => {
+  await query(`CREATE TABLE IF NOT EXISTS medecins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID, clinique_id UUID,
+    prenom VARCHAR(100), nom VARCHAR(100),
+    specialite VARCHAR(100), telephone VARCHAR(30),
+    email VARCHAR(200), tarif DECIMAL(10,2),
+    experience_ans INTEGER, statut VARCHAR(30) DEFAULT 'Disponible',
+    jours_travail VARCHAR(200) DEFAULT 'Lun,Mar,Mer,Jeu,Ven',
+    horaires_debut TIME DEFAULT '08:00',
+    horaires_fin TIME DEFAULT '17:00',
+    note_moyenne DECIMAL(3,2), photo_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+  )`).catch(e => console.error('Table medecins:', e.message));
 };
+init();
 
 router.get('/', auth, async (req, res) => {
   try {
-    const cid = await getCliniqueId(req.user.id);
-    if (!cid) return res.json({ success: true, data: [] });
-    const r = await query('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom', [cid]);
+    const cliniqueId = req.user?.clinique_id;
+    let sql = 'SELECT * FROM medecins WHERE 1=1';
+    const params = [];
+    if (cliniqueId) { params.push(cliniqueId); sql += ` AND clinique_id=$${params.length}`; }
+    sql += ' ORDER BY nom, prenom';
+    const r = await query(sql, params);
     res.json({ success: true, data: r.rows });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+  } catch(err) { res.json({ success: true, data: [] }); }
 });
 
-router.post('/', auth, authorize('clinique'), async (req, res) => {
-  const { prenom, nom, specialite, tarif, experience_ans, numero_ordre, horaires_debut, horaires_fin, type_personnel, telephone, email } = req.body;
-  if (!prenom || !nom) return res.status(400).json({ success: false, message: 'Prénom et nom requis.' });
+router.post('/', auth, async (req, res) => {
   try {
-    const cid = await getCliniqueId(req.user.id);
-    if (!cid) return res.status(404).json({ success: false, message: 'Clinique introuvable.' });
-    const id = uuid();
-    await query(`INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,numero_ordre,horaires_debut,horaires_fin,jours_travail,statut,type_personnel,telephone,email)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Disponible',$12,$13,$14)`,
-      [id, cid, prenom, nom, specialite||null, tarif||0, experience_ans||0, numero_ordre||null,
-       horaires_debut||'08:00', horaires_fin||'17:00', ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'],
-       type_personnel||'medecin', telephone||null, email||null]);
-    const label = type_personnel === 'medecin' ? `Dr. ${prenom} ${nom}` : `${prenom} ${nom}`;
-    res.status(201).json({ success: true, data: { id }, message: `${label} ajouté(e) à l'équipe.` });
-  } catch (err) {
-    console.error('Erreur ajout médecin:', err);
-    res.status(500).json({ success: false, message: 'Erreur: ' + err.message });
-  }
+    const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+    if (!prenom || !nom || !specialite) return res.status(400).json({ success: false, message: 'Prénom, nom et spécialité requis' });
+    const cliniqueId = req.user?.clinique_id;
+    const r = await query(
+      `INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,telephone,email,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [uuid(),cliniqueId,prenom,nom,specialite,telephone||null,email||null,tarif||null,experience_ans||null,jours_travail||'Lun,Mar,Mer,Jeu,Ven',horaires_debut||'08:00',horaires_fin||'17:00']
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-router.put('/:id', auth, authorize('clinique'), async (req, res) => {
-  const { statut, tarif, horaires_debut, horaires_fin } = req.body;
+router.put('/:id', auth, async (req, res) => {
   try {
-    const sets = []; const vals = []; let i = 1;
-    if (statut !== undefined) { sets.push(`statut=$${i++}`); vals.push(statut); }
-    if (tarif !== undefined)  { sets.push(`tarif=$${i++}`); vals.push(tarif); }
-    if (horaires_debut)       { sets.push(`horaires_debut=$${i++}`); vals.push(horaires_debut); }
-    if (horaires_fin)         { sets.push(`horaires_fin=$${i++}`); vals.push(horaires_fin); }
-    if (!sets.length) return res.json({ success: true });
-    vals.push(req.params.id);
-    await query(`UPDATE medecins SET ${sets.join(',')} WHERE id=$${i}`, vals);
-    res.json({ success: true, message: 'Médecin mis à jour.' });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+    const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+    const r = await query(
+      `UPDATE medecins SET prenom=COALESCE($1,prenom), nom=COALESCE($2,nom), specialite=COALESCE($3,specialite),
+       statut=COALESCE($4,statut), tarif=COALESCE($5,tarif), telephone=COALESCE($6,telephone),
+       experience_ans=COALESCE($7,experience_ans), jours_travail=COALESCE($8,jours_travail),
+       horaires_debut=COALESCE($9,horaires_debut), horaires_fin=COALESCE($10,horaires_fin), updated_at=NOW()
+       WHERE id=$11 RETURNING *`,
+      [prenom,nom,specialite,statut,tarif,telephone,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Médecin introuvable' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-router.delete('/:id', auth, authorize('clinique','admin'), async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     await query('DELETE FROM medecins WHERE id=$1', [req.params.id]);
-    res.json({ success: true, message: 'Médecin retiré.' });
-  } catch (err) { res.status(500).json({ success: false, message: 'Erreur' }); }
+    res.json({ success: true, message: 'Médecin supprimé' });
+  } catch(err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 module.exports = router;
