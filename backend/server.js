@@ -142,7 +142,31 @@ const initTables = async () => {
   for (const sql of tables) {
     await db(sql).catch(e => console.error('[INIT TABLE]', e.message));
   }
-  console.log('[DB] Tables vérifiées');
+  // Ajouter colonnes manquantes si la table existe déjà (migration douce)
+  const alterations = [
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS patient_nom VARCHAR(200)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS reference VARCHAR(50)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS assurance VARCHAR(100)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS source VARCHAR(30) DEFAULT 'dashboard'",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS notes TEXT",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS code_secret VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS allergies TEXT",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS antecedents TEXT",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS groupe_sanguin VARCHAR(10)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS assurance VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS numero_police VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_debut TIME DEFAULT '08:00'",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_fin TIME DEFAULT '17:00'",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS note_moyenne DECIMAL(3,2)",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+  ];
+  for (const sql of alterations) {
+    await db(sql).catch(() => {});
+  }
+  console.log('[DB] Tables vérifiées et migrées');
 };
 
 // ── App Express ───────────────────────────────────────────────────
