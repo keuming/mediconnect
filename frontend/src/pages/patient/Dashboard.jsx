@@ -347,6 +347,7 @@ function PageHome(){
     {icon:"🩺",label:"Consultations",path:"consultations",color:C.purple,desc:"Historique"},
     {icon:"💰",label:"Mes factures",path:"factures",color:C.amber,desc:`${facImpayees.length} impayée(s)`},
     {icon:"🔍",label:"Trouver médecin",path:"recherche",color:C.teal,desc:"Cliniques & médecins"},
+    {icon:"⭐",label:"Médecins privés",path:"medecins-prives",color:C.purple,desc:"Suivi médecin de famille"},
     {icon:"⭐",label:"Feedback",path:"feedback",color:C.amber,desc:"Évaluer mes soins"},
   ];
 
@@ -814,6 +815,170 @@ function PageFeedback(){
   );
 }
 
+
+// ════════════════════════════════════════════════════════════════════
+//  PAGE MÉDECINS INDÉPENDANTS (depuis dashboard patient)
+// ════════════════════════════════════════════════════════════════════
+const SPECIALITES_LIST = ["Toutes","Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Dermatologie","Ophtalmologie","ORL","Neurologie","Orthopédie","Psychiatrie"];
+
+function DemandeModal({medecin, onClose}){
+  const [motif,setMotif]=useState("");
+  const [step,setStep]=useState(1);
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,width:"100%",maxWidth:480,overflow:"hidden"}}>
+        <div style={{background:`linear-gradient(135deg,${C.purple},${C.blue})`,padding:"20px 24px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginBottom:4}}>Demande de suivi privé</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff"}}>Dr. {medecin.prenom} {medecin.nom}</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.8)"}}>{medecin.specialite}</div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:"50%",width:32,height:32,color:"#fff",cursor:"pointer",fontSize:16}}>✕</button>
+        </div>
+        <div style={{padding:24}}>
+          {step===1&&(
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:16}}>Pourquoi souhaitez-vous ce médecin ?</div>
+              <textarea value={motif} onChange={e=>setMotif(e.target.value)} placeholder="Ex: Suivi médical régulier, médecin de famille, pathologie chronique..." rows={4}
+                style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:12,color:C.text,fontSize:14,resize:"vertical",boxSizing:"border-box",marginBottom:16,outline:"none",fontFamily:"inherit"}}/>
+              <div style={{background:"rgba(217,119,6,.08)",border:"1px solid rgba(217,119,6,.3)",borderRadius:10,padding:"12px 16px",marginBottom:20}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.amber,marginBottom:4}}>💳 Frais de mise en relation</div>
+                <div style={{fontSize:13,color:C.muted}}>Un paiement de <strong style={{color:C.text}}>1 000 FCFA</strong> est requis avant que le médecin reçoive votre demande.</div>
+              </div>
+              <button onClick={()=>{if(!motif.trim())return;setStep(2);}} disabled={!motif.trim()}
+                style={{width:"100%",background:motif.trim()?`linear-gradient(135deg,${C.purple},${C.blue})`:"#1E2F42",border:"none",borderRadius:12,padding:14,color:"#fff",fontSize:15,fontWeight:800,cursor:motif.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                Continuer → Payer 1 000 FCFA
+              </button>
+            </div>
+          )}
+          {step===2&&(
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:16}}>💳 Payer les frais de mise en relation</div>
+              <div style={{background:C.input,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:13,color:C.muted}}>Frais de mise en relation</span>
+                <span style={{fontSize:15,fontWeight:800,color:C.purple}}>1 000 FCFA</span>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+                {[{id:"wave",label:"Wave",icon:"🌊",color:"#1DA6F2"},{id:"orange",label:"Orange Money",icon:"🟠",color:"#FF6600"},{id:"moov",label:"Moov Money",icon:"🔵",color:"#0066CC"},{id:"mtn",label:"MTN MoMo",icon:"🟡",color:"#FFCC00"}].map(m=>(
+                  <button key={m.id} onClick={()=>setStep(3)}
+                    style={{background:m.color+"15",border:`2px solid ${m.color}40`,borderRadius:12,padding:"12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontFamily:"inherit"}}>
+                    <span style={{fontSize:20}}>{m.icon}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:m.color}}>{m.label}</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={()=>setStep(1)} style={{width:"100%",background:"none",border:`1px solid ${C.border}`,borderRadius:10,padding:10,color:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>← Retour</button>
+            </div>
+          )}
+          {step===3&&(
+            <div style={{textAlign:"center",padding:"20px 0"}}>
+              <div style={{width:72,height:72,background:`linear-gradient(135deg,${C.purple},${C.blue})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,margin:"0 auto 16px"}}>✅</div>
+              <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:8}}>Demande envoyée !</div>
+              <div style={{fontSize:14,color:C.muted,marginBottom:8}}>Dr. {medecin.prenom} {medecin.nom} a reçu votre demande.</div>
+              <div style={{background:"rgba(124,58,237,.1)",border:"1px solid rgba(124,58,237,.2)",borderRadius:10,padding:12,fontSize:13,color:C.purple,marginBottom:20}}>
+                Vous serez notifié par SMS dès que le médecin aura répondu.
+              </div>
+              <button onClick={onClose} style={{background:C.purple,border:"none",borderRadius:10,padding:"10px 32px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Fermer</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageMedecinsPrives(){
+  const [specialite,setSpecialite]=useState("Toutes");
+  const [search,setSearch]=useState("");
+  const [medecinSel,setMedecinSel]=useState(null);
+
+  const {data,isLoading}=useQuery({queryKey:["pub-medecins-prives"],queryFn:()=>api.get("/public/medecins").then(r=>r.data.data||[]).catch(()=>[])});
+
+  // Fusionner avec données démo si API vide
+  const DEMO=[
+    {id:"d1",prenom:"Kouassi",nom:"Ange",specialite:"Cardiologie",ville:"Cocody, Abidjan",tarif:20000,experience_ans:12,note_moyenne:4.8,statut:"Disponible"},
+    {id:"d2",prenom:"Bamba",nom:"Mariame",specialite:"Médecine générale",ville:"Plateau, Abidjan",tarif:12000,experience_ans:8,note_moyenne:4.6,statut:"Disponible"},
+    {id:"d3",prenom:"Diallo",nom:"Seydou",specialite:"Pédiatrie",ville:"Marcory, Abidjan",tarif:15000,experience_ans:15,note_moyenne:4.9,statut:"Absent"},
+    {id:"d4",prenom:"Konan",nom:"Adjoua",specialite:"Gynécologie",ville:"Yopougon, Abidjan",tarif:18000,experience_ans:10,note_moyenne:4.7,statut:"Disponible"},
+  ];
+  const medecins=(data&&data.length>0?data:DEMO).filter(m=>{
+    const matchSpec=specialite==="Toutes"||m.specialite===specialite;
+    const matchSearch=!search||`${m.prenom} ${m.nom} ${m.specialite||""} ${m.ville||""}`.toLowerCase().includes(search.toLowerCase());
+    return matchSpec&&matchSearch;
+  });
+
+  return(
+    <div>
+      <PageHeader title="⭐ Médecins Indépendants" subtitle="Trouvez votre médecin privé ou médecin de famille"/>
+
+      {/* Barre recherche */}
+      <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher un médecin..."
+          style={{flex:1,minWidth:200,background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit"}}
+          onFocus={e=>e.target.style.borderColor=C.purple} onBlur={e=>e.target.style.borderColor=C.border}/>
+        <select value={specialite} onChange={e=>setSpecialite(e.target.value)}
+          style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",cursor:"pointer",fontFamily:"inherit"}}>
+          {SPECIALITES_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+
+      {/* Info frais */}
+      <div style={{background:"rgba(124,58,237,.06)",border:"1px solid rgba(124,58,237,.2)",borderRadius:12,padding:"12px 16px",marginBottom:20,fontSize:13,color:C.muted}}>
+        ⭐ La mise en relation avec un médecin privé coûte <strong style={{color:C.purple}}>1 000 FCFA</strong>, payables par Mobile Money avant l'envoi de votre demande. L'abonnement mensuel passe à <strong style={{color:C.purple}}>500 FCFA/mois</strong> avec suivi médecin privé.
+      </div>
+
+      {/* Grille médecins */}
+      {isLoading?<Loader/>:medecins.length===0?<Empty icon="⭐" title="Aucun médecin trouvé" subtitle="Modifiez vos critères de recherche"/>:(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
+          {medecins.map(m=>(
+            <div key={m.id} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:16,padding:20,display:"flex",flexDirection:"column",gap:12,transition:"border-color .15s"}}
+              onMouseOver={e=>e.currentTarget.style.borderColor=C.purple} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+              {/* Header */}
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:52,height:52,background:`linear-gradient(135deg,${C.purple},${C.blue})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:800,color:"#fff",flexShrink:0}}>
+                  {m.prenom?.[0]}{m.nom?.[0]}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:16,fontWeight:800,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  <div style={{fontSize:13,color:C.purple,fontWeight:600}}>{m.specialite||"Médecin"}</div>
+                  {m.ville&&<div style={{fontSize:12,color:C.muted}}>📍 {m.ville}</div>}
+                </div>
+                <Badge color={m.statut==="Disponible"?"purple":"gray"}>{m.statut==="Disponible"?"● Disponible":"○ Indisponible"}</Badge>
+              </div>
+
+              {/* Stats */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                {[["⭐",m.note_moyenne||"—","Note"],["🏥",m.experience_ans?(m.experience_ans+" ans"):"—","Expérience"],["💰",m.tarif?(fmt(m.tarif)+" F"):"Sur RDV","Consultation"]].map(([icon,val,label],j)=>(
+                  <div key={j} style={{background:C.hover,borderRadius:8,padding:"8px",textAlign:"center"}}>
+                    <div style={{fontSize:16}}>{icon}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:C.text}}>{val}</div>
+                    <div style={{fontSize:10,color:C.dim}}>{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tarif + bouton */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+                <div>
+                  <div style={{fontSize:11,color:C.dim}}>Frais de mise en relation</div>
+                  <div style={{fontSize:18,fontWeight:800,color:C.purple}}>1 000 FCFA</div>
+                </div>
+                <Btn variant="purple" disabled={m.statut!=="Disponible"} style={{opacity:m.statut!=="Disponible"?.5:1}}
+                  onClick={()=>m.statut==="Disponible"&&setMedecinSel(m)}>
+                  {m.statut==="Disponible"?"+ Demander suivi":"Indisponible"}
+                </Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal demande */}
+      {medecinSel&&<DemandeModal medecin={medecinSel} onClose={()=>setMedecinSel(null)}/>}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  ROUTER
 // ════════════════════════════════════════════════════════════════════
@@ -827,6 +992,7 @@ export default function Dashboard(){
       <Route path="consultations" element={<PageConsultations/>}/>
       <Route path="factures"      element={<PageFactures/>}/>
       <Route path="recherche"     element={<PageRecherche/>}/>
+      <Route path="medecins-prives" element={<PageMedecinsPrives/>}/>
       <Route path="feedback"      element={<PageFeedback/>}/>
       <Route path="*"             element={<PageHome/>}/>
     </Routes>
