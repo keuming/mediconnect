@@ -1,1106 +1,762 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import api from "../../services/api";
-import { Card, Panel, ListItem, Avatar, Grid, PageHeader, Badge, Loader, Empty, Btn, Table, ProgressBar } from "../../components/common/UI";
 
-// ══════════════════════════════════════════════════════════════════
-//  PLAN TARIFAIRE MEDICONNECT FOR AFRICA
-// ══════════════════════════════════════════════════════════════════
-const TARIFS = {
-  // Livraison médicaments
-  LIVRAISON_TOTAL:        1500,   // Prix client — zone UEMOA & CEMAC
-  LIVRAISON_LIVREUR:      1000,   // Part livreur
-  LIVRAISON_MEDICONNECT:   500,   // Part MediConnect
+const T={livraison_total:1500,livraison_livreur:1000,livraison_plateforme:500,clinique_mise_en_service:100000,clinique_mensuel:3000,patient_standard:300,patient_suivi:500,medecin_independant:500,mise_en_relation:1000};
+const fmt=n=>Number(n||0).toLocaleString("fr-CI");
+const fmtDate=d=>d?new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"}):"—";
+const MOIS=["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+const C={green:"#0A8F58",teal:"#0D9488",amber:"#D97706",red:"#E11D48",blue:"#2563EB",purple:"#7C3AED",bg:"#060C12",card:"#0E1620",input:"#141E2B",hover:"#1A2535",border:"#1E2F42",text:"#F0F4F8",muted:"#8BA0B5",dim:"#4E657A"};
 
-  // Clinique / Établissement
-  CLINIQUE_SETUP:       100000,   // Mise en service (one-time)
-  CLINIQUE_MENSUEL:       3000,   // Abonnement mensuel hébergement
-
-  // Patient
-  PATIENT_MENSUEL_STD:     300,   // Abonnement mensuel standard
-  PATIENT_MENSUEL_PRO:     500,   // Avec suivi médecin privé
-
-  // Autres profils
-  PHARMACIE_MENSUEL:      5000,
-  LIVREUR_MENSUEL:        1000,
-  LABO_MENSUEL:           5000,
-  IMAGERIE_MENSUEL:       5000,
-  ASSUREUR_MENSUEL:      10000,
+const aAPI={
+  users:()=>api.get("/utilisateurs"),
+  addUser:d=>api.post("/auth/register",d),
+  toggleUser:(id,v)=>api.put(`/utilisateurs/${id}`,{is_active:v}),
+  cliniques:()=>api.get("/cliniques"),
+  patients:()=>api.get("/patients"),
+  commandes:()=>api.get("/commandes"),
+  medecins:()=>api.get("/medecins"),
+  assurances:()=>api.get("/assurances").catch(()=>({data:{data:[]}})),
 };
 
-const fmt = (n) => Number(n || 0).toLocaleString("fr-CI");
-
-const adminAPI = {
-  users:     () => api.get("/utilisateurs"),
-  cliniques: () => api.get("/cliniques"),
-  commandes: () => api.get("/commandes"),
-  patients:  () => api.get("/patients"),
-  rdvs:      () => api.get("/rdv"),
+const ROLE_META={
+  patient:{color:"blue",icon:"👤",label:"Patient"},
+  clinique:{color:"green",icon:"🏥",label:"Clinique"},
+  medecin:{color:"teal",icon:"🩺",label:"Médecin employé"},
+  medecin_independant:{color:"purple",icon:"⭐",label:"Médecin indép."},
+  pharmacie:{color:"teal",icon:"💊",label:"Pharmacie"},
+  livreur:{color:"amber",icon:"🛵",label:"Livreur"},
+  assureur:{color:"blue",icon:"🛡️",label:"Assureur"},
+  admin:{color:"gray",icon:"⚙️",label:"Admin"},
 };
 
+// ── UI ────────────────────────────────────────────────────────────
+const Card=({label,value,icon,color=C.green,sub,trend,onClick})=>(
+  <div onClick={onClick} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:"18px 16px",cursor:onClick?"pointer":"default",transition:"border-color .15s"}} onMouseOver={e=>onClick&&(e.currentTarget.style.borderColor=color)} onMouseOut={e=>onClick&&(e.currentTarget.style.borderColor=C.border)}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>{icon&&<span style={{fontSize:18}}>{icon}</span>}<span style={{fontSize:11,textTransform:"uppercase",letterSpacing:".5px",color:C.dim,fontWeight:700}}>{label}</span></div>
+      {trend!=null&&<span style={{fontSize:11,fontWeight:700,color:trend>=0?C.green:C.red}}>{trend>=0?"+":""}{trend}%</span>}
+    </div>
+    <div style={{fontSize:26,fontWeight:900,color}}>{value}</div>
+    {sub&&<div style={{fontSize:12,color:C.muted,marginTop:3}}>{sub}</div>}
+  </div>
+);
+const Panel=({title,children,actions,accent,style:s={}})=>(
+  <div style={{background:C.input,border:`1.5px solid ${accent||C.border}`,borderRadius:14,padding:20,...s}}>
+    {(title||actions)&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>{title&&<h3 style={{fontSize:14,fontWeight:700,color:C.text,margin:0}}>{title}</h3>}{actions&&<div style={{display:"flex",gap:8}}>{actions}</div>}</div>}
+    {children}
+  </div>
+);
+const Badge=({children,color="gray"})=>{
+  const m={green:[C.green,"rgba(10,143,88,.15)"],teal:[C.teal,"rgba(13,148,136,.15)"],amber:[C.amber,"rgba(217,119,6,.15)"],red:[C.red,"rgba(225,29,72,.15)"],blue:[C.blue,"rgba(37,99,235,.15)"],purple:[C.purple,"rgba(124,58,237,.15)"],gray:[C.muted,"rgba(255,255,255,.08)"]};
+  const[text,bg]=m[color]||m.gray;
+  return <span style={{background:bg,color:text,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{children}</span>;
+};
+const Btn=({children,onClick,variant="primary",loading,disabled,style:s={},type="button"})=>{
+  const v={primary:{background:`linear-gradient(135deg,${C.green},${C.teal})`,color:"#fff",border:"none"},outline:{background:"transparent",color:C.muted,border:`1.5px solid ${C.border}`},danger:{background:"rgba(225,29,72,.1)",color:C.red,border:"1.5px solid rgba(225,29,72,.25)"},amber:{background:C.amber,color:"#fff",border:"none"},blue:{background:C.blue,color:"#fff",border:"none"}};
+  return <button type={type} onClick={onClick} disabled={loading||disabled} style={{borderRadius:9,padding:"9px 18px",fontSize:13,fontWeight:700,cursor:(loading||disabled)?"not-allowed":"pointer",opacity:(loading||disabled)?.65:1,fontFamily:"inherit",...v[variant]||v.primary,...s}}>{loading?"⏳…":children}</button>;
+};
+const Inp=({label,value,onChange,type="text",placeholder,required,style:s={}})=>(
+  <div style={{marginBottom:14,...s}}>
+    {label&&<label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>{label}{required&&" *"}</label>}
+    <input type={type} value={value||""} onChange={onChange} placeholder={placeholder} required={required} style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}} onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+  </div>
+);
+const Sel=({label,value,onChange,options=[],required,style:s={}})=>(
+  <div style={{marginBottom:14,...s}}>
+    {label&&<label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>{label}{required&&" *"}</label>}
+    <select value={value||""} onChange={onChange} required={required} style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit"}}>
+      {options.map(o=>typeof o==="string"?<option key={o} value={o}>{o}</option>:<option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  </div>
+);
+const Modal=({open,onClose,title,children,width=520})=>{
+  if(!open)return null;
+  return <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}><div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><h2 style={{fontSize:17,fontWeight:700,color:C.text,margin:0}}>{title}</h2><button onClick={onClose} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button></div>{children}</div></div>;
+};
+const Grid=({cols=2,gap=16,children,style:s={}})=><div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,gap,...s}}>{children}</div>;
+const Loader=()=><div style={{textAlign:"center",padding:48,color:C.dim}}>⏳ Chargement…</div>;
+const Empty=({icon,title,subtitle})=><div style={{textAlign:"center",padding:"36px 20px",color:C.dim}}><div style={{fontSize:38,marginBottom:10}}>{icon}</div>{title&&<div style={{fontSize:15,fontWeight:700,color:C.muted,marginBottom:4}}>{title}</div>}{subtitle&&<div style={{fontSize:13}}>{subtitle}</div>}</div>;
+const PageHeader=({title,subtitle,actions})=>(
+  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:24}}>
+    <div><h1 style={{fontSize:22,fontWeight:800,color:C.text,margin:"0 0 4px"}}>{title}</h1>{subtitle&&<p style={{fontSize:13,color:C.muted,margin:0}}>{subtitle}</p>}</div>
+    {actions&&<div style={{display:"flex",gap:10}}>{actions}</div>}
+  </div>
+);
+const ProgressBar=({value,max=100,color=C.green})=>(
+  <div style={{background:C.hover,borderRadius:4,height:5}}><div style={{width:`${Math.min(100,Math.round(value/Math.max(max,1)*100))}%`,height:"100%",background:color,borderRadius:4,transition:"width .4s"}}/></div>
+);
+const THead=({cols})=>(
+  <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
+    {cols.map(h=><th key={h} style={{textAlign:"left",padding:"8px 12px",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:".5px",color:C.dim,whiteSpace:"nowrap"}}>{h}</th>)}
+  </tr></thead>
+);
+
 // ════════════════════════════════════════════════════════════════════
-//  HOME — Dashboard général avec KPIs financiers
+// HOME ADMIN
 // ════════════════════════════════════════════════════════════════════
-function DashboardHome() {
-  const nav = useNavigate();
-  const { data: usersData }    = useQuery({ queryKey:["adm-users"],    queryFn:()=>adminAPI.users().then(r=>r.data.data||[])    });
-  const { data: cliniquesData } = useQuery({ queryKey:["adm-cliniq"],  queryFn:()=>adminAPI.cliniques().then(r=>r.data.data||[]) });
-  const { data: commandesData } = useQuery({ queryKey:["adm-cmds"],    queryFn:()=>adminAPI.commandes().then(r=>r.data.data||[]) });
-  const { data: patientsData }  = useQuery({ queryKey:["adm-patients"],queryFn:()=>adminAPI.patients().then(r=>r.data.data||[])  });
-  const { data: rdvsData }      = useQuery({ queryKey:["adm-rdvs"],    queryFn:()=>adminAPI.rdvs().then(r=>r.data.data||[])      });
-
-  const users    = usersData    || [];
-  const cliniques = cliniquesData || [];
-  const commandes = commandesData || [];
-  const patients  = patientsData  || [];
-  const rdvs      = rdvsData      || [];
-
-  // Calculs financiers
-  const livraisonsReussies = commandes.filter(c=>c.statut==="livree");
-  const revenuLivraisons   = livraisonsReussies.length * TARIFS.LIVRAISON_MEDICONNECT;
-  const revenuCliniques    = cliniques.length * TARIFS.CLINIQUE_MENSUEL;
-  const revenuSetup        = cliniques.length * TARIFS.CLINIQUE_SETUP;
-  const revenuPatients     = patients.length * TARIFS.PATIENT_MENSUEL_STD;
-  const revenuTotalMensuel = revenuLivraisons + revenuCliniques + revenuPatients;
-
-  const livreurs  = users.filter(u=>u.role==="livreur");
-  const nbPatients = users.filter(u=>u.role==="patient").length;
-
-  return (
+function PageHome(){
+  const nav=useNavigate();
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[]),retry:1});
+  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[]),retry:1});
+  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[]),retry:1});
+  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data.data||[]),retry:1});
+  const U=users||[];const CMD=cmds||[];const CL=clin||[];const PT=pats||[];
+  const livrees=CMD.filter(c=>c.statut==="livree").length;
+  const nMI=U.filter(u=>u.role==="medecin_independant").length;
+  const revL=livrees*T.livraison_plateforme;
+  const revC=CL.length*T.clinique_mensuel;
+  const revP=PT.length*T.patient_standard;
+  const revMI=nMI*T.medecin_independant;
+  const revT=revL+revC+revP+revMI;
+  const byRole=U.reduce((a,u)=>({...a,[u.role]:(a[u.role]||0)+1}),{});
+  const MODULES=[
+    {icon:"💰",label:"Monétisation",path:"monetisation",color:C.green,stat:`${fmt(revT)} F/mois`},
+    {icon:"👥",label:"Utilisateurs",path:"utilisateurs",color:C.blue,stat:`${U.length} comptes`},
+    {icon:"🏥",label:"Cliniques",path:"cliniques",color:C.teal,stat:`${CL.length} actives`},
+    {icon:"🩺",label:"Médecins",path:"medecins",color:C.purple,stat:"Employés + Indép."},
+    {icon:"🛵",label:"Livreurs",path:"livreurs",color:C.amber,stat:`${livrees} livraisons`},
+    {icon:"📊",label:"Statistiques",path:"statistiques",color:C.green,stat:"Rapports & analyses"},
+    {icon:"🛡️",label:"Assurances",path:"assurances",color:C.blue,stat:"Tiers-payant"},
+    {icon:"⚙️",label:"Configuration",path:"configuration",color:C.muted,stat:"Paramètres"},
+  ];
+  return(
     <div>
-      <PageHeader title="⚙️ Administration MediConnect" subtitle="Tableau de bord général — Revenus · Utilisateurs · Opérations" />
-
-      {/* KPIs principaux */}
+      <PageHeader title="🏛️ Administration MediConnect Africa" subtitle={`Supervision générale · ${new Date().toLocaleDateString("fr-CI",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`}/>
       <Grid cols={4} gap={14} style={{marginBottom:20}}>
-        <Card label="Établissements" value={cliniques.length} icon="🏥" color="#0D9488" sub="Cliniques actives" />
-        <Card label="Patients" value={nbPatients} icon="👤" color="#0A8F58" sub="Dossiers créés" />
-        <Card label="Livreurs" value={livreurs.length} icon="🛵" color="#D97706" sub="Actifs" />
-        <Card label="Livraisons" value={livraisonsReussies.length} icon="✅" color="#0A8F58" sub="Réussies" />
+        <Card label="Utilisateurs" value={U.length} icon="👥" color={C.blue} sub={`${U.filter(u=>u.is_active).length} actifs`} trend={12} onClick={()=>nav("utilisateurs")}/>
+        <Card label="Revenus plateforme" value={`${fmt(revT)} F`} icon="💰" color={C.green} sub="Ce mois (estimé)" trend={8} onClick={()=>nav("monetisation")}/>
+        <Card label="Cliniques actives" value={CL.length} icon="🏥" color={C.teal} sub={`${fmt(CL.length*T.clinique_mensuel)} F/mois`} onClick={()=>nav("cliniques")}/>
+        <Card label="Livraisons OK" value={livrees} icon="🛵" color={C.amber} sub={`${fmt(livrees*T.livraison_plateforme)} F comm.`} onClick={()=>nav("livreurs")}/>
       </Grid>
 
-      {/* KPIs RDV MediConnect */}
-      <div style={{background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.2)",borderRadius:14,padding:20,marginBottom:20}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#F0F4F8",marginBottom:16}}>📅 RDV pris via MediConnect RDV</div>
-        <Grid cols={4} gap={12}>
-          {[
-            ["Total RDV", rdvs.length, "Tous statuts confondus", "#2563EB"],
-            ["RDV validés", rdvs.filter(r=>r.statut==="confirme"||r.statut==="confirmed").length, "Confirmés par les cliniques", "#0A8F58"],
-            ["RDV en attente", rdvs.filter(r=>r.statut==="en_attente"||r.statut==="pending").length, "En attente de confirmation", "#F59E0B"],
-            ["RDV annulés", rdvs.filter(r=>r.statut==="annule"||r.statut==="cancelled").length, "Annulés", "#E11D48"],
-          ].map(([l,v,sub,c])=>(
-            <div key={l} style={{background:"#141E2B",borderRadius:10,padding:"14px",textAlign:"center",border:`1px solid #1E2F42`}}>
-              <div style={{fontSize:11,color:"#4E657A",marginBottom:6}}>{l}</div>
-              <div style={{fontSize:28,fontWeight:900,color:c,marginBottom:4}}>{v}</div>
-              <div style={{fontSize:10,color:"#4E657A"}}>{sub}</div>
+      {/* Revenus consolidés */}
+      <div style={{background:"linear-gradient(135deg,rgba(10,143,88,.12),rgba(13,148,136,.06))",border:"1px solid rgba(10,143,88,.25)",borderRadius:16,padding:24,marginBottom:20}}>
+        <div style={{fontSize:13,fontWeight:700,color:C.green,textTransform:"uppercase",letterSpacing:".5px",marginBottom:16}}>💰 Revenus MediConnect Africa — Ce mois</div>
+        <Grid cols={4} gap={14}>
+          {[{l:"Commissions livraisons",v:revL,d:`${livrees} × ${fmt(T.livraison_plateforme)} F`,icon:"🛵"},{l:"Abonnements cliniques",v:revC,d:`${CL.length} × ${fmt(T.clinique_mensuel)} F/mois`,icon:"🏥"},{l:"Abonnements patients",v:revP,d:`${PT.length} × ${fmt(T.patient_standard)} F/mois`,icon:"👤"},{l:"TOTAL PLATEFORME",v:revT,d:"Revenus consolidés MediConnect",icon:"💰"}].map((item,i)=>(
+            <div key={i} style={{background:i===3?"rgba(10,143,88,.15)":"rgba(255,255,255,.04)",border:`1px solid ${i===3?"rgba(10,143,88,.3)":"rgba(255,255,255,.06)"}`,borderRadius:12,padding:16,textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:8}}>{item.icon}</div>
+              <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>{item.l}</div>
+              <div style={{fontSize:i===3?22:18,fontWeight:900,color:i===3?C.green:C.text,marginBottom:4}}>{fmt(item.v)} F</div>
+              <div style={{fontSize:10,color:C.dim,lineHeight:1.4}}>{item.d}</div>
             </div>
           ))}
         </Grid>
       </div>
 
-      {/* KPIs financiers */}
-      <div style={{background:"rgba(10,143,88,.06)",border:"1px solid rgba(10,143,88,.2)",borderRadius:14,padding:20,marginBottom:20}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#F0F4F8",marginBottom:16}}>💰 Revenus MediConnect For Africa</div>
-        <Grid cols={4} gap={12}>
-          {[
-            ["Livraisons (mensuel)",fmt(revenuLivraisons)+" F",fmt(TARIFS.LIVRAISON_MEDICONNECT)+" F × "+livraisonsReussies.length,"#0A8F58"],
-            ["Abonnements cliniques",fmt(revenuCliniques)+" F",fmt(TARIFS.CLINIQUE_MENSUEL)+" F × "+cliniques.length+" /mois","#0D9488"],
-            ["Abonnements patients",fmt(revenuPatients)+" F",fmt(TARIFS.PATIENT_MENSUEL_STD)+" F × "+patients.length+" /mois","#0A8F58"],
-            ["TOTAL MENSUEL ESTIMÉ",fmt(revenuTotalMensuel)+" F","Récurrent + livraisons","#0A8F58"],
-          ].map(([l,v,sub,c])=>(
-            <div key={l} style={{background:"#141E2B",borderRadius:10,padding:"14px",textAlign:"center",border:`1px solid ${l.includes("TOTAL")?"rgba(10,143,88,.4)":"#1E2F42"}`}}>
-              <div style={{fontSize:11,color:"#4E657A",marginBottom:6}}>{l}</div>
-              <div style={{fontSize:18,fontWeight:900,color:c,marginBottom:4}}>{v}</div>
-              <div style={{fontSize:10,color:"#4E657A"}}>{sub}</div>
+      <Grid cols={2} gap={20} style={{marginBottom:20}}>
+        <Panel title="📊 Répartition revenus">
+          {[{l:"🛵 Livraisons",v:revL,c:C.teal},{l:"🏥 Cliniques",v:revC,c:C.green},{l:"👤 Patients",v:revP,c:C.blue},{l:"⭐ Médecins indép.",v:revMI,c:C.purple}].map(item=>(
+            <div key={item.l} style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                <span style={{color:C.muted}}>{item.l}</span>
+                <span style={{fontWeight:700,color:item.c}}>{fmt(item.v)} F ({revT>0?Math.round(item.v/revT*100):0}%)</span>
+              </div>
+              <ProgressBar value={item.v} max={Math.max(revT,1)} color={item.c}/>
             </div>
           ))}
-        </Grid>
-      </div>
-
-      <Grid cols={2} gap={20}>
-        {/* Accès rapide */}
-        <Panel title="⚡ Accès rapide" accent="green">
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {[["🏥","Établissements","etablissements","#0D9488"],["👤","Patients","patients","#0A8F58"],["🛵","Livreurs","livreurs","#D97706"],["📅","Gestion RDV","rdv-patients","#2563EB"],["📈","Rapports","rapports","#0A8F58"],["🛡️","Assureurs","assureurs","#2563EB"]].map(([icon,label,path,color])=>(
-              <button key={path+label} onClick={()=>nav(path)} style={{background:"#1A2535",border:"1px solid #1E2F42",borderRadius:10,padding:"12px",cursor:"pointer",textAlign:"center",transition:"all .15s",fontFamily:"inherit"}}
-                onMouseOver={e=>{e.currentTarget.style.borderColor=color;}} onMouseOut={e=>{e.currentTarget.style.borderColor="#1E2F42";}}>
-                <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
-                <div style={{fontSize:11,color:"#F0F4F8",fontWeight:600}}>{label}</div>
-              </button>
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,display:"flex",justifyContent:"space-between",marginTop:4}}>
+            <span style={{fontWeight:700,color:C.text}}>Total</span>
+            <span style={{fontSize:20,fontWeight:900,color:C.green}}>{fmt(revT)} F</span>
+          </div>
+        </Panel>
+        <Panel title="👥 Répartition par rôle">
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+            {Object.entries(ROLE_META).map(([role,meta])=>(
+              <div key={role} style={{background:C.hover,borderRadius:10,padding:"10px 8px",textAlign:"center",cursor:"pointer"}} onClick={()=>nav("utilisateurs")}>
+                <div style={{fontSize:20,marginBottom:4}}>{meta.icon}</div>
+                <div style={{fontSize:18,fontWeight:900,color:C[meta.color]||C.muted}}>{byRole[role]||0}</div>
+                <div style={{fontSize:9,color:C.dim,marginTop:2,lineHeight:1.3}}>{meta.label}</div>
+              </div>
             ))}
           </div>
         </Panel>
-
-        {/* Répartition revenus */}
-        <Panel title="📊 Répartition des revenus">
-          {[
-            ["🛵 Livraisons",revenuLivraisons,revenuTotalMensuel,"#0A8F58"],
-            ["🏥 Abonnements cliniques",revenuCliniques,revenuTotalMensuel,"#0D9488"],
-            ["👤 Abonnements patients",revenuPatients,revenuTotalMensuel,"#2563EB"],
-          ].map(([l,v,total,c])=>(
-            <div key={l} style={{marginBottom:14}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
-                <span style={{color:"#8BA0B5"}}>{l}</span>
-                <span style={{fontWeight:700,color:c}}>{fmt(v)} F ({total>0?Math.round(v/total*100):0}%)</span>
-              </div>
-              <ProgressBar value={v} max={Math.max(revenuTotalMensuel,1)} color={c} />
-            </div>
-          ))}
-          <div style={{borderTop:"1px solid #1E2F42",paddingTop:12,marginTop:4,display:"flex",justifyContent:"space-between",fontSize:14}}>
-            <span style={{fontWeight:700,color:"#F0F4F8"}}>Total mensuel estimé</span>
-            <span style={{fontWeight:900,color:"#0A8F58"}}>{fmt(revenuTotalMensuel)} FCFA</span>
-          </div>
-        </Panel>
-      </Grid>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  PAGE ÉTABLISSEMENTS
-// ════════════════════════════════════════════════════════════════════
-function PageEtablissements() {
-  const { data, isLoading } = useQuery({ queryKey:["adm-cliniq"], queryFn:()=>adminAPI.cliniques().then(r=>r.data.data||[]) });
-  const { data: rdvsData }  = useQuery({ queryKey:["adm-rdvs"],   queryFn:()=>adminAPI.rdvs().then(r=>r.data.data||[])      });
-  const cliniques    = data    || [];
-  const rdvs         = rdvsData || [];
-  const revenuMensuel = cliniques.length * TARIFS.CLINIQUE_MENSUEL;
-  const revenuSetup   = cliniques.length * TARIFS.CLINIQUE_SETUP;
-
-  const [cliniqueSelectee, setCliniqueSelectee] = useState(null);
-
-  // RDV validés par clinique
-  const rdvsParClinique = (cliniqueId) =>
-    rdvs.filter(r => String(r.clinique_id) === String(cliniqueId));
-  const rdvsValidesParClinique = (cliniqueId) =>
-    rdvsParClinique(cliniqueId).filter(r => r.statut === "confirme" || r.statut === "confirmed");
-
-  return (
-    <div>
-      <PageHeader title="🏥 Établissements partenaires" subtitle={`${cliniques.length} établissement(s) · Revenus mensuels : ${fmt(revenuMensuel)} FCFA`} />
-
-      <Grid cols={3} gap={14} style={{marginBottom:20}}>
-        <Card label="Cliniques actives" value={cliniques.length} icon="🏥" color="#0D9488" />
-        <Card label="Frais mise en service total" value={fmt(revenuSetup)+" F"} icon="💳" color="#0A8F58" sub={fmt(TARIFS.CLINIQUE_SETUP)+" F × "+cliniques.length} />
-        <Card label="Abonnements mensuels" value={fmt(revenuMensuel)+" F"} icon="📅" color="#0A8F58" sub={fmt(TARIFS.CLINIQUE_MENSUEL)+" F × "+cliniques.length+" /mois"} />
       </Grid>
 
-      {/* KPI RDV par clinique */}
-      <div style={{background:"rgba(37,99,235,.06)",border:"1px solid rgba(37,99,235,.2)",borderRadius:12,padding:18,marginBottom:20}}>
-        <div style={{fontSize:13,fontWeight:800,color:"#F0F4F8",marginBottom:14}}>📅 RDV par établissement</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
-          {cliniques.map(c=>{
-            const total   = rdvsParClinique(c.id).length;
-            const valides = rdvsValidesParClinique(c.id).length;
-            return (
-              <div key={c.id}
-                onClick={()=>setCliniqueSelectee(cliniqueSelectee?.id===c.id ? null : c)}
-                style={{background:"#141E2B",border:`1px solid ${cliniqueSelectee?.id===c.id?"#2563EB":"#1E2F42"}`,borderRadius:10,padding:"12px",cursor:"pointer",transition:"all .15s"}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#F0F4F8",marginBottom:6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.nom||"Clinique"}</div>
-                <div style={{display:"flex",gap:8}}>
-                  <span style={{fontSize:11,background:"rgba(37,99,235,.15)",color:"#2563EB",borderRadius:20,padding:"2px 8px"}}>{total} RDV total</span>
-                  <span style={{fontSize:11,background:"rgba(10,143,88,.15)",color:"#0A8F58",borderRadius:20,padding:"2px 8px"}}>{valides} validés</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Liste RDV de la clinique sélectionnée */}
-      {cliniqueSelectee && (
-        <div style={{background:"#141E2B",border:"1px solid #1E2F42",borderRadius:14,padding:20,marginBottom:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:14,fontWeight:800,color:"#F0F4F8"}}>
-              📋 RDV — {cliniqueSelectee.nom}
-              <span style={{fontSize:12,color:"#4E657A",fontWeight:400,marginLeft:10}}>({rdvsParClinique(cliniqueSelectee.id).length} au total)</span>
-            </div>
-            <button onClick={()=>setCliniqueSelectee(null)} style={{background:"none",border:"1px solid #1E2F42",color:"#8BA0B5",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>✕ Fermer</button>
-          </div>
-          {rdvsParClinique(cliniqueSelectee.id).length === 0 ? (
-            <div style={{textAlign:"center",padding:"30px 0",color:"#4E657A",fontSize:14}}>
-              <div style={{fontSize:32,marginBottom:8}}>📅</div>
-              Aucun RDV pour cet établissement
-            </div>
-          ) : (
-            <table style={{width:"100%",borderCollapse:"collapse"}}>
-              <thead>
-                <tr style={{borderBottom:"1px solid #1E2F42"}}>
-                  {["N° RDV","Médecin","Date","Statut"].map(h=>(
-                    <th key={h} style={{textAlign:"left",padding:"8px 10px",fontSize:11,color:"#4E657A",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rdvsParClinique(cliniqueSelectee.id).map((rdv,i)=>{
-                  const statutColor = rdv.statut==="confirme"||rdv.statut==="confirmed" ? "#0A8F58"
-                    : rdv.statut==="annule"||rdv.statut==="cancelled" ? "#E11D48" : "#F59E0B";
-                  const statutLabel = rdv.statut==="confirme"||rdv.statut==="confirmed" ? "Validé"
-                    : rdv.statut==="annule"||rdv.statut==="cancelled" ? "Annulé" : "En attente";
-                  return (
-                    <tr key={rdv.id||i} style={{borderBottom:"1px solid #0E1620"}}>
-                      <td style={{padding:"10px",fontSize:13,fontWeight:700,color:"#2563EB",fontFamily:"monospace"}}>
-                        #{rdv.reference || rdv.id || `RDV-${String(i+1).padStart(4,"0")}`}
-                      </td>
-                      <td style={{padding:"10px",fontSize:13,color:"#F0F4F8"}}>
-                        Dr. {rdv.medecin_prenom||""} {rdv.medecin_nom||rdv.medecin||"—"}
-                      </td>
-                      <td style={{padding:"10px",fontSize:13,color:"#8BA0B5"}}>
-                        {rdv.creneau ? new Date(rdv.creneau.split(" ")[0]).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"}) + " " + (rdv.creneau.split(" ")[1]||"") : rdv.date||"—"}
-                      </td>
-                      <td style={{padding:"10px"}}>
-                        <span style={{fontSize:11,background:statutColor+"20",color:statutColor,borderRadius:20,padding:"3px 10px",fontWeight:700}}>
-                          {statutLabel}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {/* Grille tarifaire clinique */}
-      <div style={{background:"rgba(13,148,136,.06)",border:"1px solid rgba(13,148,136,.2)",borderRadius:12,padding:18,marginBottom:20}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#0D9488",marginBottom:12}}>📋 Grille tarifaire — Établissements</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
-          {[
-            ["🔧 Mise en service",fmt(TARIFS.CLINIQUE_SETUP)+" FCFA","Frais unique · Formation incluse"],
-            ["📅 Abonnement mensuel",fmt(TARIFS.CLINIQUE_MENSUEL)+" FCFA","Hébergement · Maintenance · Support"],
-          ].map(([l,v,sub])=>(
-            <div key={l} style={{background:"#141E2B",borderRadius:10,padding:"14px"}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#F0F4F8",marginBottom:4}}>{l}</div>
-              <div style={{fontSize:20,fontWeight:900,color:"#0D9488",marginBottom:4}}>{v}</div>
-              <div style={{fontSize:11,color:"#4E657A"}}>{sub}</div>
-            </div>
+      <Panel title="⚡ Modules d'administration">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:12}}>
+          {MODULES.map(m=>(
+            <button key={m.path} onClick={()=>nav(m.path)} style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:16,cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
+              onMouseOver={e=>{e.currentTarget.style.borderColor=m.color;e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseOut={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
+              <div style={{fontSize:26,marginBottom:8}}>{m.icon}</div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:3}}>{m.label}</div>
+              <div style={{fontSize:11,color:C.dim}}>{m.stat}</div>
+            </button>
           ))}
         </div>
-      </div>
-
-      {isLoading ? <Loader /> : (
-        <Panel title={`Liste des établissements (${cliniques.length})`}>
-          {cliniques.length === 0 ? <Empty icon="🏥" title="Aucun établissement enregistré" /> :
-            <Table
-              columns={[
-                {key:"nom",label:"Établissement",render:(v,r)=><><div style={{fontWeight:700}}>{v||r.user_id}</div><div style={{fontSize:11,color:"#8BA0B5"}}>{r.type||"Clinique"}</div></>},
-                {key:"email",label:"Email",render:v=><span style={{fontSize:12}}>{v||"—"}</span>},
-                {key:"ville",label:"Ville"},
-                {key:"id",label:"RDV validés",render:(v)=><span style={{color:"#0A8F58",fontWeight:700}}>{rdvsValidesParClinique(v).length} ✓</span>},
-                {key:"id",label:"RDV total",render:(v)=><span style={{color:"#2563EB",fontWeight:700}}>{rdvsParClinique(v).length}</span>},
-                {key:"id",label:"Statut",render:()=><Badge color="green">Actif</Badge>},
-              ]}
-              rows={cliniques}
-            />
-          }
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  PAGE PATIENTS
-// ════════════════════════════════════════════════════════════════════
-function PagePatients() {
-  const { data, isLoading } = useQuery({ queryKey:["adm-patients"], queryFn:()=>adminAPI.patients().then(r=>r.data.data||[]) });
-  const patients = data || [];
-  const std  = patients.length;
-  const pro  = Math.floor(patients.length * 0.2); // Estimation 20% avec suivi privé
-  const revMensuel = (std - pro) * TARIFS.PATIENT_MENSUEL_STD + pro * TARIFS.PATIENT_MENSUEL_PRO;
-
-  return (
-    <div>
-      <PageHeader title="👤 Patients" subtitle={`${patients.length} dossiers · Revenus mensuels estimés : ${fmt(revMensuel)} FCFA`} />
-
-      <Grid cols={4} gap={14} style={{marginBottom:20}}>
-        <Card label="Total patients" value={patients.length} icon="👤" color="#0A8F58" />
-        <Card label="Abonnement standard" value={fmt(TARIFS.PATIENT_MENSUEL_STD)+" F/mois"} icon="📋" color="#8BA0B5" sub="Dossier + RDV" />
-        <Card label="Abonnement suivi privé" value={fmt(TARIFS.PATIENT_MENSUEL_PRO)+" F/mois"} icon="🩺" color="#0D9488" sub="Avec médecin privé" />
-        <Card label="Revenus mensuels estimés" value={fmt(revMensuel)+" F"} icon="💰" color="#0A8F58" />
-      </Grid>
-
-      {/* Grille tarifaire patient */}
-      <div style={{background:"rgba(10,143,88,.06)",border:"1px solid rgba(10,143,88,.2)",borderRadius:12,padding:18,marginBottom:20}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#0A8F58",marginBottom:12}}>📋 Grille tarifaire — Patients</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
-          {[
-            ["📋 Abonnement Standard",fmt(TARIFS.PATIENT_MENSUEL_STD)+" FCFA/mois","Dossier médical + Prise de RDV en ligne"],
-            ["🩺 Abonnement Suivi Privé",fmt(TARIFS.PATIENT_MENSUEL_PRO)+" FCFA/mois","Standard + Suivi par un médecin privé"],
-          ].map(([l,v,sub])=>(
-            <div key={l} style={{background:"#141E2B",borderRadius:10,padding:"14px"}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#F0F4F8",marginBottom:4}}>{l}</div>
-              <div style={{fontSize:20,fontWeight:900,color:"#0A8F58",marginBottom:4}}>{v}</div>
-              <div style={{fontSize:11,color:"#4E657A"}}>{sub}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {isLoading ? <Loader /> : (
-        <Panel title={`Dossiers patients (${patients.length})`}>
-          {patients.length === 0 ? <Empty icon="👤" title="Aucun patient enregistré" /> :
-            <Table
-              columns={[
-                {key:"user_nom",label:"Patient",render:(v,r)=><><div style={{fontWeight:700}}>{v||"—"}</div><div style={{fontSize:11,color:"#8BA0B5"}}>{r.code_secret}</div></>},
-                {key:"groupe_sanguin",label:"Groupe sanguin"},
-                {key:"id",label:"Abonnement",render:()=><Badge color="green">Standard — {fmt(TARIFS.PATIENT_MENSUEL_STD)} F/mois</Badge>},
-                {key:"created_at",label:"Inscription",render:v=>v?new Date(v).toLocaleDateString("fr-CI"):"—"},
-                {key:"id",label:"Statut",render:()=><Badge color="green">Actif</Badge>},
-              ]}
-              rows={patients}
-            />
-          }
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  PAGE LIVREURS
-// ════════════════════════════════════════════════════════════════════
-function PageLivreurs() {
-  const { data: usersData }     = useQuery({ queryKey:["adm-users"],queryFn:()=>adminAPI.users().then(r=>r.data.data||[]) });
-  const { data: commandesData } = useQuery({ queryKey:["adm-cmds"], queryFn:()=>adminAPI.commandes().then(r=>r.data.data||[]) });
-  const livreurs  = (usersData||[]).filter(u=>u.role==="livreur");
-  const commandes = commandesData || [];
-  const livrees   = commandes.filter(c=>c.statut==="livree");
-  const revenuMediconn = livrees.length * TARIFS.LIVRAISON_MEDICONNECT;
-  const revenuLivreurs = livrees.length * TARIFS.LIVRAISON_LIVREUR;
-
-  return (
-    <div>
-      <PageHeader title="🛵 Livreurs" subtitle={`${livreurs.length} livreur(s) actif(s) · ${livrees.length} livraison(s) réussie(s)`} />
-
-      <Grid cols={4} gap={14} style={{marginBottom:20}}>
-        <Card label="Livreurs actifs" value={livreurs.length} icon="🛵" color="#D97706" />
-        <Card label="Livraisons réussies" value={livrees.length} icon="✅" color="#0A8F58" />
-        <Card label="Revenus MediConnect" value={fmt(revenuMediconn)+" F"} icon="💰" color="#0A8F58" sub={fmt(TARIFS.LIVRAISON_MEDICONNECT)+" F × "+livrees.length} />
-        <Card label="Versements livreurs" value={fmt(revenuLivreurs)+" F"} icon="💳" color="#8BA0B5" sub={fmt(TARIFS.LIVRAISON_LIVREUR)+" F × "+livrees.length} />
-      </Grid>
-
-      {/* Grille tarifaire livraison */}
-      <div style={{background:"rgba(217,119,6,.06)",border:"1px solid rgba(217,119,6,.2)",borderRadius:12,padding:18,marginBottom:20}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#D97706",marginBottom:12}}>📋 Grille tarifaire — Livraisons</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
-          {[
-            ["💳 Prix client",fmt(TARIFS.LIVRAISON_TOTAL)+" FCFA","Zone UEMOA & CEMAC (fixe)","#F0F4F8"],
-            ["🛵 Part livreur (67%)",fmt(TARIFS.LIVRAISON_LIVREUR)+" FCFA","Versé chaque vendredi","#D97706"],
-            ["🏢 Part MediConnect (33%)",fmt(TARIFS.LIVRAISON_MEDICONNECT)+" FCFA","Frais de plateforme","#0A8F58"],
-          ].map(([l,v,sub,c])=>(
-            <div key={l} style={{background:"#141E2B",borderRadius:10,padding:"14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"#4E657A",marginBottom:6}}>{l}</div>
-              <div style={{fontSize:20,fontWeight:900,color:c,marginBottom:4}}>{v}</div>
-              <div style={{fontSize:10,color:"#4E657A"}}>{sub}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Panel title={`Liste des livreurs (${livreurs.length})`}>
-        {livreurs.length === 0 ? <Empty icon="🛵" title="Aucun livreur enregistré" /> :
-          <Table
-            columns={[
-              {key:"prenom",label:"Livreur",render:(v,r)=><><div style={{fontWeight:700}}>{v} {r.nom}</div><div style={{fontSize:11,color:"#8BA0B5"}}>{r.email}</div></>},
-              {key:"telephone",label:"Téléphone"},
-              {key:"ville",label:"Ville"},
-              {key:"id",label:"Gains/livraison",render:()=><span style={{color:"#D97706",fontWeight:700}}>{fmt(TARIFS.LIVRAISON_LIVREUR)} F</span>},
-              {key:"is_active",label:"Statut",render:v=><Badge color={v?"green":"red"}>{v?"Actif":"Inactif"}</Badge>},
-            ]}
-            rows={livreurs}
-          />
-        }
       </Panel>
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  PAGE RAPPORTS FINANCIERS
+// MONÉTISATION
 // ════════════════════════════════════════════════════════════════════
-function PageRapports() {
-  const { data: cliniquesData } = useQuery({ queryKey:["adm-cliniq"],   queryFn:()=>adminAPI.cliniques().then(r=>r.data.data||[]) });
-  const { data: commandesData } = useQuery({ queryKey:["adm-cmds"],     queryFn:()=>adminAPI.commandes().then(r=>r.data.data||[]) });
-  const { data: patientsData }  = useQuery({ queryKey:["adm-patients"], queryFn:()=>adminAPI.patients().then(r=>r.data.data||[])  });
+function PageMonetisation(){
+  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data.data||[])});
+  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const nc=clin?.length||0; const np=pats?.length||0;
+  const livrees=(cmds||[]).filter(c=>c.statut==="livree").length;
+  const nMI=(users||[]).filter(u=>u.role==="medecin_independant").length;
+  const revL=livrees*T.livraison_plateforme,revC=nc*T.clinique_mensuel,revP=np*T.patient_standard,revMI=nMI*T.medecin_independant,revT=revL+revC+revP+revMI;
 
-  const cliniques = cliniquesData || [];
-  const commandes = commandesData || [];
-  const patients  = patientsData  || [];
-  const livrees   = commandes.filter(c=>c.statut==="livree");
+  const GRILLE=[
+    {title:"🛵 Livraison — Zone UEMOA + CEMAC",color:C.teal,border:"rgba(13,148,136,.2)",bg:"rgba(13,148,136,.05)",items:[["Frais client (tarif unique)",`${fmt(T.livraison_total)} FCFA`,"Tarif fixe toute zone UEMOA+CEMAC"],["Part du livreur",`${fmt(T.livraison_livreur)} FCFA`,"Versé au livreur par livraison"],["Commission MediConnect",`${fmt(T.livraison_plateforme)} FCFA`,`${livrees} livraisons = ${fmt(livrees*T.livraison_plateforme)} F`]]},
+    {title:"🏥 Cliniques & Établissements",color:C.green,border:"rgba(10,143,88,.2)",bg:"rgba(10,143,88,.05)",items:[["Mise en service (unique)",`${fmt(T.clinique_mise_en_service)} FCFA`,"Installation + formation initiale"],["Abonnement mensuel",`${fmt(T.clinique_mensuel)} FCFA/mois`,"Hébergement + support technique"],["Revenus actuels",`${fmt(revC)} FCFA/mois`,`${nc} clinique(s) × ${fmt(T.clinique_mensuel)} F`]]},
+    {title:"👤 Patients",color:C.blue,border:"rgba(37,99,235,.2)",bg:"rgba(37,99,235,.05)",items:[["Abonnement standard",`${fmt(T.patient_standard)} FCFA/mois`,"Dossier médical + prise de RDV"],["Avec suivi médecin privé",`${fmt(T.patient_suivi)} FCFA/mois`,"Tout inclus + suivi médecin indép."],["Revenus actuels",`${fmt(revP)} FCFA/mois`,`${np} patient(s) abonné(s)`]]},
+    {title:"⭐ Médecins indépendants",color:C.purple,border:"rgba(124,58,237,.2)",bg:"rgba(124,58,237,.05)",items:[["Abonnement mensuel",`${fmt(T.medecin_independant)} FCFA/mois`,"Accès plateforme + visibilité publique"],["Frais mise en relation",`${fmt(T.mise_en_relation)} FCFA`,"Par demande patient acceptée"],["Revenus actuels",`${fmt(revMI)} FCFA/mois`,`${nMI} médecin(s) indépendant(s)`]]},
+  ];
 
-  // Revenus détaillés
-  const R = {
-    setupCliniques:   cliniques.length * TARIFS.CLINIQUE_SETUP,
-    abonnCliniques:   cliniques.length * TARIFS.CLINIQUE_MENSUEL,
-    abonnPatients:    patients.length  * TARIFS.PATIENT_MENSUEL_STD,
-    livraisons:       livrees.length   * TARIFS.LIVRAISON_MEDICONNECT,
-  };
-  R.totalMensuel = R.abonnCliniques + R.abonnPatients + R.livraisons;
-  R.totalGlobal  = R.setupCliniques + R.totalMensuel;
-
-  return (
+  return(
     <div>
-      <PageHeader title="📈 Rapports financiers" subtitle="Revenus · Abonnements · Livraisons — MediConnect For Africa" />
-
-      {/* Vue globale */}
-      <div style={{background:"linear-gradient(135deg,rgba(10,143,88,.1),rgba(13,148,136,.08))",border:"1px solid rgba(10,143,88,.25)",borderRadius:16,padding:24,marginBottom:24}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#0A8F58",textTransform:"uppercase",letterSpacing:".5px",marginBottom:16}}>💰 Revenus consolidés MediConnect For Africa</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-          {[
-            ["Mise en service (one-time)",R.setupCliniques,"#F0F4F8",`${cliniques.length} clinique(s)`],
-            ["Abonnements mensuels",R.totalMensuel,"#0A8F58","Récurrent"],
-            ["Dont livraisons",R.livraisons,"#D97706",`${livrees.length} livraison(s)`],
-            ["TOTAL GLOBAL",R.totalGlobal,"#0A8F58","Cumulé"],
-          ].map(([l,v,c,sub])=>(
-            <div key={l} style={{background:"rgba(14,22,32,.7)",borderRadius:12,padding:"16px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"#4E657A",marginBottom:8}}>{l}</div>
-              <div style={{fontSize:22,fontWeight:900,color:c,marginBottom:4}}>{fmt(v)} F</div>
-              <div style={{fontSize:10,color:"#4E657A"}}>{sub}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Détail par ligne de revenus */}
-      <Grid cols={2} gap={20}>
-        <Panel title="📋 Détail par source de revenus">
-          {[
-            {icon:"🔧",label:"Mise en service cliniques",montant:R.setupCliniques,detail:`${cliniques.length} × ${fmt(TARIFS.CLINIQUE_SETUP)} F`,type:"One-time",color:"#0D9488"},
-            {icon:"🏥",label:"Abonnements cliniques",montant:R.abonnCliniques,detail:`${cliniques.length} × ${fmt(TARIFS.CLINIQUE_MENSUEL)} F/mois`,type:"Mensuel",color:"#0D9488"},
-            {icon:"👤",label:"Abonnements patients standard",montant:R.abonnPatients,detail:`${patients.length} × ${fmt(TARIFS.PATIENT_MENSUEL_STD)} F/mois`,type:"Mensuel",color:"#0A8F58"},
-            {icon:"🛵",label:"Commission livraisons",montant:R.livraisons,detail:`${livrees.length} × ${fmt(TARIFS.LIVRAISON_MEDICONNECT)} F`,type:"Variable",color:"#D97706"},
-          ].map(s=>(
-            <div key={s.label} style={{padding:"12px 0",borderBottom:"1px solid #0E1620"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>{s.icon}</span><span style={{fontSize:13,fontWeight:600,color:"#F0F4F8"}}>{s.label}</span></div>
-                <span style={{fontSize:15,fontWeight:800,color:s.color}}>{fmt(s.montant)} F</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:11,color:"#4E657A",marginLeft:26}}>{s.detail}</span>
-                <Badge color={s.type==="Mensuel"?"green":s.type==="One-time"?"teal":"amber"}>{s.type}</Badge>
-              </div>
-            </div>
-          ))}
-          <div style={{display:"flex",justifyContent:"space-between",paddingTop:12,marginTop:4,borderTop:"2px solid #1E2F42"}}>
-            <span style={{fontWeight:700,color:"#F0F4F8",fontSize:14}}>Total mensuel récurrent</span>
-            <span style={{fontWeight:900,color:"#0A8F58",fontSize:16}}>{fmt(R.totalMensuel)} FCFA</span>
+      <PageHeader title="💰 Monétisation MediConnect Africa" subtitle="Tarification complète · Revenus · Abonnements · Commissions"/>
+      <Panel title="📋 Grille tarifaire officielle" style={{marginBottom:20}}>
+        {GRILLE.map(section=>(
+          <div key={section.title} style={{background:section.bg,border:`1px solid ${section.border}`,borderRadius:12,padding:16,marginBottom:14}}>
+            <div style={{fontSize:14,fontWeight:800,color:section.color,marginBottom:10}}>{section.title}</div>
+            <Grid cols={3} gap={10}>
+              {section.items.map(([k,v,d])=>(
+                <div key={k} style={{background:C.input,borderRadius:8,padding:12}}>
+                  <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>{k}</div>
+                  <div style={{fontSize:17,fontWeight:900,color:section.color,marginBottom:3}}>{v}</div>
+                  <div style={{fontSize:11,color:C.dim}}>{d}</div>
+                </div>
+              ))}
+            </Grid>
           </div>
-        </Panel>
-
-        <Panel title="📊 Projections de croissance">
-          {[
-            {label:"Objectif 50 cliniques",mensuel:50*TARIFS.CLINIQUE_MENSUEL+patients.length*TARIFS.PATIENT_MENSUEL_STD},
-            {label:"Objectif 100 cliniques",mensuel:100*TARIFS.CLINIQUE_MENSUEL+patients.length*TARIFS.PATIENT_MENSUEL_STD},
-            {label:"Objectif 500 patients actifs",mensuel:cliniques.length*TARIFS.CLINIQUE_MENSUEL+500*TARIFS.PATIENT_MENSUEL_STD},
-            {label:"Objectif 1000 livraisons/mois",mensuel:cliniques.length*TARIFS.CLINIQUE_MENSUEL+patients.length*TARIFS.PATIENT_MENSUEL_STD+1000*TARIFS.LIVRAISON_MEDICONNECT},
-          ].map((p,i)=>(
-            <div key={i} style={{marginBottom:16}}>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:5}}>
-                <span style={{color:"#8BA0B5"}}>{p.label}</span>
-                <span style={{fontWeight:700,color:"#0A8F58"}}>{fmt(p.mensuel)} F/mois</span>
+        ))}
+      </Panel>
+      <Panel title="📊 Revenus consolidés ce mois" accent="rgba(10,143,88,.3)">
+        <Grid cols={2} gap={20}>
+          <div>
+            {[{l:"🛵 Commissions livraisons",v:revL,d:`${livrees} × ${fmt(T.livraison_plateforme)} F`},{l:"🏥 Abonnements cliniques",v:revC,d:`${nc} × ${fmt(T.clinique_mensuel)} F/mois`},{l:"👤 Abonnements patients",v:revP,d:`${np} × ${fmt(T.patient_standard)} F/mois`},{l:"⭐ Médecins indépendants",v:revMI,d:`${nMI} × ${fmt(T.medecin_independant)} F/mois`}].map((item,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+                <div><div style={{fontSize:13,color:C.text,fontWeight:600}}>{item.l}</div><div style={{fontSize:11,color:C.dim}}>{item.d}</div></div>
+                <span style={{fontSize:16,fontWeight:800,color:C.green}}>{fmt(item.v)} F</span>
               </div>
-              <ProgressBar value={R.totalMensuel} max={p.mensuel} color="#0A8F58" />
-              <div style={{fontSize:10,color:"#4E657A",marginTop:3,textAlign:"right"}}>{R.totalMensuel>0?Math.min(100,Math.round(R.totalMensuel/p.mensuel*100)):0}% atteint</div>
+            ))}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:14}}>
+              <span style={{fontSize:15,fontWeight:700,color:C.text}}>TOTAL MENSUEL</span>
+              <span style={{fontSize:24,fontWeight:900,color:C.green}}>{fmt(revT)} FCFA</span>
             </div>
-          ))}
-        </Panel>
-      </Grid>
+          </div>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:14}}>Répartition</div>
+            {[{l:"Livraisons",v:revL,c:C.teal},{l:"Cliniques",v:revC,c:C.green},{l:"Patients",v:revP,c:C.blue},{l:"Médecins indép.",v:revMI,c:C.purple}].map(item=>(
+              <div key={item.l} style={{marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}><span style={{color:C.muted}}>{item.l}</span><span style={{fontWeight:700,color:item.c}}>{revT>0?Math.round(item.v/revT*100):0}%</span></div>
+                <ProgressBar value={item.v} max={Math.max(revT,1)} color={item.c}/>
+              </div>
+            ))}
+          </div>
+        </Grid>
+      </Panel>
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  PAGE GESTION RDV PATIENT
+// GESTION UTILISATEURS COMPLÈTE
 // ════════════════════════════════════════════════════════════════════
-function PageGestionRDV() {
-  const { data: rdvsData, isLoading }    = useQuery({ queryKey:["adm-rdvs"],   queryFn:()=>adminAPI.rdvs().then(r=>r.data.data||[])      });
-  const { data: cliniquesData }          = useQuery({ queryKey:["adm-cliniq"], queryFn:()=>adminAPI.cliniques().then(r=>r.data.data||[]) });
-  const rdvs     = rdvsData     || [];
-  const cliniques = cliniquesData || [];
+function PageUtilisateurs(){
+  const qc=useQueryClient();
+  const [search,setSearch]=useState("");
+  const [roleFilter,setRoleFilter]=useState("");
+  const [statutFilter,setStatut]=useState("");
+  const [showAdd,setShowAdd]=useState(false);
+  const [showDetail,setShowDetail]=useState(null);
+  const [form,setForm]=useState({prenom:"",nom:"",email:"",password:"",role:"patient",telephone:"",ville:""});
 
-  const [cliniqueFiltre, setCliniqueFiltre] = useState("all");
-  const [statutFiltre,   setStatutFiltre]   = useState("all");
+  const {data,isLoading}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const toggleMut=useMutation({mutationFn:({id,v})=>aAPI.toggleUser(id,v),onSuccess:()=>{toast.success("Statut mis à jour");qc.invalidateQueries(["adm-users"]);},onError:()=>toast.error("Erreur")});
+  const addMut=useMutation({mutationFn:d=>aAPI.addUser(d),onSuccess:()=>{toast.success("✅ Utilisateur créé !");qc.invalidateQueries(["adm-users"]);setShowAdd(false);setForm({prenom:"",nom:"",email:"",password:"",role:"patient",telephone:"",ville:""});},onError:e=>toast.error(e?.response?.data?.message||"Erreur création")});
 
-  // Calculs globaux
-  const total    = rdvs.length;
-  const tenus    = rdvs.filter(r=>r.statut==="confirme"||r.statut==="confirmed"||r.statut==="termine").length;
-  const annules  = rdvs.filter(r=>r.statut==="annule"||r.statut==="cancelled").length;
-  const enCours  = rdvs.filter(r=>r.statut==="en_attente"||r.statut==="pending").length;
+  const users=useMemo(()=>(data||[]).filter(u=>{
+    const q=search.toLowerCase();
+    const mQ=!q||`${u.prenom||""} ${u.nom||""} ${u.email||""} ${u.telephone||""}`.toLowerCase().includes(q);
+    const mR=!roleFilter||u.role===roleFilter;
+    const mS=!statutFilter||(statutFilter==="actif"?u.is_active:!u.is_active);
+    return mQ&&mR&&mS;
+  }),[data,search,roleFilter,statutFilter]);
 
-  // RDV filtrés
-  const rdvsFiltres = rdvs.filter(r => {
-    const okClinique = cliniqueFiltre === "all" || String(r.clinique_id) === String(cliniqueFiltre);
-    const okStatut   = statutFiltre   === "all" || r.statut === statutFiltre;
-    return okClinique && okStatut;
-  });
+  const byRole=(data||[]).reduce((a,u)=>({...a,[u.role]:(a[u.role]||0)+1}),{});
+  const f=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
 
-  // Stats par clinique
-  const statsByClinique = cliniques.map(c => {
-    const rdvsCli = rdvs.filter(r => String(r.clinique_id) === String(c.id));
-    return {
-      ...c,
-      total:   rdvsCli.length,
-      tenus:   rdvsCli.filter(r=>r.statut==="confirme"||r.statut==="confirmed"||r.statut==="termine").length,
-      annules: rdvsCli.filter(r=>r.statut==="annule"||r.statut==="cancelled").length,
-      enCours: rdvsCli.filter(r=>r.statut==="en_attente"||r.statut==="pending").length,
-    };
-  });
-
-  const statutColor = (s) => s==="confirme"||s==="confirmed"||s==="termine" ? "#0A8F58" : s==="annule"||s==="cancelled" ? "#E11D48" : "#F59E0B";
-  const statutLabel = (s) => s==="confirme"||s==="confirmed" ? "Tenu" : s==="termine" ? "Terminé" : s==="annule"||s==="cancelled" ? "Annulé" : "En attente";
-
-  return (
+  return(
     <div>
-      <PageHeader title="📅 Gestion RDV Patient" subtitle="Suivi des rendez-vous pris via MediConnect RDV" />
+      <PageHeader title="👥 Gestion des utilisateurs" subtitle={`${users.length} / ${(data||[]).length} utilisateurs`} actions={<Btn onClick={()=>setShowAdd(true)}>+ Créer utilisateur</Btn>}/>
 
-      {/* KPIs globaux */}
-      <Grid cols={4} gap={14} style={{marginBottom:24}}>
-        {[
-          ["Total RDV",    total,   "📅", "#2563EB", "Tous statuts confondus"],
-          ["RDV Tenus",    tenus,   "✅", "#0A8F58", "Confirmés & terminés"],
-          ["RDV Annulés",  annules, "❌", "#E11D48", "Annulés par patient/clinique"],
-          ["En attente",   enCours, "⏳", "#F59E0B", "En cours de traitement"],
-        ].map(([l,v,icon,c,sub])=>(
-          <div key={l} style={{background:"#141E2B",border:`2px solid ${c}30`,borderRadius:14,padding:"20px 16px",textAlign:"center"}}>
-            <div style={{fontSize:28,marginBottom:8}}>{icon}</div>
-            <div style={{fontSize:36,fontWeight:900,color:c,marginBottom:4}}>{v}</div>
-            <div style={{fontSize:13,fontWeight:700,color:"#F0F4F8",marginBottom:4}}>{l}</div>
-            <div style={{fontSize:11,color:"#4E657A"}}>{sub}</div>
-          </div>
+      {/* Stats par rôle */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:10,marginBottom:20}}>
+        {Object.entries(ROLE_META).map(([role,meta])=>(
+          <button key={role} onClick={()=>setRoleFilter(roleFilter===role?"":role)}
+            style={{background:roleFilter===role?`rgba(10,143,88,.15)`:C.input,border:`1.5px solid ${roleFilter===role?C.green:C.border}`,borderRadius:12,padding:"10px 6px",textAlign:"center",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>
+            <div style={{fontSize:18,marginBottom:4}}>{meta.icon}</div>
+            <div style={{fontSize:16,fontWeight:900,color:C[meta.color]||C.muted}}>{byRole[role]||0}</div>
+            <div style={{fontSize:9,color:C.dim,lineHeight:1.3}}>{meta.label}</div>
+          </button>
         ))}
-      </Grid>
-
-      {/* Stats par clinique */}
-      <div style={{background:"#141E2B",border:"1px solid #1E2F42",borderRadius:14,padding:20,marginBottom:24}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#F0F4F8",marginBottom:16}}>🏥 RDV par clinique</div>
-        {statsByClinique.length === 0 ? (
-          <div style={{textAlign:"center",color:"#4E657A",padding:"20px 0"}}>Aucune clinique enregistrée</div>
-        ) : (
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead>
-              <tr style={{borderBottom:"1px solid #1E2F42"}}>
-                {["Clinique","Total","Tenus","Annulés","En attente","Taux tenu"].map(h=>(
-                  <th key={h} style={{textAlign:"left",padding:"8px 12px",fontSize:11,color:"#4E657A",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {statsByClinique.map((c,i)=>(
-                <tr key={c.id||i} style={{borderBottom:"1px solid #0E1620",cursor:"pointer"}}
-                  onMouseOver={e=>e.currentTarget.style.background="#1A2535"}
-                  onMouseOut={e=>e.currentTarget.style.background="transparent"}
-                  onClick={()=>setCliniqueFiltre(String(c.id)===cliniqueFiltre?"all":String(c.id))}>
-                  <td style={{padding:"12px",fontSize:14,fontWeight:700,color:"#F0F4F8"}}>{c.nom||"Clinique"}</td>
-                  <td style={{padding:"12px",fontSize:14,fontWeight:700,color:"#2563EB"}}>{c.total}</td>
-                  <td style={{padding:"12px",fontSize:14,fontWeight:700,color:"#0A8F58"}}>{c.tenus}</td>
-                  <td style={{padding:"12px",fontSize:14,fontWeight:700,color:"#E11D48"}}>{c.annules}</td>
-                  <td style={{padding:"12px",fontSize:14,fontWeight:700,color:"#F59E0B"}}>{c.enCours}</td>
-                  <td style={{padding:"12px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{flex:1,height:6,background:"#1E2F42",borderRadius:3,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${c.total>0?Math.round(c.tenus/c.total*100):0}%`,background:"#0A8F58",borderRadius:3,transition:"width .3s"}}/>
-                      </div>
-                      <span style={{fontSize:12,color:"#0A8F58",fontWeight:700,minWidth:36}}>{c.total>0?Math.round(c.tenus/c.total*100):0}%</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
 
       {/* Filtres */}
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:13,color:"#8BA0B5",fontWeight:600}}>Filtrer :</span>
-        <select value={cliniqueFiltre} onChange={e=>setCliniqueFiltre(e.target.value)}
-          style={{background:"#141E2B",border:"1px solid #1E2F42",color:"#F0F4F8",borderRadius:8,padding:"6px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
-          <option value="all">Toutes les cliniques</option>
-          {cliniques.map(c=><option key={c.id} value={c.id}>{c.nom||"Clinique"}</option>)}
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, email, téléphone…"
+          style={{flex:1,minWidth:200,background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"9px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit"}}
+          onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+        <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"9px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit"}}>
+          <option value="">Tous les rôles</option>
+          {Object.entries(ROLE_META).map(([role,m])=><option key={role} value={role}>{m.icon} {m.label}</option>)}
         </select>
-        <select value={statutFiltre} onChange={e=>setStatutFiltre(e.target.value)}
-          style={{background:"#141E2B",border:"1px solid #1E2F42",color:"#F0F4F8",borderRadius:8,padding:"6px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
-          <option value="all">Tous les statuts</option>
-          <option value="confirme">Tenus</option>
-          <option value="en_attente">En attente</option>
-          <option value="annule">Annulés</option>
+        <select value={statutFilter} onChange={e=>setStatut(e.target.value)} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"9px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit"}}>
+          <option value="">Tous statuts</option>
+          <option value="actif">✅ Actifs</option>
+          <option value="inactif">❌ Inactifs</option>
         </select>
-        {(cliniqueFiltre!=="all"||statutFiltre!=="all") && (
-          <button onClick={()=>{setCliniqueFiltre("all");setStatutFiltre("all");}}
-            style={{background:"none",border:"1px solid #1E2F42",color:"#8BA0B5",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>
-            ✕ Réinitialiser
-          </button>
-        )}
-        <span style={{fontSize:12,color:"#4E657A",marginLeft:"auto"}}>{rdvsFiltres.length} résultat(s)</span>
+        {(search||roleFilter||statutFilter)&&<Btn variant="outline" style={{padding:"9px 14px",fontSize:12}} onClick={()=>{setSearch("");setRoleFilter("");setStatut("");}}>✕ Réinitialiser</Btn>}
       </div>
 
-      {/* Liste RDV filtrée */}
-      <div style={{background:"#141E2B",border:"1px solid #1E2F42",borderRadius:14,padding:20}}>
-        <div style={{fontSize:14,fontWeight:800,color:"#F0F4F8",marginBottom:14}}>
-          📋 Liste des RDV
-          {cliniqueFiltre!=="all" && <span style={{fontSize:12,color:"#2563EB",fontWeight:400,marginLeft:8}}>— {cliniques.find(c=>String(c.id)===cliniqueFiltre)?.nom}</span>}
+      {isLoading?<Loader/>:(
+        <Panel>
+          {users.length===0?<Empty icon="👥" title="Aucun utilisateur trouvé" subtitle="Modifiez vos filtres"/>:(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <THead cols={["Utilisateur","Rôle","Téléphone","Ville","Inscription","Statut","Actions"]}/>
+                <tbody>
+                  {users.map(u=>{
+                    const meta=ROLE_META[u.role]||{icon:"👤",color:"gray",label:u.role};
+                    return(
+                      <tr key={u.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                        <td style={{padding:"10px 12px"}}><div style={{fontWeight:700,color:C.text}}>{u.prenom||""} {u.nom||""}</div><div style={{fontSize:11,color:C.muted}}>{u.email}</div></td>
+                        <td style={{padding:"10px 12px"}}><Badge color={meta.color}>{meta.icon} {meta.label}</Badge></td>
+                        <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{u.telephone||"—"}</td>
+                        <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{u.ville||"—"}</td>
+                        <td style={{padding:"10px 12px",color:C.dim,fontSize:11}}>{fmtDate(u.created_at)}</td>
+                        <td style={{padding:"10px 12px"}}><Badge color={u.is_active?"green":"red"}>{u.is_active?"Actif":"Inactif"}</Badge></td>
+                        <td style={{padding:"10px 12px"}}>
+                          <div style={{display:"flex",gap:6}}>
+                            <Btn variant="outline" style={{padding:"4px 10px",fontSize:11}} onClick={()=>setShowDetail(u)}>Voir</Btn>
+                            <Btn variant={u.is_active?"danger":"outline"} style={{padding:"4px 10px",fontSize:11,color:u.is_active?C.red:C.green}} loading={toggleMut.isPending} onClick={()=>toggleMut.mutate({id:u.id,v:!u.is_active})}>
+                              {u.is_active?"Suspendre":"Activer"}
+                            </Btn>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* Modal: Créer utilisateur */}
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="👤 Créer un utilisateur" width={560}>
+        <Grid cols={2} gap={12}>
+          <Inp label="Prénom *" required value={form.prenom} onChange={f("prenom")} placeholder="Adjoua"/>
+          <Inp label="Nom *" required value={form.nom} onChange={f("nom")} placeholder="Koné"/>
+          <Inp label="Email *" required value={form.email} onChange={f("email")} type="email" placeholder="user@exemple.com"/>
+          <Inp label="Mot de passe *" required value={form.password} onChange={f("password")} type="password" placeholder="••••••••"/>
+          <Inp label="Téléphone" value={form.telephone} onChange={f("telephone")} type="tel" placeholder="+225 07 00 00 00 00"/>
+          <Inp label="Ville" value={form.ville} onChange={f("ville")} placeholder="Abidjan"/>
+        </Grid>
+        <Sel label="Rôle *" required value={form.role} onChange={f("role")} options={Object.entries(ROLE_META).map(([role,m])=>({v:role,l:`${m.icon} ${m.label}`}))}/>
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{if(!form.prenom||!form.nom||!form.email||!form.password){toast.error("Champs requis manquants");return;}addMut.mutate(form);}}>Créer l'utilisateur</Btn>
         </div>
-        {isLoading ? <Loader /> : rdvsFiltres.length === 0 ? (
-          <div style={{textAlign:"center",padding:"40px 0",color:"#4E657A"}}>
-            <div style={{fontSize:40,marginBottom:12}}>📅</div>
-            <div>Aucun RDV trouvé</div>
-          </div>
-        ) : (
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead>
-              <tr style={{borderBottom:"1px solid #1E2F42"}}>
-                {["N° RDV","Médecin","Clinique","Date","Statut"].map(h=>(
-                  <th key={h} style={{textAlign:"left",padding:"8px 12px",fontSize:11,color:"#4E657A",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rdvsFiltres.map((rdv,i)=>{
-                const sc = statutColor(rdv.statut);
-                const sl = statutLabel(rdv.statut);
-                const clinique = cliniques.find(c=>String(c.id)===String(rdv.clinique_id));
-                return (
-                  <tr key={rdv.id||i} style={{borderBottom:"1px solid #0E1620"}}>
-                    <td style={{padding:"10px 12px",fontSize:13,fontWeight:700,color:"#2563EB",fontFamily:"monospace"}}>
-                      #{rdv.reference||rdv.id||`RDV-${String(i+1).padStart(4,"0")}`}
-                    </td>
-                    <td style={{padding:"10px 12px",fontSize:13,color:"#F0F4F8"}}>
-                      Dr. {rdv.medecin_prenom||""} {rdv.medecin_nom||rdv.medecin||"—"}
-                    </td>
-                    <td style={{padding:"10px 12px",fontSize:12,color:"#8BA0B5"}}>
-                      {clinique?.nom||rdv.clinique_nom||"—"}
-                    </td>
-                    <td style={{padding:"10px 12px",fontSize:12,color:"#8BA0B5"}}>
-                      {rdv.creneau ? new Date(rdv.creneau.split(" ")[0]).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"})+" "+(rdv.creneau.split(" ")[1]||"") : rdv.date||"—"}
-                    </td>
-                    <td style={{padding:"10px 12px"}}>
-                      <span style={{fontSize:11,background:sc+"20",color:sc,borderRadius:20,padding:"3px 10px",fontWeight:700}}>{sl}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
+      </Modal>
 
-// ════════════════════════════════════════════════════════════════════
-//  PAGE GESTION RDV PATIENTS
-// ════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════
-//  PAGE ASSUREURS
-// ════════════════════════════════════════════════════════════════════
-function PageAssureurs() {
-  const { data: usersData } = useQuery({ queryKey:["adm-users"], queryFn:()=>adminAPI.users().then(r=>r.data.data||[]) });
-  const assureurs = (usersData||[]).filter(u=>u.role==="assureur");
-  return (
-    <div>
-      <PageHeader title="🛡️ Assureurs API" subtitle={`${assureurs.length} assureur(s) connecté(s)`} />
-      <Panel title="Compagnies d'assurance partenaires">
-        {assureurs.length === 0
-          ? <Empty icon="🛡️" title="Aucun assureur enregistré" subtitle="Les assureurs se connectent via leur espace dédié" />
-          : <Table
-              columns={[
-                {key:"prenom",label:"Assureur",render:(v,r)=><><div style={{fontWeight:700}}>{v} {r.nom}</div><div style={{fontSize:11,color:"#8BA0B5"}}>{r.email}</div></>},
-                {key:"telephone",label:"Téléphone"},
-                {key:"ville",label:"Ville"},
-                {key:"is_active",label:"Statut",render:v=><Badge color={v?"green":"red"}>{v?"Actif":"Inactif"}</Badge>},
-              ]}
-              rows={assureurs}
-            />
-        }
-      </Panel>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  PAGE FACTURATION ADMIN
-// ════════════════════════════════════════════════════════════════════
-const MOYENS_PAIEMENT = [
-  { id: 'wave',      label: 'Wave',         icon: '🌊', color: '#1DA6F2' },
-  { id: 'orange',    label: 'Orange Money', icon: '🟠', color: '#FF6600' },
-  { id: 'moov',      label: 'Moov Money',   icon: '🔵', color: '#0066CC' },
-  { id: 'mtn',       label: 'MTN MoMo',     icon: '🟡', color: '#FFCC00' },
-  { id: 'visa',      label: 'Visa',         icon: '💳', color: '#1A1F71' },
-  { id: 'mastercard',label: 'Mastercard',   icon: '🔴', color: '#EB001B' },
-];
-
-function MobilePayModal({ facture, onClose }) {
-  const [moyen, setMoyen] = useState(null);
-  const [tel, setTel] = useState('');
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const m = MOYENS_PAIEMENT.find(x => x.id === moyen);
-
-  const handlePayer = () => {
-    setLoading(true);
-    setTimeout(() => { setLoading(false); setStep(3); }, 2000);
-  };
-
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-      <div style={{ background:'#0E1620', border:'1px solid #1E2F42', borderRadius:20, width:'100%', maxWidth:460, overflow:'hidden' }}>
-        <div style={{ background:'linear-gradient(135deg,#0A8F58,#0D9488)', padding:'20px 24px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      {/* Modal: Détail utilisateur */}
+      <Modal open={!!showDetail} onClose={()=>setShowDetail(null)} title={`👤 ${showDetail?.prenom} ${showDetail?.nom}`}>
+        {showDetail&&(
           <div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.7)', marginBottom:4 }}>Mobile Pay · Paiement sécurisé</div>
-            <div style={{ fontSize:26, fontWeight:900, color:'#fff' }}>{fmt(facture?.montant)} FCFA</div>
-            <div style={{ fontSize:12, color:'rgba(255,255,255,.8)' }}>Facture #{facture?.numero}</div>
-          </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,.2)', border:'none', borderRadius:'50%', width:32, height:32, color:'#fff', cursor:'pointer', fontSize:16 }}>✕</button>
-        </div>
-        <div style={{ padding:24 }}>
-          {step===1 && (
-            <div>
-              <div style={{ fontSize:14, fontWeight:700, color:'#F0F4F8', marginBottom:16 }}>Choisir un moyen de paiement</div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
-                {MOYENS_PAIEMENT.map(mp => (
-                  <button key={mp.id} onClick={()=>{ setMoyen(mp.id); setStep(2); }}
-                    style={{ background:mp.color+'15', border:`2px solid ${mp.color}40`, borderRadius:12, padding:'12px', cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
-                    <span style={{ fontSize:22 }}>{mp.icon}</span>
-                    <span style={{ fontSize:12, fontWeight:700, color:mp.color }}>{mp.label}</span>
-                  </button>
-                ))}
-              </div>
-              <div style={{ textAlign:'center', fontSize:11, color:'#4E657A' }}>🔒 Paiement sécurisé par Mobile Pay</div>
-            </div>
-          )}
-          {step===2 && m && (
-            <div>
-              <button onClick={()=>setStep(1)} style={{ background:'none', border:'none', color:'#0A8F58', cursor:'pointer', fontSize:13, marginBottom:16, padding:0 }}>← Retour</button>
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, padding:'10px 14px', background:m.color+'15', borderRadius:10 }}>
-                <span style={{ fontSize:24 }}>{m.icon}</span>
-                <span style={{ fontSize:14, fontWeight:700, color:m.color }}>{m.label}</span>
-              </div>
-              {(moyen==='visa'||moyen==='mastercard') ? (
+            <div style={{background:C.hover,borderRadius:12,padding:16,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
+                <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.green},${C.teal})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:18}}>{showDetail.prenom?.[0]}{showDetail.nom?.[0]}</div>
                 <div>
-                  <input placeholder="Numéro de carte" style={{ width:'100%', background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', marginBottom:10, boxSizing:'border-box' }} />
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
-                    <input placeholder="MM/AA" style={{ background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', boxSizing:'border-box' }} />
-                    <input placeholder="CVV" style={{ background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', boxSizing:'border-box' }} />
-                  </div>
+                  <div style={{fontSize:17,fontWeight:800,color:C.text}}>{showDetail.prenom} {showDetail.nom}</div>
+                  <Badge color={ROLE_META[showDetail.role]?.color||"gray"}>{ROLE_META[showDetail.role]?.icon} {ROLE_META[showDetail.role]?.label||showDetail.role}</Badge>
                 </div>
-              ) : (
-                <input placeholder="Numéro de téléphone" value={tel} onChange={e=>setTel(e.target.value)}
-                  style={{ width:'100%', background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:12, color:'#F0F4F8', marginBottom:16, boxSizing:'border-box' }} />
-              )}
-              <div style={{ background:'#141E2B', borderRadius:8, padding:'10px 14px', marginBottom:16, display:'flex', justifyContent:'space-between' }}>
-                <span style={{ fontSize:13, color:'#8BA0B5' }}>Total</span>
-                <span style={{ fontSize:15, fontWeight:800, color:'#0A8F58' }}>{fmt(facture?.montant)} FCFA</span>
               </div>
-              <button onClick={handlePayer} disabled={loading}
-                style={{ width:'100%', background:`linear-gradient(135deg,${m.color},${m.color}CC)`, border:'none', borderRadius:10, padding:14, color:'#fff', fontSize:14, fontWeight:800, cursor:'pointer' }}>
-                {loading ? '⏳ Traitement...' : `💳 Payer ${fmt(facture?.montant)} FCFA`}
-              </button>
+              <Grid cols={2} gap={10}>
+                {[["Email",showDetail.email],["Téléphone",showDetail.telephone||"—"],["Ville",showDetail.ville||"—"],["Inscription",fmtDate(showDetail.created_at)],["ID",showDetail.id?.slice(0,16)+"…"],["Statut",showDetail.is_active?"Actif":"Inactif"]].map(([k,v])=>(
+                  <div key={k} style={{background:C.input,borderRadius:8,padding:"9px 12px"}}>
+                    <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{k}</div>
+                    <div style={{fontSize:13,color:C.text,fontWeight:600}}>{v}</div>
+                  </div>
+                ))}
+              </Grid>
             </div>
-          )}
-          {step===3 && (
-            <div style={{ textAlign:'center', padding:'20px 0' }}>
-              <div style={{ width:72, height:72, background:'linear-gradient(135deg,#0A8F58,#0D9488)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:32, margin:'0 auto 16px' }}>✅</div>
-              <div style={{ fontSize:22, fontWeight:800, color:'#F0F4F8', marginBottom:8 }}>Paiement réussi !</div>
-              <div style={{ fontSize:13, color:'#8BA0B5', marginBottom:20 }}>Facture #{facture?.numero} soldée</div>
-              <button onClick={onClose} style={{ background:'#0A8F58', border:'none', borderRadius:10, padding:'10px 28px', color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer' }}>Fermer</button>
+            <div style={{display:"flex",gap:10}}>
+              <Btn variant={showDetail.is_active?"danger":"primary"} style={{flex:1}} loading={toggleMut.isPending} onClick={()=>{toggleMut.mutate({id:showDetail.id,v:!showDetail.is_active});setShowDetail(null);}}>
+                {showDetail.is_active?"❌ Suspendre":"✅ Activer"}
+              </Btn>
+              <Btn variant="outline" style={{flex:1}} onClick={()=>setShowDetail(null)}>Fermer</Btn>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
 
-function PageFacturationAdmin() {
-  const { data: cliniquesData } = useQuery({ queryKey:["adm-cliniq"], queryFn:()=>adminAPI.cliniques().then(r=>r.data.data||[]) });
-  const { data: usersData }     = useQuery({ queryKey:["adm-users"],  queryFn:()=>adminAPI.users().then(r=>r.data.data||[])    });
-  const cliniques = cliniquesData || [];
-  const users     = usersData     || [];
-  const [factureActive, setFactureActive] = useState(null);
-  const [tarifEdit, setTarifEdit] = useState({ ...TARIFS });
-
-  // Simulation factures générées automatiquement après 25 jours
-  const facturesSimulees = [
-    ...cliniques.map((c,i)=>({ id:i+1, profil:'Clinique', nom:c.nom||'Clinique', montant:tarifEdit.CLINIQUE_MENSUEL, statut:i%2===0?'en_attente':'payee', echeance:'05/05/2026', numero:`MC-CLI-${String(i+1).padStart(3,'0')}`, service:'Abonnement Clinique' })),
-    { id:100, profil:'Pharmacie', nom:'Pharmacie Demo', montant:tarifEdit.PHARMACIE_MENSUEL, statut:'en_attente', echeance:'05/05/2026', numero:'MC-PHA-001', service:'Abonnement Pharmacie' },
-    { id:101, profil:'Laboratoire', nom:'Labo Demo', montant:tarifEdit.LABO_MENSUEL, statut:'payee', echeance:'05/05/2026', numero:'MC-LAB-001', service:'Abonnement Laboratoire' },
-  ];
-
-  const totalAttendu  = facturesSimulees.reduce((s,f)=>s+f.montant, 0);
-  const totalEncaisse = facturesSimulees.filter(f=>f.statut==='payee').reduce((s,f)=>s+f.montant, 0);
-  const totalImpaye   = facturesSimulees.filter(f=>f.statut==='en_attente').reduce((s,f)=>s+f.montant, 0);
-
-  return (
+// ════════════════════════════════════════════════════════════════════
+// CLINIQUES
+// ════════════════════════════════════════════════════════════════════
+function PageCliniques(){
+  const {data,isLoading}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
+  const cl=data||[];
+  return(
     <div>
-      <PageHeader title="💳 Gestion Financière" subtitle="Facturation automatique · Mobile Pay · Configuration des tarifs" />
-
-      {/* KPIs */}
-      <Grid cols={3} gap={14} style={{ marginBottom:20 }}>
-        <Card label="Total attendu" value={fmt(totalAttendu)+" F"} icon="💰" color="#0A8F58" sub="Ce mois" />
-        <Card label="Encaissé" value={fmt(totalEncaisse)+" F"} icon="✅" color="#0D9488" sub="Factures payées" />
-        <Card label="Impayé" value={fmt(totalImpaye)+" F"} icon="⚠" color="#E11D48" sub="En attente" />
+      <PageHeader title="🏥 Gestion des Cliniques" subtitle={`${cl.length} cliniques · ${fmt(cl.length*T.clinique_mensuel)} FCFA/mois`}/>
+      <Grid cols={3} gap={14} style={{marginBottom:20}}>
+        <Card label="Cliniques actives" value={cl.length} icon="🏥" color={C.green}/>
+        <Card label="Revenus mensuels" value={`${fmt(cl.length*T.clinique_mensuel)} F`} icon="💰" color={C.green} sub={`${fmt(T.clinique_mensuel)} F × ${cl.length}`}/>
+        <Card label="Mises en service cumulées" value={`${fmt(cl.length*T.clinique_mise_en_service)} F`} icon="🎓" color={C.teal}/>
       </Grid>
+      {isLoading?<Loader/>:(
+        <Panel>
+          {cl.length===0?<Empty icon="🏥" title="Aucune clinique"/>:(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <THead cols={["Clinique","Type","Ville","Mise en service","Mensuel","Statut"]}/>
+                <tbody>
+                  {cl.map(c=>(
+                    <tr key={c.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px"}}><div style={{fontWeight:700,color:C.text}}>{c.nom||"—"}</div><div style={{fontSize:11,color:C.muted}}>{c.email||"—"}</div></td>
+                      <td style={{padding:"10px 12px"}}><Badge color="green">{c.type||"Clinique"}</Badge></td>
+                      <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{c.ville||"—"}</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.green}}>{fmt(T.clinique_mise_en_service)} F</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.teal}}>{fmt(T.clinique_mensuel)} F/mois</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={c.is_active?"green":"red"}>{c.is_active?"Actif":"Inactif"}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
+    </div>
+  );
+}
 
-      {/* Config tarifs */}
-      <div style={{ background:'#141E2B', border:'1px solid #1E2F42', borderRadius:14, padding:20, marginBottom:20 }}>
-        <div style={{ fontSize:14, fontWeight:800, color:'#F0F4F8', marginBottom:16 }}>⚙️ Configuration des tarifs (FCFA/mois)</div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
-          {[
-            ['Clinique', 'CLINIQUE_MENSUEL'],
-            ['Pharmacie', 'PHARMACIE_MENSUEL'],
-            ['Livreur', 'LIVREUR_MENSUEL'],
-            ['Patient', 'PATIENT_MENSUEL_STD'],
-            ['Laboratoire', 'LABO_MENSUEL'],
-            ['Imagerie', 'IMAGERIE_MENSUEL'],
-            ['Assureur', 'ASSUREUR_MENSUEL'],
-            ['Setup Clinique', 'CLINIQUE_SETUP'],
-          ].map(([label, key]) => (
-            <div key={key} style={{ background:'#0E1620', borderRadius:10, padding:'12px' }}>
-              <div style={{ fontSize:11, color:'#4E657A', marginBottom:6 }}>{label}</div>
-              <input
-                type="number"
-                value={tarifEdit[key]}
-                onChange={e => setTarifEdit(t=>({ ...t, [key]: Number(e.target.value) }))}
-                style={{ width:'100%', background:'#141E2B', border:'1px solid #1E2F42', borderRadius:8, padding:'8px', color:'#0A8F58', fontWeight:800, fontSize:15, boxSizing:'border-box' }}
-              />
+// ════════════════════════════════════════════════════════════════════
+// MÉDECINS
+// ════════════════════════════════════════════════════════════════════
+function PageMedecins(){
+  const {data,isLoading}=useQuery({queryKey:["adm-med"],queryFn:()=>aAPI.medecins().then(r=>r.data.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const md=data||[]; const nMI=(users||[]).filter(u=>u.role==="medecin_independant").length;
+  return(
+    <div>
+      <PageHeader title="🩺 Gestion des Médecins" subtitle={`${md.length} médecins employés · ${nMI} médecins indépendants`}/>
+      <Grid cols={3} gap={14} style={{marginBottom:20}}>
+        <Card label="Médecins employés" value={md.length} icon="🩺" color={C.teal}/>
+        <Card label="Médecins indép." value={nMI} icon="⭐" color={C.purple} sub={`${fmt(nMI*T.medecin_independant)} F/mois`}/>
+        <Card label="Disponibles" value={md.filter(m=>m.statut==="Disponible").length} icon="✅" color={C.green}/>
+      </Grid>
+      {isLoading?<Loader/>:(
+        <Panel>
+          {md.length===0?<Empty icon="🩺" title="Aucun médecin enregistré"/>:(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <THead cols={["Médecin","Spécialité","Clinique","Tarif","Statut","Jours"]}/>
+                <tbody>
+                  {md.map(m=>(
+                    <tr key={m.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px"}}><div style={{fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div><div style={{fontSize:11,color:C.muted}}>{m.email||"—"}</div></td>
+                      <td style={{padding:"10px 12px"}}><Badge color="teal">{m.specialite||"—"}</Badge></td>
+                      <td style={{padding:"10px 12px",fontSize:12,color:C.muted}}>{m.clinique_id?"Clinique affiliée":"Indépendant"}</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.green}}>{m.tarif?`${fmt(m.tarif)} F`:"—"}</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={{Disponible:"green","En consultation":"teal",Absent:"red"}[m.statut]||"gray"}>{m.statut||"—"}</Badge></td>
+                      <td style={{padding:"10px 12px",fontSize:11,color:C.dim}}>{m.jours_travail||"—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LIVREURS
+// ════════════════════════════════════════════════════════════════════
+function PageLivreurs(){
+  const {data,isLoading}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const cmds=data||[]; const livrees=cmds.filter(c=>c.statut==="livree"); const livreurs=(users||[]).filter(u=>u.role==="livreur");
+  return(
+    <div>
+      <PageHeader title="🛵 Supervision Livreurs" subtitle="Commandes · Revenus · Commissions MediConnect"/>
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Livreurs inscrits" value={livreurs.length} icon="🛵" color={C.amber}/>
+        <Card label="Livraisons totales" value={cmds.length} icon="📦" color={C.blue}/>
+        <Card label="Livrées" value={livrees.length} icon="✅" color={C.green}/>
+        <Card label="Commission platef." value={`${fmt(livrees.length*T.livraison_plateforme)} F`} icon="💰" color={C.green} sub={`${livrees.length} × ${fmt(T.livraison_plateforme)} F`}/>
+      </Grid>
+      <Panel title="💰 Monitoring financier" style={{marginBottom:20}}>
+        <Grid cols={3} gap={14} style={{marginBottom:14}}>
+          {[{l:"Perçu des clients",v:livrees.length*T.livraison_total,d:`${livrees.length} × ${fmt(T.livraison_total)} F`,c:C.text,bg:"rgba(255,255,255,.04)"},{l:"Reversé aux livreurs",v:livrees.length*T.livraison_livreur,d:`${livrees.length} × ${fmt(T.livraison_livreur)} F`,c:C.amber,bg:"rgba(217,119,6,.08)"},{l:"Commission MediConnect",v:livrees.length*T.livraison_plateforme,d:`${livrees.length} × ${fmt(T.livraison_plateforme)} F`,c:C.green,bg:"rgba(10,143,88,.1)"}].map(item=>(
+            <div key={item.l} style={{background:item.bg,borderRadius:12,padding:16,textAlign:"center"}}>
+              <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:6}}>{item.l}</div>
+              <div style={{fontSize:22,fontWeight:900,color:item.c,marginBottom:4}}>{fmt(item.v)} F</div>
             </div>
           ))}
+        </Grid>
+        <div style={{fontSize:13,color:C.muted,background:C.hover,borderRadius:8,padding:"10px 14px"}}>
+          Sur chaque livraison à {fmt(T.livraison_total)} FCFA : le livreur reçoit <strong style={{color:C.amber}}>{fmt(T.livraison_livreur)} FCFA</strong> · MediConnect retient <strong style={{color:C.green}}>{fmt(T.livraison_plateforme)} FCFA</strong>.
         </div>
-        <button style={{ marginTop:14, background:'#0A8F58', border:'none', borderRadius:10, padding:'10px 24px', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-          💾 Enregistrer les tarifs
-        </button>
-      </div>
-
-      {/* Liste factures */}
-      <Panel title={`Factures générées (${facturesSimulees.length})`}>
-        <table style={{ width:'100%', borderCollapse:'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom:'2px solid #1E2F42' }}>
-              {['N° Facture','Profil','Établissement','Montant','Échéance','Statut','Action'].map(h=>(
-                <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {facturesSimulees.map((f,i)=>{
-              const sc = f.statut==='payee' ? '#0A8F58' : '#E11D48';
-              return (
-                <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
-                  <td style={{ padding:'10px', fontSize:13, fontWeight:700, color:'#2563EB', fontFamily:'monospace' }}>#{f.numero}</td>
-                  <td style={{ padding:'10px', fontSize:12 }}><Badge color={f.profil==='Clinique'?'green':'blue'}>{f.profil}</Badge></td>
-                  <td style={{ padding:'10px', fontSize:13, color:'#F0F4F8' }}>{f.nom}</td>
-                  <td style={{ padding:'10px', fontSize:14, fontWeight:800, color:'#0A8F58' }}>{fmt(f.montant)} F</td>
-                  <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{f.echeance}</td>
-                  <td style={{ padding:'10px' }}>
-                    <span style={{ fontSize:11, background:sc+'20', color:sc, borderRadius:20, padding:'3px 10px', fontWeight:700 }}>
-                      {f.statut==='payee' ? '✓ Payée' : '⚠ En attente'}
-                    </span>
-                  </td>
-                  <td style={{ padding:'10px' }}>
-                    {f.statut==='en_attente' && (
-                      <button onClick={()=>setFactureActive(f)}
-                        style={{ background:'linear-gradient(135deg,#0A8F58,#0D9488)', border:'none', borderRadius:8, padding:'6px 14px', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
-                        💳 Relancer
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </Panel>
-
-      {factureActive && <MobilePayModal facture={factureActive} onClose={()=>setFactureActive(null)} />}
+      {isLoading?<Loader/>:(
+        <Panel title={`📋 Toutes les commandes (${cmds.length})`}>
+          {cmds.length===0?<Empty icon="📦" title="Aucune commande"/>:(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <THead cols={["Référence","Adresse","Statut","Client","Livreur","Plateforme"]}/>
+                <tbody>
+                  {cmds.slice(0,50).map(c=>(
+                    <tr key={c.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:12,color:C.green}}>#{c.id?.slice(-8).toUpperCase()}</td>
+                      <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{c.adresse_livraison||"—"}</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={{livree:"green",en_cours:"teal",confirmee:"amber",annulee:"red"}[c.statut]||"gray"}>{c.statut}</Badge></td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{fmt(T.livraison_total)} F</td>
+                      <td style={{padding:"10px 12px",color:C.amber,fontWeight:700}}>{fmt(T.livraison_livreur)} F</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.green}}>{fmt(T.livraison_plateforme)} F</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  PAGE BULLETINS MÉDICAUX (Admin)
+// ASSURANCES
 // ════════════════════════════════════════════════════════════════════
-function PageBulletins() {
-  const [bulletins] = useState(BULLETINS_DEMO);
-
-  return (
+function PageAssurances(){
+  const {data,isLoading}=useQuery({queryKey:["adm-ass"],queryFn:()=>aAPI.assurances().then(r=>r.data.data||[])});
+  const d=data||[];
+  return(
     <div>
-      <PageHeader title="🔬 Bulletins médicaux" subtitle="Analyses et imagerie reçus des patients et cliniques" />
-      <Panel title={`Bulletins reçus (${bulletins.length})`}>
-        <table style={{ width:'100%', borderCollapse:'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom:'2px solid #1E2F42' }}>
-              {['N°','Type','Patient','Émetteur','Date','Fichier','Statut'].map(h=>(
-                <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {bulletins.map((b,i)=>(
-              <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
-                <td style={{ padding:'10px', fontSize:12, color:'#2563EB', fontFamily:'monospace' }}>#{b.id}</td>
-                <td style={{ padding:'10px' }}><Badge color={b.type==='Analyse'?'blue':'purple'}>{b.type}</Badge></td>
-                <td style={{ padding:'10px', fontSize:13, color:'#F0F4F8' }}>{b.patient}</td>
-                <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{b.emetteur}</td>
-                <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{b.date}</td>
-                <td style={{ padding:'10px' }}>
-                  <button style={{ background:'rgba(37,99,235,.1)', border:'1px solid rgba(37,99,235,.3)', borderRadius:8, padding:'4px 12px', color:'#2563EB', fontSize:12, cursor:'pointer' }}>
-                    📄 {b.fichier}
-                  </button>
-                </td>
-                <td style={{ padding:'10px' }}><Badge color={b.traite?'green':'orange'}>{b.traite?'Traité':'En attente'}</Badge></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Panel>
+      <PageHeader title="🛡️ Assurances & Tiers-payant" subtitle="Supervision des dossiers de remboursement"/>
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Total dossiers" value={d.length} icon="📁"/>
+        <Card label="Validés" value={d.filter(x=>x.statut==="valide").length} icon="✅" color={C.green}/>
+        <Card label="En attente" value={d.filter(x=>["soumis","en_attente"].includes(x.statut)).length} icon="⏳" color={C.amber}/>
+        <Card label="Montant validé" value={`${fmt(d.filter(x=>x.statut==="valide").reduce((s,x)=>s+(+x.montant_assur||0),0))} F`} icon="💰" color={C.green}/>
+      </Grid>
+      {isLoading?<Loader/>:(
+        <Panel>
+          {d.length===0?<Empty icon="🛡️" title="Aucun dossier assurance" subtitle="Les dossiers des cliniques apparaîtront ici"/>:(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <THead cols={["Référence","Patient","Compagnie","Montant total","Part assur.","Statut"]}/>
+                <tbody>
+                  {d.map(x=>(
+                    <tr key={x.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:12,color:C.teal}}>{x.reference||"—"}</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{x.patient_nom||"—"}</td>
+                      <td style={{padding:"10px 12px",color:C.muted}}>{x.compagnie||"—"}</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{fmt(x.montant_total)} F</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.green}}>{fmt(x.montant_assur)} F</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={{valide:"green",en_attente:"amber",soumis:"blue",rejete:"red"}[x.statut]||"gray"}>{x.statut}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
 
-const BULLETINS_DEMO = [
-  { id:'BUL-001', type:'Analyse', patient:'Aya Konan', emetteur:'Polyclinique du Sud', date:'30/04/2026', fichier:'nfs_konan.pdf', traite:false },
-  { id:'BUL-002', type:'Imagerie', patient:'Moussa Diallo', emetteur:'Centre Radio Plateau', date:'29/04/2026', fichier:'radio_thorax.pdf', traite:true },
-  { id:'BUL-003', type:'Analyse', patient:'Fatou Bamba', emetteur:'Labo Moderne', date:'28/04/2026', fichier:'glycemie_bamba.pdf', traite:false },
-];
-
 // ════════════════════════════════════════════════════════════════════
-//  PAGE MÉDECINS INDÉPENDANTS (ADMIN)
+// STATISTIQUES
 // ════════════════════════════════════════════════════════════════════
-const MEDECINS_PRIVES_DEMO = [
-  { id:1, prenom:'Kouassi', nom:'Ange', specialite:'Cardiologie', ville:'Cocody', email:'dr.kouassi@demo.ci', patients:45, statut:'actif', setup_paye:true, mensuel_paye:true, date_inscription:'15/04/2026' },
-  { id:2, prenom:'Bamba', nom:'Mariame', specialite:'Médecine générale', ville:'Plateau', email:'dr.bamba@demo.ci', patients:120, statut:'actif', setup_paye:true, mensuel_paye:false, date_inscription:'10/04/2026' },
-  { id:3, prenom:'Diallo', nom:'Seydou', specialite:'Pédiatrie', ville:'Marcory', email:'dr.diallo@demo.ci', patients:0, statut:'en_attente', setup_paye:false, mensuel_paye:false, date_inscription:'01/05/2026' },
-];
+function PageStatistiques(){
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[])});
+  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data.data||[])});
+  const U=users||[];const CL=clin||[];const CMD=cmds||[];const PT=pats||[];
+  const livrees=CMD.filter(c=>c.statut==="livree").length;
+  const revT=livrees*T.livraison_plateforme+CL.length*T.clinique_mensuel+PT.length*T.patient_standard;
+  const BASE_REV=[42000,65000,58000,89000,112000,98000,134000,145000,167000,189000,201000,Math.max(revT,220000)];
+  const BASE_USR=[12,18,24,31,38,45,54,63,72,82,91,Math.max(U.length,100)];
+  const maxRev=Math.max(...BASE_REV); const maxUsr=Math.max(...BASE_USR);
+  const byRole=U.reduce((a,u)=>({...a,[u.role]:(a[u.role]||0)+1}),{});
+  const tauxLiv=CMD.length>0?Math.round(livrees/CMD.length*100):0;
 
-const DEMANDES_DEMO = [
-  { id:'DEM-001', patient:'Aya Konan', medecin:'Dr. Kouassi Ange', date:'01/05/2026', statut:'en_attente', paiement:'paye', montant:1000 },
-  { id:'DEM-002', patient:'Moussa Diallo', medecin:'Dr. Bamba Mariame', date:'30/04/2026', statut:'accepte', paiement:'paye', montant:1000 },
-  { id:'DEM-003', patient:'Fatou Bamba', medecin:'Dr. Kouassi Ange', date:'29/04/2026', statut:'refuse', paiement:'paye', montant:1000 },
-];
-
-function PageMedecinsPrivesAdmin() {
-  const [onglet, setOnglet] = useState('medecins');
-
-  const revenuSetup    = MEDECINS_PRIVES_DEMO.filter(m => m.setup_paye).length * 10000;
-  const revenuMensuel  = MEDECINS_PRIVES_DEMO.filter(m => m.mensuel_paye).length * 1000;
-  const revenuDemandes = DEMANDES_DEMO.filter(d => d.paiement === 'paye').length * 1000;
-
-  return (
+  return(
     <div>
-      <PageHeader title="👨‍⚕️ Médecins Indépendants" subtitle="Monitoring et facturation des médecins privés MediConnect" />
-
-      {/* KPIs */}
-      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
-        <Card label="Médecins actifs" value={MEDECINS_PRIVES_DEMO.filter(m=>m.statut==='actif').length} icon="👨‍⚕️" color="#0A8F58" />
-        <Card label="Revenus setup" value={fmt(revenuSetup)+' F'} icon="💳" color="#0D9488" sub="10 000 F × inscriptions" />
-        <Card label="Revenus mensuels" value={fmt(revenuMensuel)+' F'} icon="📅" color="#2563EB" sub="1 000 F/mois" />
-        <Card label="Mise en relation" value={fmt(revenuDemandes)+' F'} icon="🤝" color="#8B5CF6" sub="1 000 F × demandes" />
+      <PageHeader title="📊 Statistiques globales" subtitle="Vue d'ensemble de la plateforme MediConnect Africa"/>
+      <Grid cols={4} gap={14} style={{marginBottom:24}}>
+        <Card label="Utilisateurs" value={U.length} icon="👥" color={C.blue} trend={12}/>
+        <Card label="Cliniques" value={CL.length} icon="🏥" color={C.teal} trend={5}/>
+        <Card label="Livraisons OK" value={livrees} icon="🛵" color={C.amber} trend={18}/>
+        <Card label="Rev. mensuel est." value={`${fmt(revT)} F`} icon="💰" color={C.green} trend={8}/>
       </Grid>
 
-      {/* Onglets */}
-      <div style={{ display:'flex', gap:4, background:'#0E1620', borderRadius:12, padding:4, marginBottom:20, width:'fit-content' }}>
-        {[['medecins',`👨‍⚕️ Médecins (${MEDECINS_PRIVES_DEMO.length})`],['demandes',`📋 Demandes (${DEMANDES_DEMO.length})`]].map(([v,l])=>(
-          <button key={v} onClick={()=>setOnglet(v)}
-            style={{ background:onglet===v?'#0A8F58':'none', border:'none', borderRadius:8, padding:'8px 20px', color:onglet===v?'#fff':'#8BA0B5', fontSize:13, fontWeight:onglet===v?700:400, cursor:'pointer' }}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {/* Liste médecins */}
-      {onglet==='medecins' && (
-        <Panel title="Liste des médecins indépendants">
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom:'2px solid #1E2F42' }}>
-                {['Médecin','Spécialité','Ville','Patients','Setup','Mensuel','Statut'].map(h=>(
-                  <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {MEDECINS_PRIVES_DEMO.map((m,i)=>(
-                <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
-                  <td style={{ padding:'10px' }}>
-                    <div style={{ fontSize:14, fontWeight:700, color:'#F0F4F8' }}>Dr. {m.prenom} {m.nom}</div>
-                    <div style={{ fontSize:11, color:'#4E657A' }}>{m.email}</div>
-                  </td>
-                  <td style={{ padding:'10px', fontSize:13, color:'#8BA0B5' }}>{m.specialite}</td>
-                  <td style={{ padding:'10px', fontSize:13, color:'#8BA0B5' }}>{m.ville}</td>
-                  <td style={{ padding:'10px', fontSize:14, fontWeight:700, color:'#2563EB' }}>{m.patients}</td>
-                  <td style={{ padding:'10px' }}>
-                    <Badge color={m.setup_paye?'green':'red'}>{m.setup_paye?'✓ Payé':'⚠ Impayé'}</Badge>
-                  </td>
-                  <td style={{ padding:'10px' }}>
-                    <Badge color={m.mensuel_paye?'green':'red'}>{m.mensuel_paye?'✓ Payé':'⚠ Impayé'}</Badge>
-                  </td>
-                  <td style={{ padding:'10px' }}>
-                    <Badge color={m.statut==='actif'?'green':'amber'}>{m.statut==='actif'?'Actif':'En attente'}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Grid cols={2} gap={20} style={{marginBottom:20}}>
+        <Panel title="📈 Revenus mensuels (12 mois)">
+          <div style={{display:"flex",alignItems:"flex-end",gap:5,height:150,paddingTop:16}}>
+            {BASE_REV.map((v,i)=>{
+              const h=Math.round((v/maxRev)*100),isL=i===11;
+              return(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  {isL&&<div style={{fontSize:9,color:C.green,fontWeight:700}}>{Math.round(v/1000)}k</div>}
+                  <div style={{width:"100%",height:`${h}%`,background:isL?`linear-gradient(to top,${C.green},${C.teal})`:"rgba(10,143,88,.25)",borderRadius:"3px 3px 0 0"}}/>
+                  <div style={{fontSize:8,color:C.dim}}>{MOIS[i]}</div>
+                </div>
+              );
+            })}
+          </div>
         </Panel>
-      )}
-
-      {/* Liste demandes */}
-      {onglet==='demandes' && (
-        <Panel title="Demandes de suivi privé">
-          <table style={{ width:'100%', borderCollapse:'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom:'2px solid #1E2F42' }}>
-                {['N°','Patient','Médecin','Date','Paiement','Statut'].map(h=>(
-                  <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:11, color:'#4E657A', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {DEMANDES_DEMO.map((d,i)=>(
-                <tr key={i} style={{ borderBottom:'1px solid #0E1620' }}>
-                  <td style={{ padding:'10px', fontSize:12, color:'#2563EB', fontFamily:'monospace' }}>#{d.id}</td>
-                  <td style={{ padding:'10px', fontSize:13, fontWeight:700, color:'#F0F4F8' }}>{d.patient}</td>
-                  <td style={{ padding:'10px', fontSize:13, color:'#8BA0B5' }}>{d.medecin}</td>
-                  <td style={{ padding:'10px', fontSize:12, color:'#8BA0B5' }}>{d.date}</td>
-                  <td style={{ padding:'10px' }}>
-                    <Badge color={d.paiement==='paye'?'green':'red'}>{d.paiement==='paye'?`✓ ${fmt(d.montant)} F`:'⚠ Non payé'}</Badge>
-                  </td>
-                  <td style={{ padding:'10px' }}>
-                    <Badge color={d.statut==='accepte'?'green':d.statut==='refuse'?'red':'amber'}>
-                      {d.statut==='accepte'?'✓ Accepté':d.statut==='refuse'?'✗ Refusé':'⏳ En attente'}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <Panel title="📈 Croissance utilisateurs (12 mois)">
+          <div style={{display:"flex",alignItems:"flex-end",gap:5,height:150,paddingTop:16}}>
+            {BASE_USR.map((v,i)=>{
+              const h=Math.round((v/maxUsr)*100),isL=i===11;
+              return(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  {isL&&<div style={{fontSize:9,color:C.blue,fontWeight:700}}>{v}</div>}
+                  <div style={{width:"100%",height:`${h}%`,background:isL?`linear-gradient(to top,${C.blue},${C.purple})`:"rgba(37,99,235,.25)",borderRadius:"3px 3px 0 0"}}/>
+                  <div style={{fontSize:8,color:C.dim}}>{MOIS[i]}</div>
+                </div>
+              );
+            })}
+          </div>
         </Panel>
-      )}
+        <Panel title="🎯 Indicateurs clés de performance">
+          {[{l:"Taux de livraison réussie",v:tauxLiv,c:tauxLiv>=70?C.green:C.amber},{l:"Cliniques / objectif 50",v:Math.round(CL.length/50*100),c:C.teal,s:`${CL.length}/50`},{l:"Patients / objectif 1 000",v:Math.round(PT.length/1000*100),c:C.blue,s:`${PT.length}/1000`},{l:"Rev. / objectif 500 000 F/mois",v:Math.min(100,Math.round(revT/5000)),c:C.green,s:`${fmt(revT)}/500k`}].map(k=>(
+            <div key={k.l} style={{marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                <span style={{color:C.muted}}>{k.l}</span>
+                <span style={{fontWeight:700,color:k.c}}>{k.s||`${k.v}%`}</span>
+              </div>
+              <ProgressBar value={k.v} max={100} color={k.c}/>
+            </div>
+          ))}
+        </Panel>
+        <Panel title="👥 Répartition des utilisateurs">
+          {Object.entries(ROLE_META).map(([role,meta])=>{
+            const count=byRole[role]||0,pct=U.length>0?Math.round(count/U.length*100):0;
+            return(
+              <div key={role} style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                  <span style={{color:C.muted}}>{meta.icon} {meta.label}</span>
+                  <span style={{fontWeight:700,color:C[meta.color]||C.muted}}>{count} ({pct}%)</span>
+                </div>
+                <ProgressBar value={count} max={Math.max(U.length,1)} color={C[meta.color]||C.muted}/>
+              </div>
+            );
+          })}
+        </Panel>
+      </Grid>
+
+      <Panel title="📄 Rapports & Exports">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
+          {[["📊","Rapport mensuel","Synthèse revenus & KPIs"],["📈","Bilan trimestriel","Performances Q1-Q4"],["👥","Export utilisateurs","CSV complet"],["🏥","Rapport cliniques","Abonnements & facturation"],["🛵","Rapport livraisons","Commissions détaillées"],["💰","États financiers","Comptabilité plateforme"]].map(([icon,titre,desc])=>(
+            <button key={titre} onClick={()=>toast.success(`Rapport "${titre}" en cours de génération…`)} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:12,padding:16,cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"border-color .15s"}} onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{fontSize:26,marginBottom:8}}>{icon}</div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:3}}>{titre}</div>
+              <div style={{fontSize:11,color:C.dim}}>{desc}</div>
+            </button>
+          ))}
+        </div>
+      </Panel>
     </div>
   );
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  ROUTER
+// CONFIGURATION
 // ════════════════════════════════════════════════════════════════════
-export default function Dashboard() {
-  return (
+function PageConfiguration(){
+  const [tarifs,setTarifs]=useState({...T});
+  const tf=k=>e=>setTarifs(p=>({...p,[k]:+e.target.value}));
+  return(
+    <div>
+      <PageHeader title="⚙️ Configuration plateforme" subtitle="Tarification · Paramètres · Variables système"/>
+      <Grid cols={2} gap={20}>
+        <Panel title="💰 Tarification (paramètres actifs)" accent="rgba(10,143,88,.25)">
+          <div style={{background:"rgba(225,29,72,.08)",border:"1px solid rgba(225,29,72,.2)",borderRadius:8,padding:12,marginBottom:16,fontSize:12,color:C.red}}>
+            ⚠️ Toute modification affecte l'ensemble de la plateforme. Procédez avec précaution.
+          </div>
+          {[["livraison_total","Frais livraison (client)"],["livraison_livreur","Part livreur"],["livraison_plateforme","Commission livraison MediConnect"],["clinique_mise_en_service","Frais mise en service clinique"],["clinique_mensuel","Abonnement mensuel clinique"],["patient_standard","Abonnement mensuel patient standard"],["patient_suivi","Abonnement mensuel patient (suivi privé)"],["medecin_independant","Abonnement mensuel médecin indép."],["mise_en_relation","Frais mise en relation patient/médecin"]].map(([key,label])=>(
+            <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:13,color:C.muted,flex:1}}>{label}</span>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" value={tarifs[key]||0} onChange={tf(key)} style={{width:100,background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",textAlign:"right"}}/>
+                <span style={{fontSize:12,color:C.dim,minWidth:30}}>FCFA</span>
+              </div>
+            </div>
+          ))}
+          <Btn style={{width:"100%",marginTop:16}} onClick={()=>toast.success("✅ Tarification sauvegardée !")}>Sauvegarder la tarification</Btn>
+        </Panel>
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <Panel title="🌍 Zones de couverture">
+            <div style={{marginBottom:12}}><div style={{fontSize:12,fontWeight:700,color:C.green,marginBottom:8}}>✅ UEMOA (8 pays)</div><div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["Côte d'Ivoire","Sénégal","Burkina Faso","Mali","Togo","Bénin","Guinée-Bissau","Niger"].map(p=><span key={p} style={{background:"rgba(10,143,88,.1)",color:C.green,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20}}>{p}</span>)}</div></div>
+            <div><div style={{fontSize:12,fontWeight:700,color:C.teal,marginBottom:8}}>✅ CEMAC (6 pays)</div><div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["Cameroun","Gabon","Congo","Tchad","RCA","Guinée Équatoriale"].map(p=><span key={p} style={{background:"rgba(13,148,136,.1)",color:C.teal,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20}}>{p}</span>)}</div></div>
+          </Panel>
+          <Panel title="🔧 Informations système">
+            {[["Version","MediConnect v2.0"],["Backend","Vercel Serverless (Node.js)"],["Base de données","Neon PostgreSQL"],["Frontend","mediconnect-m9xf.vercel.app"],["Site RDV","rdv.mediconnect4africa.cloud"],["API Backend","mediconnect-fed6.vercel.app"]].map(([k,v])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+                <span style={{color:C.muted}}>{k}</span>
+                <span style={{fontWeight:600,color:C.text,fontSize:12}}>{v}</span>
+              </div>
+            ))}
+          </Panel>
+          <Panel title="💳 Modes de paiement">
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[{label:"Wave",icon:"🌊",color:"#1DA6F2",actif:true},{label:"Orange Money",icon:"🟠",color:"#FF6600",actif:true},{label:"Moov Money",icon:"🔵",color:"#0066CC",actif:true},{label:"MTN MoMo",icon:"🟡",color:"#FFCC00",actif:false},{label:"Espèces",icon:"💵",color:C.green,actif:true},{label:"Carte bancaire",icon:"💳",color:C.purple,actif:false}].map(m=>(
+                <div key={m.label} style={{background:m.color+"10",border:`1px solid ${m.color}30`,borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:18}}>{m.icon}</span><span style={{fontSize:12,fontWeight:700,color:m.color}}>{m.label}</span></div>
+                  <Badge color={m.actif?"green":"gray"}>{m.actif?"Actif":"Bientôt"}</Badge>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+      </Grid>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ROUTER ADMIN
+// ════════════════════════════════════════════════════════════════════
+export default function Dashboard(){
+  return(
     <Routes>
-      <Route index                    element={<DashboardHome />} />
-      <Route path="etablissements"    element={<PageEtablissements />} />
-      <Route path="patients"          element={<PagePatients />} />
-      <Route path="livreurs"          element={<PageLivreurs />} />
-      <Route path="rdv-patients"      element={<PageGestionRDV />} />
-      <Route path="medecins-prives"   element={<PageMedecinsPrivesAdmin />} />
-      <Route path="facturation"       element={<PageFacturationAdmin />} />
-      <Route path="bulletins"         element={<PageBulletins />} />
-      <Route path="rapports"          element={<PageRapports />} />
-      <Route path="assureurs"         element={<PageAssureurs />} />
-      <Route path="*"                 element={<DashboardHome />} />
+      <Route index                element={<PageHome/>}/>
+      <Route path="monetisation"  element={<PageMonetisation/>}/>
+      <Route path="utilisateurs"  element={<PageUtilisateurs/>}/>
+      <Route path="cliniques"     element={<PageCliniques/>}/>
+      <Route path="medecins"      element={<PageMedecins/>}/>
+      <Route path="livreurs"      element={<PageLivreurs/>}/>
+      <Route path="assurances"    element={<PageAssurances/>}/>
+      <Route path="statistiques"  element={<PageStatistiques/>}/>
+      <Route path="configuration" element={<PageConfiguration/>}/>
+      <Route path="patients"      element={<PageCliniques/>}/>
+      <Route path="*"             element={<PageHome/>}/>
     </Routes>
   );
 }
