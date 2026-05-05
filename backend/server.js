@@ -276,8 +276,23 @@ app.get('/api/cliniques/stats', auth, async (req, res) => {
 const medecinRouter = (method, path, ...handlers) => app[method]('/api/medecins' + path, ...handlers);
 medecinRouter('get', '/', auth, async (req, res) => {
   try {
-    const cid = req.user?.clinique_id;
-    const r = cid ? await db('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom', [cid]) : await db('SELECT * FROM medecins ORDER BY nom');
+    const cid = req.query.clinique_id || req.user?.clinique_id;
+    const r = cid
+      ? await db('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom,prenom', [cid])
+      : await db('SELECT * FROM medecins ORDER BY nom,prenom');
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// Route publique médecins (sans auth) — pour le dashboard patient
+app.get('/api/public/medecins', async (req, res) => {
+  try {
+    const { clinique_id, specialite } = req.query;
+    let sql = 'SELECT * FROM medecins WHERE 1=1'; const p = [];
+    if (clinique_id) { p.push(clinique_id); sql += ` AND clinique_id=$${p.length}`; }
+    if (specialite)  { p.push(specialite);  sql += ` AND specialite=$${p.length}`; }
+    sql += ' ORDER BY nom,prenom';
+    const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
@@ -539,6 +554,18 @@ app.post('/api/caisse/cloturer', auth, async (req, res) => {
     const r=await db("UPDATE caisse_sessions SET statut='fermee',closed_at=NOW() WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' RETURNING *",[cid]);
     res.json({ success:true, data:r.rows[0], message:'Caisse clôturée' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Route factures patient (les deux types)
+app.get('/api/factures/patient', auth, async (req, res) => {
+  try {
+    const pid = req.user?.patient_id || req.user?.id;
+    const r = await db(
+      'SELECT * FROM factures WHERE patient_id=$1 ORDER BY created_at DESC LIMIT 50',
+      [pid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
 
 // ── ASSURANCES ────────────────────────────────────────────────────
