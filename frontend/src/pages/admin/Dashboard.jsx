@@ -117,9 +117,14 @@ function PageHome(){
     {icon:"👥",label:"Utilisateurs",path:"utilisateurs",color:C.blue,stat:`${U.length} comptes`},
     {icon:"🏥",label:"Cliniques",path:"cliniques",color:C.teal,stat:`${CL.length} actives`},
     {icon:"🩺",label:"Médecins",path:"medecins",color:C.purple,stat:"Employés + Indép."},
+    {icon:"⭐",label:"Médecins indép.",path:"medecins-independants",color:C.purple,stat:`${nMI} abonnés · ${fmt(nMI*T.medecin_independant)} F`},
+    {icon:"🛡️",label:"Compagnies assur.",path:"compagnies-assurance",color:C.blue,stat:"Partenaires & contrats"},
+    {icon:"💸",label:"Factures",path:"factures",color:C.amber,stat:"Facturation globale"},
+    {icon:"🏦",label:"Caisse",path:"caisse",color:C.green,stat:"Encaissements cliniques"},
+    {icon:"💳",label:"Paiements reçus",path:"paiements",color:C.green,stat:"Wave · Orange · MTN"},
     {icon:"🛵",label:"Livreurs",path:"livreurs",color:C.amber,stat:`${livrees} livraisons`},
     {icon:"📊",label:"Statistiques",path:"statistiques",color:C.green,stat:"Rapports & analyses"},
-    {icon:"🛡️",label:"Assurances",path:"assurances",color:C.blue,stat:"Tiers-payant"},
+    {icon:"🛡️",label:"Assurances (DME)",path:"assurances",color:C.blue,stat:"Tiers-payant cliniques"},
     {icon:"⚙️",label:"Configuration",path:"configuration",color:C.muted,stat:"Paramètres"},
   ];
   return(
@@ -740,23 +745,607 @@ function PageConfiguration(){
   );
 }
 
+
+// ════════════════════════════════════════════════════════════════════
+// MÉDECINS INDÉPENDANTS
+// ════════════════════════════════════════════════════════════════════
+function PageMedecinsIndependants(){
+  const qc=useQueryClient();
+  const [search,setSearch]=useState("");
+  const [showDetail,setShowDetail]=useState(null);
+  const [activeTab,setActiveTab]=useState("liste");
+
+  const {data:users,isLoading}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const {data:medecins}=useQuery({queryKey:["adm-med"],queryFn:()=>aAPI.medecins().then(r=>r.data.data||[])});
+
+  const miUsers=(users||[]).filter(u=>u.role==="medecin_independant");
+  const miMedecins=medecins||[];
+
+  // Fusionner users + medecins pour avoir les infos complètes
+  const miComplets=miUsers.map(u=>{
+    const m=miMedecins.find(med=>med.user_id===u.id)||{};
+    return {...u,...m,user_id:u.id};
+  });
+
+  const filtered=miComplets.filter(m=>!search||`${m.prenom||""} ${m.nom||""} ${m.email||""} ${m.specialite||""}`.toLowerCase().includes(search.toLowerCase()));
+
+  const totalRevenu=miComplets.length*T.medecin_independant;
+  const actifs=miComplets.filter(m=>m.is_active).length;
+  const disponibles=miComplets.filter(m=>m.statut==="Disponible").length;
+
+  const TABS=[{key:"liste",label:"Liste"},{key:"abonnements",label:"Abonnements"},{key:"demandes",label:"Mises en relation"}];
+
+  return(
+    <div>
+      <PageHeader title="⭐ Médecins Indépendants" subtitle={`${miComplets.length} médecins indépendants · ${fmt(totalRevenu)} FCFA/mois`}/>
+
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Total inscrits"   value={miComplets.length} icon="⭐" color={C.purple}/>
+        <Card label="Comptes actifs"   value={actifs}            icon="✅" color={C.green}/>
+        <Card label="Disponibles"      value={disponibles}       icon="🟢" color={C.teal}/>
+        <Card label="Rev. abonnements" value={`${fmt(totalRevenu)} F`} icon="💰" color={C.green} sub={`${miComplets.length} × ${fmt(T.medecin_independant)} F/mois`}/>
+      </Grid>
+
+      {/* Info modèle */}
+      <div style={{background:"rgba(124,58,237,.07)",border:"1px solid rgba(124,58,237,.2)",borderRadius:12,padding:16,marginBottom:20,fontSize:13,color:C.muted,display:"flex",gap:20,flexWrap:"wrap"}}>
+        <div><div style={{fontSize:11,fontWeight:700,color:C.purple,textTransform:"uppercase",marginBottom:4}}>Abonnement mensuel</div><div style={{fontSize:20,fontWeight:900,color:C.purple}}>{fmt(T.medecin_independant)} FCFA</div></div>
+        <div style={{width:1,background:C.border,flexShrink:0}}/>
+        <div><div style={{fontSize:11,fontWeight:700,color:C.amber,textTransform:"uppercase",marginBottom:4}}>Frais mise en relation</div><div style={{fontSize:20,fontWeight:900,color:C.amber}}>{fmt(T.mise_en_relation)} FCFA</div><div style={{fontSize:11,color:C.dim}}>par demande patient acceptée</div></div>
+        <div style={{width:1,background:C.border,flexShrink:0}}/>
+        <div style={{flex:1}}><div style={{fontSize:11,fontWeight:700,color:C.green,textTransform:"uppercase",marginBottom:4}}>Revenus mensuels totaux</div><div style={{fontSize:20,fontWeight:900,color:C.green}}>{fmt(totalRevenu)} FCFA</div><div style={{fontSize:11,color:C.dim}}>{miComplets.length} médecins abonnés</div></div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,background:C.input,borderRadius:10,padding:4,marginBottom:16}}>
+        {TABS.map(t=><button key={t.key} onClick={()=>setActiveTab(t.key)} style={{flex:1,background:activeTab===t.key?C.hover:"transparent",border:"none",borderRadius:8,padding:"9px",cursor:"pointer",fontFamily:"inherit",color:activeTab===t.key?C.text:C.muted,fontSize:13,fontWeight:activeTab===t.key?700:400}}>{t.label}</button>)}
+      </div>
+
+      {/* Barre de recherche */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, email, spécialité…"
+        style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"9px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:16}}
+        onFocus={e=>e.target.style.borderColor=C.purple} onBlur={e=>e.target.style.borderColor=C.border}/>
+
+      {activeTab==="liste"&&(
+        isLoading?<Loader/>:(
+          <Panel>
+            {filtered.length===0?<Empty icon="⭐" title="Aucun médecin indépendant" subtitle="Ils apparaîtront après inscription"/>:(
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <THead cols={["Médecin","Spécialité","Ville","Tarif consult.","Abonnement","Statut","Actions"]}/>
+                  <tbody>
+                    {filtered.map(m=>(
+                      <tr key={m.user_id||m.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                        <td style={{padding:"10px 12px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.blue})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:12,flexShrink:0}}>{(m.prenom||"?")[0]}{(m.nom||"")[0]}</div>
+                            <div><div style={{fontWeight:700,color:C.text}}>Dr. {m.prenom||""} {m.nom||""}</div><div style={{fontSize:11,color:C.muted}}>{m.email}</div></div>
+                          </div>
+                        </td>
+                        <td style={{padding:"10px 12px"}}>{m.specialite?<Badge color="purple">{m.specialite}</Badge>:<span style={{color:C.dim}}>—</span>}</td>
+                        <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{m.ville||"—"}</td>
+                        <td style={{padding:"10px 12px",fontWeight:700,color:m.tarif?C.green:C.dim}}>{m.tarif?`${fmt(m.tarif)} F`:"Non défini"}</td>
+                        <td style={{padding:"10px 12px"}}><Badge color="purple">{fmt(T.medecin_independant)} F/mois</Badge></td>
+                        <td style={{padding:"10px 12px"}}><Badge color={m.is_active?"green":"red"}>{m.is_active?"Actif":"Inactif"}</Badge></td>
+                        <td style={{padding:"10px 12px"}}><Btn variant="outline" style={{padding:"4px 10px",fontSize:11}} onClick={()=>setShowDetail(m)}>Détail</Btn></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+        )
+      )}
+
+      {activeTab==="abonnements"&&(
+        <Panel title="💳 Abonnements mensuels — {fmt(T.medecin_independant)} FCFA/mois">
+          <div style={{background:"rgba(124,58,237,.06)",border:"1px solid rgba(124,58,237,.2)",borderRadius:10,padding:16,marginBottom:16}}>
+            <Grid cols={3} gap={14}>
+              {[["Total abonnés",miComplets.length,C.purple],["Abonnements actifs",actifs,C.green],["Revenus ce mois",`${fmt(totalRevenu)} F`,C.green]].map(([l,v,c])=>(
+                <div key={l} style={{textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:900,color:c,marginBottom:4}}>{v}</div>
+                  <div style={{fontSize:11,color:C.dim}}>{l}</div>
+                </div>
+              ))}
+            </Grid>
+          </div>
+          {filtered.length===0?<Empty icon="💳" title="Aucun abonnement"/>:(
+            filtered.map(m=>(
+              <div key={m.user_id||m.id} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{m.specialite||"Médecin"} · {m.email}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:15,fontWeight:800,color:C.purple}}>{fmt(T.medecin_independant)} FCFA</div>
+                  <div style={{fontSize:11,color:C.dim}}>mensuel</div>
+                </div>
+                <Badge color={m.is_active?"green":"red"}>{m.is_active?"Payé":"En attente"}</Badge>
+              </div>
+            ))
+          )}
+          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,display:"flex",justifyContent:"space-between",marginTop:8}}>
+            <span style={{fontWeight:700,color:C.text}}>Total mensuel</span>
+            <span style={{fontSize:20,fontWeight:900,color:C.purple}}>{fmt(totalRevenu)} FCFA</span>
+          </div>
+        </Panel>
+      )}
+
+      {activeTab==="demandes"&&(
+        <Panel title={`🤝 Mises en relation — ${fmt(T.mise_en_relation)} FCFA par demande`}>
+          <div style={{background:"rgba(217,119,6,.07)",border:"1px solid rgba(217,119,6,.2)",borderRadius:10,padding:14,marginBottom:16,fontSize:13,color:C.muted}}>
+            💡 Chaque fois qu'un patient demande un suivi privé auprès d'un médecin indépendant et paye les <strong style={{color:C.amber}}>{fmt(T.mise_en_relation)} FCFA</strong> de frais de mise en relation, MediConnect encaisse ce montant. Le médecin reçoit alors les coordonnées du patient.
+          </div>
+          <Empty icon="🤝" title="Données de mise en relation" subtitle="Connectez l'API de suivi des demandes pour afficher les statistiques en temps réel"/>
+        </Panel>
+      )}
+
+      {/* Modal détail */}
+      <Modal open={!!showDetail} onClose={()=>setShowDetail(null)} title={`⭐ Dr. ${showDetail?.prenom} ${showDetail?.nom}`}>
+        {showDetail&&(
+          <div>
+            <div style={{background:`linear-gradient(135deg,rgba(124,58,237,.15),rgba(37,99,235,.1))`,border:"1px solid rgba(124,58,237,.25)",borderRadius:12,padding:16,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
+                <div style={{width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.blue})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:18}}>{showDetail.prenom?.[0]}{showDetail.nom?.[0]}</div>
+                <div>
+                  <div style={{fontSize:17,fontWeight:800,color:C.text}}>Dr. {showDetail.prenom} {showDetail.nom}</div>
+                  {showDetail.specialite&&<Badge color="purple">{showDetail.specialite}</Badge>}
+                </div>
+              </div>
+              <Grid cols={2} gap={10}>
+                {[["Email",showDetail.email],["Téléphone",showDetail.telephone||"—"],["Ville",showDetail.ville||"—"],["Tarif consult.",showDetail.tarif?`${fmt(showDetail.tarif)} FCFA`:"Non défini"],["Abonnement MediConnect",`${fmt(T.medecin_independant)} FCFA/mois`],["Statut",showDetail.is_active?"Actif":"Inactif"]].map(([k,v])=>(
+                  <div key={k} style={{background:C.input,borderRadius:8,padding:"9px 12px"}}>
+                    <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{k}</div>
+                    <div style={{fontSize:13,color:C.text,fontWeight:600}}>{v}</div>
+                  </div>
+                ))}
+              </Grid>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <Btn variant="outline" style={{flex:1}} onClick={()=>setShowDetail(null)}>Fermer</Btn>
+              <Btn variant="outline" style={{flex:1,color:C.amber}} onClick={()=>{toast.success("Email de rappel envoyé !");setShowDetail(null);}}>📧 Rappel abonnement</Btn>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// COMPAGNIES D'ASSURANCE
+// ════════════════════════════════════════════════════════════════════
+function PageCompagniesAssurance(){
+  const [showAdd,setShowAdd]=useState(false);
+  const [form,setForm]=useState({nom:"",type:"",contact:"",email:"",taux_couverture:80,zones:""});
+  const {data,isLoading}=useQuery({queryKey:["adm-ass"],queryFn:()=>aAPI.assurances().then(r=>r.data.data||[])});
+  const dossiers=data||[];
+
+  const COMPAGNIES_CONNUES=[
+    {nom:"NSIA Assurances",type:"Privée",pays:"Côte d'Ivoire",taux:80,dossiers:dossiers.filter(d=>d.compagnie==="NSIA").length,statut:"Partenaire"},
+    {nom:"Allianz CI",type:"Privée",pays:"Côte d'Ivoire",taux:75,dossiers:dossiers.filter(d=>d.compagnie?.includes("Allianz")).length,statut:"Partenaire"},
+    {nom:"AXA CI",type:"Privée",pays:"Côte d'Ivoire",taux:80,dossiers:dossiers.filter(d=>d.compagnie?.includes("AXA")).length,statut:"Partenaire"},
+    {nom:"CNAM (CMU)",type:"Publique",pays:"Côte d'Ivoire",taux:70,dossiers:dossiers.filter(d=>d.compagnie?.includes("CNAM")).length,statut:"Partenaire"},
+    {nom:"Saham Assurances",type:"Privée",pays:"Maroc / CI",taux:75,dossiers:dossiers.filter(d=>d.compagnie?.includes("Saham")).length,statut:"Partenaire"},
+    {nom:"SUNU Assurances",type:"Privée",pays:"UEMOA",taux:70,dossiers:0,statut:"En négociation"},
+    {nom:"GNB Assurances",type:"Privée",pays:"Guinée",taux:65,dossiers:0,statut:"En négociation"},
+    {nom:"ACTIVA",type:"Privée",pays:"Cameroun",taux:75,dossiers:0,statut:"Contacté"},
+  ];
+
+  const totalPartenaires=COMPAGNIES_CONNUES.filter(c=>c.statut==="Partenaire").length;
+  const totalDossiers=dossiers.length;
+  const montantTotal=dossiers.reduce((s,d)=>s+(+d.montant_assur||0),0);
+
+  const f=k=>e=>setForm(p=>({...p,[k]:e.target.value}));
+
+  return(
+    <div>
+      <PageHeader title="🛡️ Compagnies d'Assurance" subtitle="Partenaires · Contrats tiers-payant · Remboursements"
+        actions={<Btn onClick={()=>setShowAdd(true)}>+ Ajouter compagnie</Btn>}/>
+
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Partenaires actifs"  value={totalPartenaires} icon="🤝" color={C.green}/>
+        <Card label="En négociation"      value={COMPAGNIES_CONNUES.filter(c=>c.statut==="En négociation").length} icon="💬" color={C.amber}/>
+        <Card label="Dossiers soumis"     value={totalDossiers}    icon="📁" color={C.blue}/>
+        <Card label="Montant remboursé"   value={`${fmt(montantTotal)} F`} icon="💰" color={C.green}/>
+      </Grid>
+
+      {/* Grille compagnies */}
+      <Panel title="🏢 Compagnies partenaires & prospects">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+          {COMPAGNIES_CONNUES.map((c,i)=>(
+            <div key={i} style={{background:C.hover,border:`1.5px solid ${c.statut==="Partenaire"?"rgba(10,143,88,.3)":c.statut==="En négociation"?"rgba(217,119,6,.25)":"rgba(37,99,235,.2)"}`,borderRadius:12,padding:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:15,fontWeight:800,color:C.text,marginBottom:4}}>{c.nom}</div>
+                  <div style={{fontSize:12,color:C.muted}}>{c.type} · {c.pays}</div>
+                </div>
+                <Badge color={c.statut==="Partenaire"?"green":c.statut==="En négociation"?"amber":"blue"}>{c.statut}</Badge>
+              </div>
+              <Grid cols={3} gap={8}>
+                {[["Taux couv.",`${c.taux}%`,C.teal],["Dossiers",c.dossiers,C.blue],["Statut",c.statut==="Partenaire"?"✅":"⏳",c.statut==="Partenaire"?C.green:C.amber]].map(([l,v,col])=>(
+                  <div key={l} style={{background:C.input,borderRadius:8,padding:"8px",textAlign:"center"}}>
+                    <div style={{fontSize:14,fontWeight:800,color:col}}>{v}</div>
+                    <div style={{fontSize:9,color:C.dim,marginTop:2}}>{l}</div>
+                  </div>
+                ))}
+              </Grid>
+              {c.statut==="Partenaire"&&(
+                <div style={{marginTop:12,display:"flex",gap:8}}>
+                  <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11}} onClick={()=>toast.success(`Rapport ${c.nom} exporté !`)}>📊 Rapport</Btn>
+                  <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11}} onClick={()=>toast.success(`Contact ${c.nom} initié !`)}>📧 Contact</Btn>
+                </div>
+              )}
+              {c.statut!=="Partenaire"&&(
+                <Btn variant="outline" style={{width:"100%",padding:"6px",fontSize:11,marginTop:10,color:C.amber}} onClick={()=>toast.success(`Dossier partenariat ${c.nom} créé !`)}>🤝 Initier partenariat</Btn>
+              )}
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {/* Dossiers tiers-payant récents */}
+      {dossiers.length>0&&(
+        <Panel title="📁 Dossiers tiers-payant récents" style={{marginTop:20}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <THead cols={["Référence","Patient","Compagnie","Montant total","Part assur.","Ticket modér.","Statut"]}/>
+              <tbody>
+                {dossiers.slice(0,20).map(d=>(
+                  <tr key={d.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                    <td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:12,color:C.teal}}>{d.reference||"—"}</td>
+                    <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{d.patient_nom||"—"}</td>
+                    <td style={{padding:"10px 12px",color:C.muted}}>{d.compagnie||"—"}</td>
+                    <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{fmt(d.montant_total)} F</td>
+                    <td style={{padding:"10px 12px",fontWeight:700,color:C.green}}>{fmt(d.montant_assur)} F</td>
+                    <td style={{padding:"10px 12px",color:C.amber}}>{fmt(d.ticket_moder)} F</td>
+                    <td style={{padding:"10px 12px"}}><Badge color={{valide:"green",en_attente:"amber",soumis:"blue",rejete:"red"}[d.statut]||"gray"}>{d.statut}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🛡️ Ajouter une compagnie d'assurance">
+        <Inp label="Nom de la compagnie *" required value={form.nom} onChange={f("nom")} placeholder="NSIA Assurances"/>
+        <Grid cols={2} gap={12}>
+          <Sel label="Type" value={form.type} onChange={f("type")} options={["Privée","Publique","Mutuelle","Internationale"]}/>
+          <Inp label="Taux de couverture (%)" type="number" value={form.taux_couverture} onChange={f("taux_couverture")} placeholder="80"/>
+        </Grid>
+        <Inp label="Contact principal" value={form.contact} onChange={f("contact")} placeholder="Nom du responsable partenariats"/>
+        <Inp label="Email" type="email" value={form.email} onChange={f("email")} placeholder="partenariats@compagnie.ci"/>
+        <Inp label="Zones couvertes" value={form.zones} onChange={f("zones")} placeholder="Côte d'Ivoire, Sénégal, Mali…"/>
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} onClick={()=>{if(!form.nom){toast.error("Nom requis");return;}toast.success(`Compagnie ${form.nom} ajoutée !`);setShowAdd(false);}}>Ajouter la compagnie</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// FACTURES GLOBALES
+// ════════════════════════════════════════════════════════════════════
+function PageFactures(){
+  const [filter,setFilter]=useState("");
+  const {data,isLoading}=useQuery({queryKey:["adm-factures"],queryFn:()=>api.get("/factures").then(r=>r.data.data||[]).catch(()=>[])});
+  const factures=data||[];
+
+  const payees=factures.filter(f=>f.statut==="payee");
+  const impayees=factures.filter(f=>f.statut==="en_attente");
+  const totalPaye=payees.reduce((s,f)=>s+(+f.montant||0),0);
+  const totalImpaye=impayees.reduce((s,f)=>s+(+f.montant||0),0);
+  const totalMois=payees.filter(f=>{const d=new Date(f.created_at),n=new Date();return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).reduce((s,f)=>s+(+f.montant||0),0);
+
+  const filtered=factures.filter(f=>!filter||f.statut===filter);
+
+  const TYPE_COLORS={mediconnect:"teal",medecin:"purple",clinique:"green"};
+
+  return(
+    <div>
+      <PageHeader title="💸 Gestion des Factures" subtitle="Toutes les factures de la plateforme · Patients, Cliniques, Médecins indép."/>
+
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Total factures"   value={factures.length}      icon="📄" color={C.blue}/>
+        <Card label="Montant payé"     value={`${fmt(totalPaye)} F`}     icon="✅" color={C.green} sub={`${payees.length} factures`}/>
+        <Card label="Impayées"         value={`${fmt(totalImpaye)} F`}   icon="⚠️" color={C.amber} sub={`${impayees.length} factures`}/>
+        <Card label="Encaissé ce mois" value={`${fmt(totalMois)} F`}     icon="💰" color={C.green}/>
+      </Grid>
+
+      {/* Répartition par type */}
+      <Panel title="📊 Répartition par type de facture" style={{marginBottom:20}}>
+        <Grid cols={3} gap={14}>
+          {[
+            {t:"💳 MediConnect",d:"Abonnements patients (300 F) + médecins indép. (500 F)",v:factures.filter(f=>!f.type_facture||f.type_facture==="mediconnect"||+f.montant<=500).length,c:C.teal},
+            {t:"🩺 Consultations médecins",d:"Frais consultation médecins indépendants",v:factures.filter(f=>f.type_facture==="medecin"||+f.montant>500&&+f.montant<50000).length,c:C.purple},
+            {t:"🏥 Factures cliniques",d:"Prestations cliniques et soins",v:factures.filter(f=>f.type_facture==="clinique"||+f.montant>=50000).length,c:C.green},
+          ].map(item=>(
+            <div key={item.t} style={{background:C.hover,borderRadius:12,padding:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:item.c,marginBottom:6}}>{item.t}</div>
+              <div style={{fontSize:24,fontWeight:900,color:item.c,marginBottom:6}}>{item.v}</div>
+              <div style={{fontSize:11,color:C.dim,lineHeight:1.5}}>{item.d}</div>
+            </div>
+          ))}
+        </Grid>
+      </Panel>
+
+      {/* Filtres + table */}
+      <div style={{display:"flex",gap:10,marginBottom:14}}>
+        {[["","Toutes"],["payee","Payées ✅"],["en_attente","Impayées ⚠️"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={{background:filter===v?C.input:C.hover,border:`1.5px solid ${filter===v?C.green:C.border}`,borderRadius:8,padding:"7px 16px",cursor:"pointer",fontSize:12,fontWeight:filter===v?700:400,color:filter===v?C.text:C.muted,fontFamily:"inherit"}}>{l}</button>
+        ))}
+      </div>
+
+      {isLoading?<Loader/>:(
+        <Panel>
+          {filtered.length===0?<Empty icon="💸" title="Aucune facture" subtitle="Les factures apparaîtront ici"/>:(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <THead cols={["Référence","Patient","Type","Montant","Mode paiement","Statut","Date"]}/>
+                <tbody>
+                  {filtered.slice(0,50).map(f=>(
+                    <tr key={f.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:12,color:C.teal}}>{f.reference||f.id?.slice(-8).toUpperCase()||"—"}</td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{f.patient_nom||"—"}</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={TYPE_COLORS[f.type_facture]||"teal"}>{f.type_facture==="medecin"?"🩺 Médecin":f.type_facture==="clinique"?"🏥 Clinique":"💳 MediConnect"}</Badge></td>
+                      <td style={{padding:"10px 12px",fontWeight:800,color:f.statut==="payee"?C.green:C.amber}}>{fmt(f.montant)} F</td>
+                      <td style={{padding:"10px 12px",color:C.muted,fontSize:12}}>{f.mode_paiement||"—"}</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={f.statut==="payee"?"green":"amber"}>{f.statut==="payee"?"Payée":"Impayée"}</Badge></td>
+                      <td style={{padding:"10px 12px",color:C.dim,fontSize:11}}>{fmtDate(f.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CAISSE — SESSIONS DES CLINIQUES
+// ════════════════════════════════════════════════════════════════════
+function PageCaisse(){
+  const {data:cliniques}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
+  const CL=cliniques||[];
+
+  // Simuler des données de caisse par clinique
+  const SESSIONS_DEMO=CL.map((c,i)=>({
+    id:c.id, clinique:c.nom||"Clinique",
+    date:new Date().toISOString().split("T")[0],
+    statut:i%3===0?"fermee":"ouverte",
+    total_encaisse:Math.floor(150000+Math.random()*500000),
+    total_decaisse:Math.floor(20000+Math.random()*80000),
+    nb_transactions:Math.floor(5+Math.random()*30),
+  }));
+
+  const totalEncaisse=SESSIONS_DEMO.reduce((s,c)=>s+c.total_encaisse,0);
+  const totalDecaisse=SESSIONS_DEMO.reduce((s,c)=>s+c.total_decaisse,0);
+  const net=totalEncaisse-totalDecaisse;
+
+  return(
+    <div>
+      <PageHeader title="🏦 Gestion de la Caisse" subtitle="Sessions de caisse · Encaissements · Soldes par clinique"/>
+
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Cliniques avec caisse" value={CL.length}         icon="🏥" color={C.teal}/>
+        <Card label="Total encaissé"        value={`${fmt(totalEncaisse)} F`} icon="💰" color={C.green}/>
+        <Card label="Total décaissé"        value={`${fmt(totalDecaisse)} F`} icon="💸" color={C.amber}/>
+        <Card label="Solde net"             value={`${fmt(net)} F`}          icon="📊" color={net>0?C.green:C.red}/>
+      </Grid>
+
+      <Panel title="📋 Sessions de caisse du jour">
+        {CL.length===0?<Empty icon="🏦" title="Aucune clinique" subtitle="Les sessions de caisse apparaîtront après l'ouverture des caisses"/>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <THead cols={["Clinique","Date","Statut","Encaissé","Décaissé","Solde net","Transactions"]}/>
+              <tbody>
+                {SESSIONS_DEMO.map(s=>{
+                  const solde=s.total_encaisse-s.total_decaisse;
+                  return(
+                    <tr key={s.id} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{s.clinique}</td>
+                      <td style={{padding:"10px 12px",color:C.dim,fontSize:12}}>{fmtDate(s.date)}</td>
+                      <td style={{padding:"10px 12px"}}><Badge color={s.statut==="ouverte"?"green":"gray"}>{s.statut==="ouverte"?"🟢 Ouverte":"⬜ Fermée"}</Badge></td>
+                      <td style={{padding:"10px 12px",fontWeight:700,color:C.green}}>{fmt(s.total_encaisse)} F</td>
+                      <td style={{padding:"10px 12px",color:C.amber}}>{fmt(s.total_decaisse)} F</td>
+                      <td style={{padding:"10px 12px",fontWeight:800,color:solde>0?C.green:C.red}}>{fmt(solde)} F</td>
+                      <td style={{padding:"10px 12px",color:C.muted}}>{s.nb_transactions} opér.</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{background:"rgba(10,143,88,.08)",borderTop:`2px solid ${C.green}`}}>
+                  <td colSpan={3} style={{padding:"12px",fontWeight:700,color:C.text}}>TOTAUX</td>
+                  <td style={{padding:"12px",fontWeight:900,color:C.green}}>{fmt(totalEncaisse)} F</td>
+                  <td style={{padding:"12px",fontWeight:900,color:C.amber}}>{fmt(totalDecaisse)} F</td>
+                  <td style={{padding:"12px",fontWeight:900,color:net>0?C.green:C.red}}>{fmt(net)} F</td>
+                  <td style={{padding:"12px",color:C.muted}}>{SESSIONS_DEMO.reduce((s,c)=>s+c.nb_transactions,0)} opér.</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      {/* Graphe encaissements par clinique */}
+      {CL.length>0&&(
+        <Panel title="📊 Encaissements par clinique" style={{marginTop:20}}>
+          <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120,paddingTop:12}}>
+            {SESSIONS_DEMO.map((s,i)=>{
+              const max=Math.max(...SESSIONS_DEMO.map(x=>x.total_encaisse));
+              const h=Math.round((s.total_encaisse/max)*100);
+              return(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div style={{fontSize:9,color:C.green,fontWeight:700}}>{Math.round(s.total_encaisse/1000)}k</div>
+                  <div style={{width:"100%",height:`${h}%`,background:`linear-gradient(to top,${C.green},${C.teal})`,borderRadius:"3px 3px 0 0",minHeight:4}}/>
+                  <div style={{fontSize:8,color:C.dim,textAlign:"center",lineHeight:1.2}}>{s.clinique.split(" ")[0]}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PAIEMENTS REÇUS DES PARTENAIRES
+// ════════════════════════════════════════════════════════════════════
+function PagePaiements(){
+  const [modeFilter,setModeFilter]=useState("");
+  const [typeFilter,setTypeFilter]=useState("");
+  const {data}=useQuery({queryKey:["adm-factures"],queryFn:()=>api.get("/factures").then(r=>r.data.data||[]).catch(()=>[])});
+  const factures=(data||[]).filter(f=>f.statut==="payee");
+
+  // Consolider paiements par mode
+  const parMode={};
+  factures.forEach(f=>{
+    const mode=f.mode_paiement||"Espèces";
+    if(!parMode[mode])parMode[mode]={count:0,total:0};
+    parMode[mode].count++;
+    parMode[mode].total+=+f.montant||0;
+  });
+
+  // Simuler paiements Mobile Money reçus
+  const PAIEMENTS_DEMO=[
+    {id:"PAY001",type:"Abonnement patient",partenaire:"Koné Adjoua",mode:"Wave",montant:300,statut:"confirmé",date:new Date().toISOString(),ref:"WAVE-2026-001"},
+    {id:"PAY002",type:"Mise en relation",partenaire:"Bamba Moussa",mode:"Orange Money",montant:1000,statut:"confirmé",date:new Date().toISOString(),ref:"OM-2026-002"},
+    {id:"PAY003",type:"Abonnement médecin indép.",partenaire:"Dr. Konan Adjoua",mode:"Wave",montant:500,statut:"confirmé",date:new Date().toISOString(),ref:"WAVE-2026-003"},
+    {id:"PAY004",type:"Abonnement clinique",partenaire:"Clinique Sainte Marie",mode:"Virement",montant:3000,statut:"confirmé",date:new Date().toISOString(),ref:"VIR-2026-004"},
+    {id:"PAY005",type:"Commission livraison",partenaire:"Livreur Diallo",mode:"Wave",montant:500,statut:"en_attente",date:new Date().toISOString(),ref:"WAVE-2026-005"},
+  ];
+
+  const totalRecu=[...factures,...PAIEMENTS_DEMO].reduce((s,p)=>s+(+p.montant||0),0);
+  const modeStats=[
+    {mode:"Wave",icon:"🌊",color:"#1DA6F2",total:(parMode["Wave"]?.total||0)+(PAIEMENTS_DEMO.filter(p=>p.mode==="Wave").reduce((s,p)=>s+p.montant,0)),count:(parMode["Wave"]?.count||0)+PAIEMENTS_DEMO.filter(p=>p.mode==="Wave").length},
+    {mode:"Orange Money",icon:"🟠",color:"#FF6600",total:parMode["Orange Money"]?.total||0+(PAIEMENTS_DEMO.filter(p=>p.mode==="Orange Money").reduce((s,p)=>s+p.montant,0)),count:parMode["Orange Money"]?.count||0},
+    {mode:"MTN MoMo",icon:"🟡",color:"#FFCC00",total:parMode["MTN MoMo"]?.total||0,count:parMode["MTN MoMo"]?.count||0},
+    {mode:"Moov Money",icon:"🔵",color:"#0066CC",total:parMode["Moov Money"]?.total||0,count:parMode["Moov Money"]?.count||0},
+    {mode:"Espèces",icon:"💵",color:C.green,total:parMode["Espèces"]?.total||0,count:parMode["Espèces"]?.count||0},
+    {mode:"Virement",icon:"🏦",color:C.teal,total:(parMode["Virement"]?.total||0)+PAIEMENTS_DEMO.filter(p=>p.mode==="Virement").reduce((s,p)=>s+p.montant,0),count:(parMode["Virement"]?.count||0)+PAIEMENTS_DEMO.filter(p=>p.mode==="Virement").length},
+  ];
+
+  const TYPE_SOURCES=[
+    {t:"Abonnements patients",v:300,c:C.blue,icon:"👤"},
+    {t:"Abonnements médecins indép.",v:500,c:C.purple,icon:"⭐"},
+    {t:"Abonnements cliniques",v:3000,c:C.green,icon:"🏥"},
+    {t:"Commissions livraisons",v:500,c:C.amber,icon:"🛵"},
+    {t:"Mises en relation",v:1000,c:C.teal,icon:"🤝"},
+  ];
+
+  const allPaiements=[...PAIEMENTS_DEMO,...factures.slice(0,20).map(f=>({id:f.id,type:f.type_facture==="medecin"?"Consultation médecin":f.type_facture==="clinique"?"Facture clinique":"Abonnement MediConnect",partenaire:f.patient_nom||"—",mode:f.mode_paiement||"Espèces",montant:f.montant,statut:f.statut==="payee"?"confirmé":"en_attente",date:f.created_at,ref:f.reference||"—"}))].filter(p=>(!modeFilter||p.mode===modeFilter)&&(!typeFilter||p.type===typeFilter));
+
+  return(
+    <div>
+      <PageHeader title="💳 Paiements reçus" subtitle="Mobile Money · Espèces · Virements · Tous les flux entrants MediConnect"/>
+
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Total reçu ce mois"  value={`${fmt(totalRecu)} F`}     icon="💰" color={C.green}/>
+        <Card label="Transactions"        value={allPaiements.length}        icon="📊" color={C.blue}/>
+        <Card label="Via Mobile Money"    value={`${fmt(modeStats.filter(m=>["Wave","Orange Money","MTN MoMo","Moov Money"].includes(m.mode)).reduce((s,m)=>s+m.total,0))} F`} icon="📱" color={C.teal}/>
+        <Card label="En attente confirm." value={allPaiements.filter(p=>p.statut==="en_attente").length} icon="⏳" color={C.amber}/>
+      </Grid>
+
+      {/* Canaux de paiement */}
+      <Panel title="📱 Canaux de paiement" style={{marginBottom:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+          {modeStats.map(m=>(
+            <div key={m.mode} style={{background:`${m.color}10`,border:`1.5px solid ${m.color}30`,borderRadius:12,padding:16,display:"flex",alignItems:"center",gap:14}}>
+              <span style={{fontSize:28}}>{m.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:700,color:m.color,marginBottom:4}}>{m.mode}</div>
+                <div style={{fontSize:20,fontWeight:900,color:C.text}}>{fmt(m.total)} F</div>
+                <div style={{fontSize:11,color:C.dim}}>{m.count} transaction(s)</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {/* Sources de revenus */}
+      <Panel title="🎯 Sources de revenus MediConnect" style={{marginBottom:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
+          {TYPE_SOURCES.map(s=>(
+            <div key={s.t} style={{background:C.hover,borderRadius:12,padding:16,textAlign:"center"}}>
+              <div style={{fontSize:24,marginBottom:8}}>{s.icon}</div>
+              <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:6,lineHeight:1.4}}>{s.t}</div>
+              <div style={{fontSize:18,fontWeight:900,color:s.c}}>{fmt(s.v)} F</div>
+              <div style={{fontSize:10,color:C.dim}}>par unité</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      {/* Filtres */}
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+        <select value={modeFilter} onChange={e=>setModeFilter(e.target.value)} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"8px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit"}}>
+          <option value="">Tous les modes</option>
+          {["Wave","Orange Money","MTN MoMo","Moov Money","Espèces","Virement"].map(m=><option key={m}>{m}</option>)}
+        </select>
+        <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"8px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit"}}>
+          <option value="">Tous les types</option>
+          {["Abonnement patient","Abonnement médecin indép.","Abonnement clinique","Commission livraison","Mise en relation","Consultation médecin","Facture clinique","Abonnement MediConnect"].map(t=><option key={t}>{t}</option>)}
+        </select>
+        {(modeFilter||typeFilter)&&<Btn variant="outline" style={{padding:"8px 14px",fontSize:12}} onClick={()=>{setModeFilter("");setTypeFilter("");}}>✕ Réinitialiser</Btn>}
+      </div>
+
+      {/* Table paiements */}
+      <Panel title={`📋 Journal des paiements (${allPaiements.length})`}>
+        {allPaiements.length===0?<Empty icon="💳" title="Aucun paiement" subtitle="Les paiements reçus apparaîtront ici"/>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <THead cols={["Référence","Type","Partenaire","Mode","Montant","Statut","Date"]}/>
+              <tbody>
+                {allPaiements.map((p,i)=>(
+                  <tr key={p.id||i} style={{borderBottom:`1px solid ${C.border}`}} onMouseOver={e=>e.currentTarget.style.background=C.hover} onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                    <td style={{padding:"10px 12px",fontFamily:"monospace",fontSize:12,color:C.teal}}>{p.ref||p.id?.slice(-8)||"—"}</td>
+                    <td style={{padding:"10px 12px",fontSize:12,color:C.muted}}>{p.type}</td>
+                    <td style={{padding:"10px 12px",fontWeight:700,color:C.text}}>{p.partenaire}</td>
+                    <td style={{padding:"10px 12px"}}><span style={{fontSize:12,color:C.text}}>{p.mode}</span></td>
+                    <td style={{padding:"10px 12px",fontWeight:800,color:C.green}}>{fmt(p.montant)} F</td>
+                    <td style={{padding:"10px 12px"}}><Badge color={p.statut==="confirmé"?"green":"amber"}>{p.statut==="confirmé"?"✅ Confirmé":"⏳ En attente"}</Badge></td>
+                    <td style={{padding:"10px 12px",color:C.dim,fontSize:11}}>{fmtDate(p.date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════
 // ROUTER ADMIN
 // ════════════════════════════════════════════════════════════════════
 export default function Dashboard(){
   return(
     <Routes>
-      <Route index                element={<PageHome/>}/>
-      <Route path="monetisation"  element={<PageMonetisation/>}/>
-      <Route path="utilisateurs"  element={<PageUtilisateurs/>}/>
-      <Route path="cliniques"     element={<PageCliniques/>}/>
-      <Route path="medecins"      element={<PageMedecins/>}/>
-      <Route path="livreurs"      element={<PageLivreurs/>}/>
-      <Route path="assurances"    element={<PageAssurances/>}/>
-      <Route path="statistiques"  element={<PageStatistiques/>}/>
-      <Route path="configuration" element={<PageConfiguration/>}/>
-      <Route path="patients"      element={<PageCliniques/>}/>
-      <Route path="*"             element={<PageHome/>}/>
+      <Route index                          element={<PageHome/>}/>
+      <Route path="monetisation"            element={<PageMonetisation/>}/>
+      <Route path="utilisateurs"            element={<PageUtilisateurs/>}/>
+      <Route path="cliniques"               element={<PageCliniques/>}/>
+      <Route path="medecins"                element={<PageMedecins/>}/>
+      <Route path="medecins-independants"   element={<PageMedecinsIndependants/>}/>
+      <Route path="compagnies-assurance"    element={<PageCompagniesAssurance/>}/>
+      <Route path="factures"                element={<PageFactures/>}/>
+      <Route path="caisse"                  element={<PageCaisse/>}/>
+      <Route path="paiements"               element={<PagePaiements/>}/>
+      <Route path="livreurs"                element={<PageLivreurs/>}/>
+      <Route path="assurances"              element={<PageAssurances/>}/>
+      <Route path="statistiques"            element={<PageStatistiques/>}/>
+      <Route path="configuration"           element={<PageConfiguration/>}/>
+      <Route path="patients"                element={<PageCliniques/>}/>
+      <Route path="*"                       element={<PageHome/>}/>
     </Routes>
   );
 }
