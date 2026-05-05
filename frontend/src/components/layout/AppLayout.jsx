@@ -10,10 +10,16 @@ const C = {
 // ── Navigation par rôle ───────────────────────────────────────────
 const NAV = {
   patient: [
-    { path:'/patient',              icon:'🏠', label:'Accueil' },
-    { path:'/patient/rdv',          icon:'📅', label:'Mes RDV' },
-    { path:'/patient/ordonnances',  icon:'💊', label:'Ordonnances' },
-    { path:'/patient/dossier',      icon:'📋', label:'Mon dossier' },
+    { path:'/patient',                 icon:'🏠', label:'Accueil' },
+    { path:'/patient/rdvs',            icon:'📅', label:'Mes RDV' },
+    { path:'/patient/dossier',         icon:'📋', label:'Mon dossier' },
+    { path:'/patient/ordonnances',     icon:'💊', label:'Ordonnances' },
+    { path:'/patient/consultations',   icon:'🩺', label:'Consultations' },
+    { path:'/patient/factures',        icon:'🧾', label:'Mes factures' },
+    { path:'/patient/commandes',       icon:'🛵', label:'Commander médicaments', badge:'NEW' },
+    { path:'/patient/medecins-prives', icon:'⭐', label:'Médecins privés' },
+    { path:'/patient/recherche',       icon:'🔍', label:'Trouver un médecin' },
+    { path:'/patient/feedback',        icon:'💬', label:'Feedback' },
   ],
   clinique: [
     { path:'/clinique',             icon:'📊', label:'Dashboard' },
