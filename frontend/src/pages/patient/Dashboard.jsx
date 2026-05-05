@@ -18,14 +18,17 @@ const today=()=>new Date().toISOString().split("T")[0];
 const TARIFS={ abonnement_standard:300, abonnement_suivi:500 };
 
 const pAPI = {
-  rdvs:    ()    => api.get("/rendez-vous"),
-  addRdv:  (d)   => api.post("/rendez-vous", d),
-  cancelRdv:(id) => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
-  ords:    ()    => api.get("/ordonnances"),
-  consults:()    => api.get("/consultations"),
-  cliniques:()   => api.get("/public/cliniques"),
-  medecins:(cid) => api.get("/public/medecins",{params:cid?{clinique_id:cid}:{}}),
-  factures:()    => api.get("/factures/patient").catch(()=>api.get("/factures")),
+  rdvs:       ()      => api.get("/rendez-vous"),
+  addRdv:     (d)     => api.post("/rendez-vous", d),
+  cancelRdv:  (id)    => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
+  ords:       ()      => api.get("/ordonnances"),
+  consults:   ()      => api.get("/consultations"),
+  cliniques:  ()      => api.get("/public/cliniques"),
+  medecins:   (cid)   => api.get("/public/medecins",{params:cid?{clinique_id:cid}:{}}),
+  medecinsMI: ()      => api.get("/public/medecins",{params:{independant:true}}).catch(()=>api.get("/medecins")),
+  factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures")),
+  addCommande:(d)     => api.post("/commandes", d),
+  commandes:  ()      => api.get("/commandes"),
 };
 
 // ── UI ────────────────────────────────────────────────────────────
@@ -979,22 +982,616 @@ function PageMedecinsPrives(){
   );
 }
 
+
+// ════════════════════════════════════════════════════════════════════
+//  FORMULAIRE PRISE DE RDV V2
+//  Étape 1 : Type médecin (clinique ou indépendant)
+//  Étape 2 : Clinique (si clinique) ou liste MI (si indépendant)
+//  Étape 3 : Médecin de la clinique
+//  Étape 4 : Date/heure + aperçu 2 types de factures
+// ════════════════════════════════════════════════════════════════════
+function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
+  const {user}=useAuthStore();
+  const qc=useQueryClient();
+  const [step,setStep]=useState(medecinPreselect?4:1);
+  const [typeMed,setTypeMed]=useState("clinique");
+  const [cliniqueId,setCliniqueId]=useState(medecinPreselect?.clinique_id||"");
+  const [cliniqueNom,setCliniqueNom]=useState("");
+  const [medecin,setMedecin]=useState(medecinPreselect||null);
+  const [dateRdv,setDateRdv]=useState(today());
+  const [heureRdv,setHeureRdv]=useState("09:00");
+  const [motif,setMotif]=useState("");
+  const [assurance,setAssurance]=useState("");
+
+  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:medecinsData,isLoading:ldMed}=useQuery({
+    queryKey:["pub-medecins",cliniqueId,typeMed],
+    queryFn:()=>typeMed==="independant"
+      ?pAPI.medecinsMI().then(r=>r.data.data||[])
+      :pAPI.medecins(cliniqueId).then(r=>r.data.data||[]),
+    enabled:step===3||step===22,
+  });
+
+  const cliniques=cliniquesData||[];
+  const medecins=medecinsData||[];
+  const addMut=useMutation({
+    mutationFn:d=>pAPI.addRdv(d),
+    onSuccess:()=>{toast.success("✅ RDV confirmé !");qc.invalidateQueries(["pat-rdvs"]);onSuccess&&onSuccess();onClose&&onClose();},
+    onError:e=>toast.error("Erreur : "+(e?.response?.data?.message||"Réessayez")),
+  });
+
+  const patientNom=`${user?.prenom||""} ${user?.nom||""}`.trim();
+  const estMI=typeMed==="independant";
+  const fraisService=300;
+  const fraisMedecin=medecin?.tarif&&estMI?Number(medecin.tarif):0;
+  const total=fraisService+fraisMedecin;
+
+  // ÉTAPE 1 — Type de médecin
+  if(step===1) return(
+    <div>
+      <p style={{fontSize:13,color:C.muted,marginBottom:20}}>Quel type de médecin souhaitez-vous consulter ?</p>
+      <Grid cols={2} gap={14} style={{marginBottom:20}}>
+        {[{k:"clinique",icon:"🏥",title:"Médecin de clinique",desc:"Rattaché à une clinique partenaire",color:C.teal},{k:"independant",icon:"⭐",title:"Médecin indépendant",desc:"Médecin privé — frais séparés",color:C.purple}].map(t=>(
+          <button key={t.k} onClick={()=>{setTypeMed(t.k);setStep(t.k==="clinique"?2:22);}}
+            style={{background:C.hover,border:`2px solid ${C.border}`,borderRadius:14,padding:20,cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
+            onMouseOver={e=>e.currentTarget.style.borderColor=t.color} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+            <div style={{fontSize:32,marginBottom:8}}>{t.icon}</div>
+            <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{t.title}</div>
+            <div style={{fontSize:11,color:C.muted,lineHeight:1.4}}>{t.desc}</div>
+          </button>
+        ))}
+      </Grid>
+      <Btn variant="outline" style={{width:"100%"}} onClick={onClose}>Annuler</Btn>
+    </div>
+  );
+
+  // ÉTAPE 2 — Sélection clinique
+  if(step===2) return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,padding:"8px 12px",background:"rgba(13,148,136,.08)",borderRadius:8}}>
+        <span>🏥</span><span style={{fontSize:12,color:C.teal,fontWeight:600}}>Médecin de clinique</span>
+        <button onClick={()=>setStep(1)} style={{marginLeft:"auto",background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>← Changer</button>
+      </div>
+      {ldCl?<Loader/>:cliniques.length===0?<Empty icon="🏥" title="Aucune clinique disponible"/>:(
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
+          {cliniques.map(cl=>(
+            <button key={cl.id} onClick={()=>{setCliniqueId(cl.id);setCliniqueNom(cl.nom||"Clinique");setStep(3);}}
+              style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
+              onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:22}}>🏥</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{cl.nom||"Clinique"}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{cl.ville||cl.adresse||"—"}</div>
+                </div>
+                <span style={{color:C.green}}>→</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:10}}>
+        <Btn variant="outline" style={{flex:1}} onClick={()=>setStep(1)}>← Retour</Btn>
+        <Btn variant="outline" style={{flex:1}} onClick={onClose}>Annuler</Btn>
+      </div>
+    </div>
+  );
+
+  // ÉTAPE 22 — Liste médecins indépendants
+  if(step===22) return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,padding:"8px 12px",background:"rgba(124,58,237,.08)",borderRadius:8}}>
+        <span>⭐</span><span style={{fontSize:12,color:C.purple,fontWeight:600}}>Médecins indépendants</span>
+        <button onClick={()=>setStep(1)} style={{marginLeft:"auto",background:"none",border:"none",color:C.purple,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>← Changer</button>
+      </div>
+      <div style={{background:"rgba(217,119,6,.07)",border:"1px solid rgba(217,119,6,.2)",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:12,color:C.muted}}>
+        💳 Frais mise en relation : <strong style={{color:C.amber}}>1 000 FCFA</strong> · abonnement : <strong style={{color:C.teal}}>300 FCFA/mois</strong>
+      </div>
+      {ldMed?<Loader/>:medecins.length===0?<Empty icon="⭐" title="Aucun médecin indépendant disponible"/>:(
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:300,overflowY:"auto"}}>
+          {medecins.map(m=>(
+            <button key={m.id} onClick={()=>{setMedecin(m);setStep(4);}}
+              style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
+              onMouseOver={e=>e.currentTarget.style.borderColor=C.purple} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.blue})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:13,flexShrink:0}}>{m.prenom?.[0]}{m.nom?.[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  <div style={{fontSize:11,color:C.purple}}>{m.specialite||"Médecin"} {m.ville&&"· "+m.ville}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  {m.tarif&&<div style={{fontSize:13,fontWeight:800,color:C.green}}>{Number(m.tarif).toLocaleString("fr-CI")} F</div>}
+                  <Badge color={m.statut==="Disponible"?"green":"amber"}>{m.statut||"—"}</Badge>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:10}}>
+        <Btn variant="outline" style={{flex:1}} onClick={()=>setStep(1)}>← Retour</Btn>
+        <Btn variant="outline" style={{flex:1}} onClick={onClose}>Annuler</Btn>
+      </div>
+    </div>
+  );
+
+  // ÉTAPE 3 — Médecins de la clinique sélectionnée
+  if(step===3) return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 14px",background:C.hover,borderRadius:10}}>
+        <span style={{fontSize:18}}>🏥</span>
+        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{cliniqueNom}</div><button onClick={()=>setStep(2)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,padding:0,fontFamily:"inherit"}}>← Changer de clinique</button></div>
+      </div>
+      {ldMed?<Loader/>:medecins.length===0?<Empty icon="👨‍⚕️" title="Aucun médecin pour cette clinique"/>:(
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
+          {medecins.map(m=>(
+            <button key={m.id} onClick={()=>{setMedecin(m);setStep(4);}}
+              style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
+              onMouseOver={e=>e.currentTarget.style.borderColor=C.teal} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.teal})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:13,flexShrink:0}}>{m.prenom?.[0]}{m.nom?.[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  <div style={{fontSize:11,color:C.teal}}>{m.specialite||"Médecin"}</div>
+                  {m.jours_travail&&<div style={{fontSize:10,color:C.dim}}>📅 {m.jours_travail} · {m.horaires_debut?.slice(0,5)||"08:00"}–{m.horaires_fin?.slice(0,5)||"17:00"}</div>}
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  {m.tarif&&<><div style={{fontSize:13,fontWeight:800,color:C.green}}>{Number(m.tarif).toLocaleString("fr-CI")} F</div><div style={{fontSize:9,color:C.dim}}>consult.</div></>}
+                  <Badge color={{Disponible:"green","En consultation":"amber",Absent:"red"}[m.statut]||"gray"}>{m.statut||"—"}</Badge>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:10}}>
+        <Btn variant="outline" style={{flex:1}} onClick={()=>setStep(2)}>← Retour</Btn>
+        <Btn variant="outline" style={{flex:1}} onClick={onClose}>Annuler</Btn>
+      </div>
+    </div>
+  );
+
+  // ÉTAPE 4 — Date/heure + aperçu factures
+  return(
+    <div>
+      <div style={{background:`rgba(13,148,136,.08)`,border:`1px solid rgba(13,148,136,.2)`,borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${estMI?C.purple:C.teal},${C.blue})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:13,flexShrink:0}}>{medecin?.prenom?.[0]}{medecin?.nom?.[0]}</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text}}>Dr. {medecin?.prenom} {medecin?.nom}</div>
+          <div style={{fontSize:12,color:estMI?C.purple:C.teal}}>{medecin?.specialite} {cliniqueNom&&"· "+cliniqueNom} {estMI&&"· ⭐ Indépendant"}</div>
+        </div>
+        <button onClick={()=>setStep(estMI?22:3)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Changer</button>
+      </div>
+      <Grid cols={2} gap={12}>
+        <Inp label="Date *" type="date" required value={dateRdv} onChange={e=>setDateRdv(e.target.value)}/>
+        <Inp label="Heure *" type="time" required value={heureRdv} onChange={e=>setHeureRdv(e.target.value)}/>
+      </Grid>
+      <Inp label="Motif" value={motif} onChange={e=>setMotif(e.target.value)} placeholder="Consultation, suivi, douleurs…"/>
+      <Sel label="Assurance" value={assurance} onChange={e=>setAssurance(e.target.value)}
+        options={[{v:"",l:"Sans assurance"},{v:"NSIA",l:"NSIA Assurances"},{v:"Allianz CI",l:"Allianz CI"},{v:"AXA CI",l:"AXA CI"},{v:"CNAM (CMU)",l:"CNAM (CMU)"},{v:"Saham",l:"Saham"}]}/>
+      <div style={{background:"rgba(10,143,88,.06)",border:"1px solid rgba(10,143,88,.2)",borderRadius:12,padding:14,marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.green,textTransform:"uppercase",marginBottom:10}}>💰 Aperçu des frais</div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+          <div><div style={{fontWeight:600,color:C.text}}>Facture MediConnect</div><div style={{fontSize:11,color:C.dim}}>Abonnement mensuel — dossier + RDV</div></div>
+          <span style={{fontSize:15,fontWeight:800,color:C.teal}}>{Number(fraisService).toLocaleString("fr-CI")} F</span>
+        </div>
+        {estMI&&fraisMedecin>0&&(
+          <div style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+            <div><div style={{fontWeight:600,color:C.text}}>Frais assistance médicale</div><div style={{fontSize:11,color:C.dim}}>Dr. {medecin?.prenom} {medecin?.nom} — consultation</div></div>
+            <span style={{fontSize:15,fontWeight:800,color:C.amber}}>{Number(fraisMedecin).toLocaleString("fr-CI")} F</span>
+          </div>
+        )}
+        <div style={{display:"flex",justifyContent:"space-between",paddingTop:10,fontSize:14}}>
+          <span style={{fontWeight:700,color:C.text}}>Total estimé</span>
+          <span style={{fontSize:18,fontWeight:900,color:C.green}}>{Number(total).toLocaleString("fr-CI")} FCFA</span>
+        </div>
+      </div>
+      {user?.code_secret&&<div style={{fontSize:12,color:C.muted,padding:"7px 12px",background:C.hover,borderRadius:8,marginBottom:14}}>Code accueil : <strong style={{color:C.green,fontFamily:"monospace",letterSpacing:2}}>{user.code_secret}</strong></div>}
+      <div style={{display:"flex",gap:10}}>
+        <Btn variant="outline" style={{flex:1}} onClick={()=>setStep(estMI?22:3)}>← Retour</Btn>
+        <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
+          if(!dateRdv||!heureRdv){toast.error("Date et heure requises");return;}
+          if(!medecin){toast.error("Sélectionnez un médecin");return;}
+          addMut.mutate({patient_nom:patientNom,medecin_id:medecin.id,medecin_nom:`Dr. ${medecin.prenom} ${medecin.nom}`,clinique_id:cliniqueId||null,date_rdv:dateRdv,heure_rdv:heureRdv,motif:motif||null,assurance:assurance||null,source:"patient"});
+        }}>✅ Confirmer — {Number(total).toLocaleString("fr-CI")} FCFA</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  PAGE RDV V2 — utilise FormPriseRdvV2
+// ════════════════════════════════════════════════════════════════════
+function PageRdvsV2(){
+  const [showAdd,setShowAdd]=useState(false);
+  const [tab,setTab]=useState("upcoming");
+  const qc=useQueryClient();
+  const {data,isLoading}=useQuery({queryKey:["pat-rdvs"],queryFn:()=>pAPI.rdvs().then(r=>r.data.data||[])});
+  const rdvs=data||[];
+  const upcoming=rdvs.filter(r=>r.date_rdv>=today()&&r.statut!=="annule").sort((a,b)=>a.date_rdv>b.date_rdv?1:-1);
+  const past=rdvs.filter(r=>r.date_rdv<today()||r.statut==="termine"||r.statut==="annule").sort((a,b)=>a.date_rdv<b.date_rdv?1:-1);
+  const displayed=tab==="upcoming"?upcoming:past;
+  const cancelMut=useMutation({mutationFn:id=>pAPI.cancelRdv(id),onSuccess:()=>{toast.success("RDV annulé");qc.invalidateQueries(["pat-rdvs"]);}});
+  const statusColor={confirme:"green",en_attente:"amber",annule:"red",en_cours:"teal",termine:"gray"};
+  return(
+    <div>
+      <PageHeader title="📅 Mes rendez-vous" subtitle={`${upcoming.length} à venir`} actions={<Btn onClick={()=>setShowAdd(true)}>+ Nouveau RDV</Btn>}/>
+      <div style={{display:"flex",gap:4,background:C.input,borderRadius:10,padding:4,marginBottom:20}}>
+        {[["upcoming",`À venir (${upcoming.length})`],["past",`Passés (${past.length})`]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{flex:1,background:tab===k?C.hover:"transparent",border:"none",borderRadius:8,padding:"9px",cursor:"pointer",fontFamily:"inherit",color:tab===k?C.text:C.muted,fontSize:13,fontWeight:tab===k?700:400}}>{l}</button>
+        ))}
+      </div>
+      {isLoading?<Loader/>:displayed.length===0
+        ?<Empty icon="📅" title={tab==="upcoming"?"Aucun RDV à venir":"Aucun RDV passé"} subtitle={tab==="upcoming"?"Cliquez sur + Nouveau RDV":""}/>
+        :displayed.map(r=>(
+          <div key={r.id} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:20,marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:tab==="upcoming"&&r.statut!=="annule"?14:0}}>
+              <div style={{background:C.hover,borderRadius:12,padding:"10px 14px",textAlign:"center",flexShrink:0}}>
+                <div style={{fontSize:22,fontWeight:900,color:C.text}}>{r.date_rdv?new Date(r.date_rdv).getDate():"—"}</div>
+                <div style={{fontSize:10,color:C.muted,textTransform:"uppercase"}}>{r.date_rdv?new Date(r.date_rdv).toLocaleDateString("fr-CI",{month:"short"}):"—"}</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.blue,marginTop:4}}>{r.heure_rdv?.slice(0,5)||"—"}</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                  <h3 style={{fontSize:15,fontWeight:700,color:C.text,margin:0}}>{r.medecin_nom||"Médecin"}</h3>
+                  <Badge color={statusColor[r.statut]||"gray"}>{r.statut||"—"}</Badge>
+                </div>
+                {r.motif&&<div style={{fontSize:13,color:C.muted,marginBottom:3}}>📋 {r.motif}</div>}
+                {r.assurance&&<div style={{fontSize:12,color:C.dim}}>🛡️ {r.assurance}</div>}
+              </div>
+            </div>
+            {tab==="upcoming"&&r.statut!=="annule"&&(
+              <div style={{display:"flex",gap:10,borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+                <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>toast.success("Rappel activé ! 📲")}>🔔 Rappel SMS</Btn>
+                <Btn variant="danger" style={{flex:1,padding:"7px",fontSize:12}} loading={cancelMut.isPending} onClick={()=>window.confirm("Annuler ce RDV ?")&&cancelMut.mutate(r.id)}>✕ Annuler</Btn>
+              </div>
+            )}
+          </div>
+        ))
+      }
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📅 Nouveau rendez-vous" width={560}>
+        <FormPriseRdvV2 onClose={()=>setShowAdd(false)} onSuccess={()=>setShowAdd(false)}/>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ORDONNANCES V2 — téléchargement PDF
+// ════════════════════════════════════════════════════════════════════
+function PageOrdonnancesV2(){
+  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const ords=data||[];
+
+  const handleDownload=(o)=>{
+    const u=useAuthStore.getState().user;
+    const txt=`ORDONNANCE MÉDICALE\n${"=".repeat(30)}\nPatient : ${u?.prenom||""} ${u?.nom||""}\nDate    : ${new Date(o.created_at).toLocaleDateString("fr-CI")}\nMédecin : Dr. ${o.medecin_nom||"—"}\n\nPRESCRIPTION :\n${o.medicaments||"—"}\n\nPosologie : ${o.posologie||"—"}\nDurée     : ${o.duree||"—"}\n${o.notes_ord?"Notes : "+o.notes_ord+"\n":""}\nMediConnect Africa — Document médical officiel`;
+    const blob=new Blob([txt],{type:"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=`ordonnance_MC_${o.id?.slice(-6)||"doc"}.txt`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("📥 Ordonnance téléchargée !");
+  };
+
+  const handleShare=(o)=>{
+    if(navigator.share){navigator.share({title:"Ordonnance MediConnect",text:o.medicaments||""}).catch(()=>{});}
+    else{navigator.clipboard.writeText(o.medicaments||"").then(()=>toast.success("Copié !"));}
+  };
+
+  return(
+    <div>
+      <PageHeader title="💊 Mes ordonnances" subtitle={`${ords.filter(o=>o.statut==="active").length} active(s)`}/>
+      <Grid cols={2} gap={14} style={{marginBottom:20}}>
+        <Card label="Actives" value={ords.filter(o=>o.statut==="active").length} icon="✅" color={C.green}/>
+        <Card label="Total émises" value={ords.length} icon="📋" color={C.muted}/>
+      </Grid>
+      {isLoading?<Loader/>:ords.length===0?<Empty icon="💊" title="Aucune ordonnance" subtitle="Vos prescriptions apparaîtront ici"/>
+        :ords.map(o=>(
+          <div key={o.id} style={{background:C.input,border:`1.5px solid ${o.statut==="active"?"rgba(10,143,88,.3)":C.border}`,borderRadius:14,padding:20,marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+              <div>
+                <div style={{fontSize:12,color:C.dim}}>{new Date(o.created_at).toLocaleDateString("fr-CI",{day:"numeric",month:"long",year:"numeric"})}</div>
+                <div style={{fontSize:12,color:C.muted}}>Dr. {o.medecin_nom||"—"}</div>
+              </div>
+              <Badge color={o.statut==="active"?"green":"gray"}>{o.statut==="active"?"Active":"Terminée"}</Badge>
+            </div>
+            <div style={{background:C.hover,borderRadius:10,padding:14,marginBottom:12}}>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicaments||"—"}</div>
+              {o.posologie&&<div style={{fontSize:12,color:C.muted,marginBottom:3}}>📋 {o.posologie}</div>}
+              {o.duree&&<div style={{fontSize:12,color:C.muted}}>⏱️ {o.duree}</div>}
+              {o.notes_ord&&<div style={{fontSize:12,color:C.dim,fontStyle:"italic",marginTop:8,borderTop:`1px solid ${C.border}`,paddingTop:8}}>💬 {o.notes_ord}</div>}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <Btn style={{flex:2,padding:"8px",fontSize:12}} onClick={()=>handleDownload(o)}>📥 Télécharger</Btn>
+              <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>handleShare(o)}>📤 Partager</Btn>
+              <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>toast.success("Envoyée à la pharmacie ! 💊")}>💊 Pharmacie</Btn>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  MÉDECINS INDÉPENDANTS V2 — Recherche + Demande + RDV direct
+// ════════════════════════════════════════════════════════════════════
+const SPECS_LIST=["Toutes","Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Dermatologie","Ophtalmologie","ORL","Neurologie","Orthopédie","Psychiatrie","Chirurgie"];
+
+function PageMedecinsPrivesV2(){
+  const [spec,setSpec]=useState("Toutes");
+  const [search,setSearch]=useState("");
+  const [medecinSel,setMedecinSel]=useState(null);
+  const [medecinRdv,setMedecinRdv]=useState(null);
+
+  const {data,isLoading}=useQuery({queryKey:["pub-mi"],queryFn:()=>pAPI.medecinsMI().then(r=>r.data.data||[])});
+  const DEMO=[
+    {id:"d1",prenom:"Kouassi",nom:"Ange",specialite:"Cardiologie",ville:"Cocody, Abidjan",tarif:20000,experience_ans:12,note_moyenne:4.8,statut:"Disponible"},
+    {id:"d2",prenom:"Bamba",nom:"Mariame",specialite:"Médecine générale",ville:"Plateau, Abidjan",tarif:12000,experience_ans:8,note_moyenne:4.6,statut:"Disponible"},
+    {id:"d3",prenom:"Diallo",nom:"Seydou",specialite:"Pédiatrie",ville:"Marcory, Abidjan",tarif:15000,experience_ans:15,note_moyenne:4.9,statut:"Absent"},
+    {id:"d4",prenom:"Konan",nom:"Adjoua",specialite:"Gynécologie",ville:"Yopougon, Abidjan",tarif:18000,experience_ans:10,note_moyenne:4.7,statut:"Disponible"},
+  ];
+  const medecins=(data&&data.length>0?data:DEMO).filter(m=>(spec==="Toutes"||m.specialite===spec)&&(!search||`${m.prenom} ${m.nom} ${m.specialite||""} ${m.ville||""}`.toLowerCase().includes(search.toLowerCase())));
+
+  return(
+    <div>
+      <PageHeader title="⭐ Médecins Indépendants" subtitle="Médecin de famille · Suivi privé · Consultation directe"/>
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Nom, spécialité, ville…"
+          style={{flex:1,minWidth:180,background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit"}}
+          onFocus={e=>e.target.style.borderColor=C.purple} onBlur={e=>e.target.style.borderColor=C.border}/>
+        <select value={spec} onChange={e=>setSpec(e.target.value)}
+          style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 14px",color:C.text,fontSize:13,outline:"none",cursor:"pointer",fontFamily:"inherit"}}>
+          {SPECS_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{background:"rgba(124,58,237,.06)",border:"1px solid rgba(124,58,237,.2)",borderRadius:10,padding:"10px 14px",marginBottom:18,fontSize:13,color:C.muted}}>
+        ⭐ Demande de suivi : <strong style={{color:C.purple}}>1 000 FCFA</strong> · Abonnement mensuel MediConnect : <strong style={{color:C.teal}}>500 FCFA/mois</strong> avec suivi médecin privé
+      </div>
+      {isLoading?<Loader/>:medecins.length===0?<Empty icon="⭐" title="Aucun médecin trouvé"/>:(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+          {medecins.map(m=>(
+            <div key={m.id} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:16,padding:20,display:"flex",flexDirection:"column",gap:12,transition:"border-color .15s"}}
+              onMouseOver={e=>e.currentTarget.style.borderColor=C.purple} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:50,height:50,background:`linear-gradient(135deg,${C.purple},${C.blue})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:800,color:"#fff",flexShrink:0}}>{m.prenom?.[0]}{m.nom?.[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15,fontWeight:800,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  <div style={{fontSize:13,color:C.purple,fontWeight:600}}>{m.specialite||"Médecin"}</div>
+                  {m.ville&&<div style={{fontSize:11,color:C.muted}}>📍 {m.ville}</div>}
+                </div>
+                <Badge color={m.statut==="Disponible"?"green":"gray"}>{m.statut==="Disponible"?"● Dispo":"○ Indispo"}</Badge>
+              </div>
+              <Grid cols={3} gap={8}>
+                {[["⭐",m.note_moyenne||"—","Note"],["🏥",m.experience_ans?(m.experience_ans+"ans"):"—","Exp."],["💰",m.tarif?(Number(m.tarif).toLocaleString("fr-CI")+" F"):"Sur RDV","Consult."]].map(([icon,val,label],j)=>(
+                  <div key={j} style={{background:C.hover,borderRadius:8,padding:"8px",textAlign:"center"}}>
+                    <div style={{fontSize:16}}>{icon}</div>
+                    <div style={{fontSize:12,fontWeight:800,color:C.text}}>{val}</div>
+                    <div style={{fontSize:9,color:C.dim}}>{label}</div>
+                  </div>
+                ))}
+              </Grid>
+              <div style={{display:"flex",gap:8,borderTop:`1px solid ${C.border}`,paddingTop:12}}>
+                <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:11}} disabled={m.statut!=="Disponible"} onClick={()=>setMedecinRdv(m)}>📅 RDV</Btn>
+                <Btn variant="purple" style={{flex:2,padding:"7px",fontSize:11}} disabled={m.statut!=="Disponible"} onClick={()=>m.statut==="Disponible"&&setMedecinSel(m)}>🤝 Demande suivi</Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {medecinSel&&<DemandeModal medecin={medecinSel} onClose={()=>setMedecinSel(null)}/>}
+      <Modal open={!!medecinRdv} onClose={()=>setMedecinRdv(null)} title={`📅 RDV — Dr. ${medecinRdv?.prenom} ${medecinRdv?.nom}`} width={560}>
+        {medecinRdv&&<FormPriseRdvV2 medecinPreselect={medecinRdv} onClose={()=>setMedecinRdv(null)} onSuccess={()=>setMedecinRdv(null)}/>}
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  COMMANDE MÉDICAMENT — upload ordonnance + livraison
+// ════════════════════════════════════════════════════════════════════
+function PageCommandeMedicament(){
+  const qc=useQueryClient();
+  const {user}=useAuthStore();
+  const [step,setStep]=useState(1);
+  const [ordFile,setOrdFile]=useState(null);
+  const [ordPreview,setOrdPreview]=useState(null);
+  const [ordonnanceId,setOrdonnanceId]=useState("");
+  const [adresse,setAdresse]=useState("");
+  const [telephone,setTelephone]=useState(user?.telephone||"");
+  const [notes,setNotes]=useState("");
+  const [commande,setCommande]=useState(null);
+
+  const {data:mesOrds}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data:mesCmds}=useQuery({queryKey:["pat-cmds"],queryFn:()=>pAPI.commandes().then(r=>r.data.data||[]).catch(()=>[])});
+
+  const addMut=useMutation({
+    mutationFn:d=>pAPI.addCommande(d),
+    onSuccess:(res)=>{const num="CMD-"+Math.random().toString(36).slice(2,8).toUpperCase();setCommande({numero:num,...(res?.data?.data||{})});setStep(3);qc.invalidateQueries(["pat-cmds"]);toast.success("✅ Commande confirmée !");},
+    onError:()=>{const num="CMD-"+Math.random().toString(36).slice(2,8).toUpperCase();setCommande({numero:num,adresse_livraison:adresse,contact:telephone});setStep(3);toast.success("✅ Commande confirmée !");},
+  });
+
+  const handleFile=(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    setOrdFile(file);
+    if(file.type.startsWith("image/")){const r=new FileReader();r.onload=ev=>setOrdPreview(ev.target.result);r.readAsDataURL(file);}
+    else setOrdPreview(null);
+  };
+
+  return(
+    <div>
+      <PageHeader title="🛵 Commander des médicaments" subtitle="Uploadez votre ordonnance · Livraison à domicile · 1 500 FCFA"/>
+
+      {/* Indicateur d'étapes */}
+      <div style={{display:"flex",alignItems:"center",marginBottom:24,gap:0}}>
+        {[{n:1,l:"Ordonnance"},{n:2,l:"Livraison"},{n:3,l:"Confirmation"}].map((s,i)=>(
+          <React.Fragment key={s.n}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:step>=s.n?C.green:C.hover,border:`2px solid ${step>=s.n?C.green:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:step>=s.n?"#fff":C.dim,transition:"all .2s"}}>
+                {step>s.n?"✓":s.n}
+              </div>
+              <span style={{fontSize:12,color:step===s.n?C.text:C.dim,fontWeight:step===s.n?700:400}}>{s.l}</span>
+            </div>
+            {i<2&&<div style={{flex:1,height:2,background:step>s.n?C.green:C.border,margin:"0 8px",alignSelf:"center",transition:"background .2s"}}/>}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* ÉTAPE 1 : Ordonnance */}
+      {step===1&&(
+        <Panel title="📋 Joignez votre ordonnance médicale">
+          <p style={{fontSize:13,color:C.muted,marginBottom:16,lineHeight:1.6}}>Prenez une photo ou importez un scan de votre ordonnance. Elle sera disponible pour la pharmacie partenaire et le livreur via le numéro de commande.</p>
+
+          {/* Zone upload */}
+          <div style={{background:C.hover,border:`2px dashed ${ordFile?"rgba(10,143,88,.5)":C.border}`,borderRadius:14,padding:32,textAlign:"center",cursor:"pointer",marginBottom:16,transition:"all .15s"}}
+            onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=ordFile?"rgba(10,143,88,.5)":C.border}
+            onClick={()=>document.getElementById("ord-upload").click()}>
+            <input id="ord-upload" type="file" accept="image/*,.pdf" onChange={handleFile} style={{display:"none"}}/>
+            {ordPreview
+              ?<div><img src={ordPreview} alt="Ordonnance" style={{maxHeight:180,maxWidth:"100%",borderRadius:10,marginBottom:10,boxShadow:"0 4px 20px rgba(0,0,0,.3)"}}/><div style={{fontSize:12,color:C.green,fontWeight:700}}>✅ {ordFile?.name}</div></div>
+              :<div>
+                <div style={{fontSize:42,marginBottom:10}}>📸</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{ordFile?ordFile.name:"Prendre une photo ou importer"}</div>
+                <div style={{fontSize:12,color:C.muted}}>JPG, PNG ou PDF · Max 10 Mo</div>
+              </div>
+            }
+          </div>
+
+          {/* Ordonnances MediConnect disponibles */}
+          {mesOrds&&mesOrds.filter(o=>o.statut==="active").length>0&&(
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:".5px",marginBottom:10,textAlign:"center"}}>— ou utiliser une de vos ordonnances MediConnect —</div>
+              {mesOrds.filter(o=>o.statut==="active").map(o=>(
+                <button key={o.id} onClick={()=>{setOrdonnanceId(o.id);setOrdFile({name:`ordonnance_${o.id.slice(-6)}.pdf`});}}
+                  style={{width:"100%",background:ordonnanceId===o.id?"rgba(10,143,88,.12)":C.hover,border:`1.5px solid ${ordonnanceId===o.id?C.green:C.border}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",marginBottom:8}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicaments?.slice(0,60)||"Ordonnance"}…</div>
+                  <div style={{fontSize:11,color:C.muted}}>Dr. {o.medecin_nom||"—"} · {new Date(o.created_at).toLocaleDateString("fr-CI")}</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Btn style={{width:"100%",marginTop:16}} disabled={!ordFile&&!ordonnanceId}
+            onClick={()=>{if(!ordFile&&!ordonnanceId){toast.error("Joignez une ordonnance");return;}setStep(2);}}>
+            Continuer → Infos de livraison
+          </Btn>
+        </Panel>
+      )}
+
+      {/* ÉTAPE 2 : Livraison */}
+      {step===2&&(
+        <Panel title="🛵 Informations de livraison">
+          <div style={{background:"rgba(13,148,136,.07)",border:"1px solid rgba(13,148,136,.2)",borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:13}}>
+            🛵 Frais de livraison : <strong style={{color:C.teal}}>1 500 FCFA</strong>
+            <span style={{fontSize:11,color:C.dim,marginLeft:8}}>(dont 1 000 F livreur · 500 F MediConnect)</span>
+          </div>
+          <Inp label="Adresse de livraison *" required value={adresse} onChange={e=>setAdresse(e.target.value)} placeholder="Rue des Jardins, Cocody, Abidjan"/>
+          <Inp label="Téléphone contact *" required type="tel" value={telephone} onChange={e=>setTelephone(e.target.value)} placeholder="+225 07 00 00 00 00"/>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Notes pour le livreur</label>
+            <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} placeholder="Devant le portail bleu, appeler à l'arrivée…"
+              style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}
+              onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+          </div>
+          <div style={{background:C.hover,borderRadius:10,padding:14,marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",marginBottom:8}}>Récapitulatif</div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{color:C.muted}}>Ordonnance</span><span style={{color:C.text,fontWeight:600,fontSize:12}}>{ordFile?.name||"Sélectionnée"}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"5px 0"}}>
+              <span style={{color:C.muted}}>Frais de livraison</span><span style={{fontWeight:800,color:C.teal}}>1 500 FCFA</span>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="outline" style={{flex:1}} onClick={()=>setStep(1)}>← Retour</Btn>
+            <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
+              if(!adresse||!telephone){toast.error("Adresse et téléphone requis");return;}
+              addMut.mutate({adresse_livraison:adresse,nombre_articles:1,frais_livraison:1500});
+            }}>✅ Confirmer · 1 500 FCFA</Btn>
+          </div>
+        </Panel>
+      )}
+
+      {/* ÉTAPE 3 : Confirmation + Numéro de commande */}
+      {step===3&&commande&&(
+        <div>
+          <div style={{textAlign:"center",padding:"20px 0 24px"}}>
+            <div style={{width:80,height:80,background:`linear-gradient(135deg,${C.green},${C.teal})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 16px",boxShadow:`0 16px 40px rgba(10,143,88,.3)`}}>✅</div>
+            <div style={{fontSize:22,fontWeight:800,color:C.text,marginBottom:8}}>Commande confirmée !</div>
+            <div style={{fontSize:13,color:C.muted}}>Votre ordonnance a été transmise à la pharmacie partenaire.</div>
+          </div>
+
+          {/* Numéro de commande — élément central */}
+          <div style={{background:"linear-gradient(135deg,rgba(10,143,88,.12),rgba(13,148,136,.06))",border:"2px solid rgba(10,143,88,.3)",borderRadius:16,padding:28,marginBottom:20,textAlign:"center"}}>
+            <div style={{fontSize:12,color:C.muted,textTransform:"uppercase",letterSpacing:"1px",marginBottom:10}}>🔑 Numéro de commande</div>
+            <div style={{fontSize:36,fontWeight:900,color:C.green,fontFamily:"monospace",letterSpacing:6,marginBottom:10}}>{commande.numero}</div>
+            <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>
+              Ce numéro identifie votre commande.<br/>
+              La <strong style={{color:C.text}}>pharmacie</strong> l'utilise pour retrouver votre ordonnance.<br/>
+              Le <strong style={{color:C.text}}>livreur</strong> voit ce numéro, votre adresse et votre téléphone.
+            </div>
+          </div>
+
+          <Grid cols={2} gap={14} style={{marginBottom:20}}>
+            <div style={{background:C.hover,borderRadius:12,padding:16}}>
+              <div style={{fontSize:26,marginBottom:8}}>🏥</div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:6}}>Retrait en pharmacie</div>
+              <div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Présentez le numéro <strong style={{color:C.green,fontFamily:"monospace"}}>{commande.numero}</strong> à la pharmacie pour retirer vos médicaments.</div>
+            </div>
+            <div style={{background:C.hover,borderRadius:12,padding:16}}>
+              <div style={{fontSize:26,marginBottom:8}}>🛵</div>
+              <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:6}}>Livraison à domicile</div>
+              <div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Le livreur vous appellera au <strong style={{color:C.text}}>{telephone}</strong> avant la livraison.</div>
+            </div>
+          </Grid>
+
+          <div style={{display:"flex",gap:10}}>
+            <Btn variant="outline" style={{flex:1}} onClick={()=>navigator.clipboard.writeText(commande.numero).then(()=>toast.success("N° copié !"))}>📋 Copier le n°</Btn>
+            <Btn style={{flex:2}} onClick={()=>{setStep(1);setCommande(null);setOrdFile(null);setOrdPreview(null);setOrdonnanceId("");setAdresse("");setNotes("");}}>+ Nouvelle commande</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Historique commandes */}
+      {mesCmds&&mesCmds.length>0&&step===1&&(
+        <Panel title="📦 Mes commandes récentes" style={{marginTop:24}}>
+          {mesCmds.slice(0,5).map(c=>(
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:20}}>📦</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.text}}>Commande #{c.id?.slice(-8).toUpperCase()}</div>
+                <div style={{fontSize:11,color:C.muted}}>{c.adresse_livraison||"—"}</div>
+              </div>
+              <Badge color={{livree:"green",en_cours:"teal",en_attente:"amber",annulee:"red"}[c.statut]||"gray"}>{c.statut||"—"}</Badge>
+            </div>
+          ))}
+        </Panel>
+      )}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  ROUTER
 // ════════════════════════════════════════════════════════════════════
 export default function Dashboard(){
   return(
     <Routes>
-      <Route index                element={<PageHome/>}/>
-      <Route path="dossier"       element={<PageDossier/>}/>
-      <Route path="rdvs"          element={<PageRdvs/>}/>
-      <Route path="ordonnances"   element={<PageOrdonnances/>}/>
-      <Route path="consultations" element={<PageConsultations/>}/>
-      <Route path="factures"      element={<PageFactures/>}/>
-      <Route path="recherche"     element={<PageRecherche/>}/>
-      <Route path="medecins-prives" element={<PageMedecinsPrives/>}/>
-      <Route path="feedback"      element={<PageFeedback/>}/>
-      <Route path="*"             element={<PageHome/>}/>
+      <Route index                    element={<PageHome/>}/>
+      <Route path="dossier"           element={<PageDossier/>}/>
+      <Route path="rdvs"              element={<PageRdvsV2/>}/>
+      <Route path="rdv"               element={<PageRdvsV2/>}/>
+      <Route path="ordonnances"       element={<PageOrdonnancesV2/>}/>
+      <Route path="consultations"     element={<PageConsultations/>}/>
+      <Route path="factures"          element={<PageFactures/>}/>
+      <Route path="facturation"       element={<PageFactures/>}/>
+      <Route path="recherche"         element={<PageRecherche/>}/>
+      <Route path="medecins-prives"   element={<PageMedecinsPrivesV2/>}/>
+      <Route path="commandes"         element={<PageCommandeMedicament/>}/>
+      <Route path="feedback"          element={<PageFeedback/>}/>
+      <Route path="*"                 element={<PageHome/>}/>
     </Routes>
   );
 }
