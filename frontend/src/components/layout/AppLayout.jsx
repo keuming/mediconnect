@@ -39,7 +39,9 @@ const NAV = {
     { path:'/medecin',              icon:'🏠', label:'Tableau de bord' },
     { path:'/medecin/planning',     icon:'📅', label:'Mon planning' },
     { path:'/medecin/patients',     icon:'👤', label:'Mes patients' },
-    { path:'/medecin/statistiques', icon:'📊', label:'Statistiques' },
+    { path:'/medecin/consultations',icon:'🩺', label:'Consultations' },
+    { path:'/medecin/ordonnances',  icon:'💊', label:'Ordonnances' },
+    { path:'/medecin/stats',        icon:'📊', label:'Statistiques' },
   ],
   pharmacie: [
     { path:'/pharmacie',            icon:'📊', label:'Dashboard' },
@@ -74,11 +76,39 @@ const NAV = {
     { path:'/assureur',             icon:'📊', label:'Dashboard' },
     { path:'/assureur/dossiers',    icon:'📁', label:'Dossiers' },
   ],
+  medecin_independant: [
+    { path:'/medecin/independant',              icon:'🏠', label:'Tableau de bord' },
+    { path:'/medecin/independant/planning',     icon:'📅', label:'Mon planning' },
+    { path:'/medecin/independant/patients',     icon:'👤', label:'Mes patients' },
+    { path:'/medecin/independant/facturation',  icon:'💰', label:'Facturation' },
+    { path:'/medecin/independant/consultations',icon:'🩺', label:'Consultations' },
+    { path:'/medecin/independant/ordonnances',  icon:'💊', label:'Ordonnances' },
+    { path:'/medecin/independant/stats',        icon:'📊', label:'Statistiques' },
+  ],
+  imagerie: [
+    { path:'/imagerie',            icon:'🩻', label:'Tableau de bord' },
+    { path:'/imagerie/bulletins',  icon:'📥', label:'Bulletins reçus' },
+    { path:'/imagerie/rapports',   icon:'📤', label:'Envoyer rapport' },
+  ],
+  laboratoire: [
+    { path:'/laboratoire',             icon:'🧪', label:'Tableau de bord' },
+    { path:'/laboratoire/bulletins',   icon:'📥', label:'Demandes reçues' },
+    { path:'/laboratoire/analyses',    icon:'📤', label:'Envoyer résultats' },
+  ],
+
 };
 
 const ROLE_LABELS = {
-  patient:'Espace Patient', clinique:'Espace Clinique', medecin:'Espace Médecin',
-  pharmacie:'Espace Pharmacie', livreur:'Espace Livreur', admin:'Administration', assureur:'Espace Assureur',
+  patient:'Espace Patient',
+  clinique:'Espace Clinique',
+  medecin:'Espace Médecin',
+  medecin_independant:'Médecin Indépendant',
+  pharmacie:'Espace Pharmacie',
+  livreur:'Espace Livreur',
+  admin:'Administration',
+  assureur:'Espace Assureur',
+  imagerie:'Imagerie Médicale',
+  laboratoire:'Laboratoire',
 };
 
 const ROLE_COLORS = {

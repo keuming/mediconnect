@@ -6,15 +6,16 @@ import useAuthStore from './context/authStore';
 
 import Login    from './pages/Login';
 import Register from './pages/Register';
-import DashboardPatient     from './pages/patient/Dashboard';
-import DashboardClinique    from './pages/clinique/Dashboard';
-import DashboardPharmacie   from './pages/pharmacie/Dashboard';
-import DashboardLivreur     from './pages/livreur/Dashboard';
-import DashboardAdmin       from './pages/admin/Dashboard';
-import DashboardAssureur    from './pages/assureur/Dashboard';
-import DashboardImagerie    from './pages/imagerie/Dashboard';
-import DashboardLaboratoire from './pages/laboratoire/Dashboard';
-import DashboardMedecinPrive from './pages/medecin-prive/Dashboard';
+import DashboardPatient          from './pages/patient/Dashboard';
+import DashboardClinique         from './pages/clinique/Dashboard';
+import DashboardMedecin          from './pages/medecin/Dashboard';
+import DashboardMedecinIndep     from './pages/medecin/DashboardIndependant';
+import DashboardPharmacie        from './pages/pharmacie/Dashboard';
+import DashboardLivreur          from './pages/livreur/Dashboard';
+import DashboardAdmin            from './pages/admin/Dashboard';
+import DashboardAssureur         from './pages/assureur/Dashboard';
+import DashboardImagerie         from './pages/imagerie/Dashboard';
+import DashboardLaboratoire      from './pages/laboratoire/Dashboard';
 import AppLayout from './components/layout/AppLayout';
 
 const queryClient = new QueryClient({
@@ -27,7 +28,7 @@ const queryClient = new QueryClient({
       },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
       staleTime: 30 * 1000,
-      cacheTime: 5 * 60 * 1000,
+      gcTime: 5 * 60 * 1000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
     },
@@ -36,10 +37,10 @@ const queryClient = new QueryClient({
 });
 
 const Loader = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#060C12' }}>
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-      <div style={{ color: '#8BA0B5', fontSize: 14 }}>Chargement de MediConnect…</div>
+  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#060C12' }}>
+    <div style={{ textAlign:'center' }}>
+      <div style={{ fontSize:48, marginBottom:16 }}>⏳</div>
+      <div style={{ color:'#8BA0B5', fontSize:14 }}>Chargement de MediConnect…</div>
     </div>
   </div>
 );
@@ -54,12 +55,20 @@ const PrivateRoute = ({ children, roles }) => {
 const RoleRedirect = () => {
   const { user } = useAuthStore();
   const routes = {
-    patient: '/patient', clinique: '/clinique', pharmacie: '/pharmacie',
-    livreur: '/livreur', admin: '/admin', assureur: '/assureur',
-    imagerie: '/imagerie', laboratoire: '/laboratoire',
-    medecin_prive: '/medecin-prive',
+    patient:              '/patient',
+    clinique:             '/clinique',
+    medecin:              '/medecin',
+    medecin_independant:  '/medecin/independant',
+    medecin_prive:        '/medecin/independant',  // alias
+    pharmacie:            '/pharmacie',
+    livreur:              '/livreur',
+    admin:                '/admin',
+    assureur:             '/assureur',
+    imagerie:             '/imagerie',
+    laboratoire:          '/laboratoire',
   };
-  return <Navigate to={routes[user?.role] || '/login'} replace />;
+  const dest = routes[user?.role] || '/login';
+  return <Navigate to={dest} replace />;
 };
 
 export default function App() {
@@ -68,9 +77,9 @@ export default function App() {
       <BrowserRouter>
         <Toaster position="top-right" toastOptions={{
           duration: 4000,
-          style: { background: '#141E2B', color: '#F0F4F8', border: '1px solid #1E2F42', fontSize: 14 },
-          success: { iconTheme: { primary: '#0A8F58', secondary: '#fff' } },
-          error:   { iconTheme: { primary: '#E11D48', secondary: '#fff' }, duration: 6000 },
+          style: { background:'#141E2B', color:'#F0F4F8', border:'1px solid #1E2F42', fontSize:14 },
+          success: { iconTheme: { primary:'#0A8F58', secondary:'#fff' } },
+          error:   { iconTheme: { primary:'#E11D48', secondary:'#fff' }, duration:6000 },
         }} />
 
         <Suspense fallback={<Loader />}>
@@ -92,6 +101,20 @@ export default function App() {
             <Route path="/clinique/*" element={
               <PrivateRoute roles={['clinique']}>
                 <AppLayout role="clinique"><DashboardClinique /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* Médecin employé de clinique */}
+            <Route path="/medecin/*" element={
+              <PrivateRoute roles={['medecin']}>
+                <AppLayout role="medecin"><DashboardMedecin /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* Médecin indépendant (medecin_independant ou medecin_prive) */}
+            <Route path="/medecin/independant/*" element={
+              <PrivateRoute roles={['medecin_independant','medecin_prive']}>
+                <AppLayout role="medecin_independant"><DashboardMedecinIndep /></AppLayout>
               </PrivateRoute>
             } />
 
@@ -134,13 +157,6 @@ export default function App() {
             <Route path="/laboratoire/*" element={
               <PrivateRoute roles={['laboratoire']}>
                 <AppLayout role="laboratoire"><DashboardLaboratoire /></AppLayout>
-              </PrivateRoute>
-            } />
-
-            {/* Médecin Indépendant */}
-            <Route path="/medecin-prive/*" element={
-              <PrivateRoute roles={['medecin_prive']}>
-                <AppLayout role="medecin_prive"><DashboardMedecinPrive /></AppLayout>
               </PrivateRoute>
             } />
 
