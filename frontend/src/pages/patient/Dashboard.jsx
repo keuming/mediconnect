@@ -18,17 +18,18 @@ const today=()=>new Date().toISOString().split("T")[0];
 const TARIFS={ abonnement_standard:300, abonnement_suivi:500 };
 
 const pAPI = {
-  rdvs:       ()      => api.get("/rendez-vous"),
+  rdvs:       ()      => api.get("/rendez-vous").catch(()=>({data:{data:[]}})),
   addRdv:     (d)     => api.post("/rendez-vous", d),
   cancelRdv:  (id)    => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
-  ords:       ()      => api.get("/ordonnances"),
-  consults:   ()      => api.get("/consultations"),
-  cliniques:  ()      => api.get("/public/cliniques"),
-  medecins:   (cid)   => api.get("/public/medecins",{params:cid?{clinique_id:cid}:{}}),
-  medecinsMI: ()      => api.get("/public/medecins",{params:{independant:true}}).catch(()=>api.get("/medecins")),
-  factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures")),
+  ords:       ()      => api.get("/ordonnances").catch(()=>({data:{data:[]}})),
+  consults:   ()      => api.get("/consultations").catch(()=>({data:{data:[]}})),
+  // Route publique — pas de token requis
+  cliniques:  ()      => api.get("/public/cliniques").catch(()=>({data:{data:[]}})),
+  medecins:   (cid)   => api.get("/public/medecins",{params:cid?{clinique_id:cid}:{}}).catch(()=>({data:{data:[]}})),
+  medecinsMI: ()      => api.get("/public/medecins",{params:{independant:true}}).catch(()=>api.get("/medecins").catch(()=>({data:{data:[]}}))),
+  factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures").catch(()=>({data:{data:[]}}))),
   addCommande:(d)     => api.post("/commandes", d),
-  commandes:  ()      => api.get("/commandes"),
+  commandes:  ()      => api.get("/commandes").catch(()=>({data:{data:[]}})),
 };
 
 // ── UI ────────────────────────────────────────────────────────────
@@ -159,7 +160,7 @@ function FormPriseRdv({onClose,onSuccess,medecinPreselect=null}){
   const [motif,setMotif]=useState("");
   const [assurance,setAssurance]=useState("");
 
-  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data?.data||r.data||[]),retry:2});
   const {data:medecinsData,isLoading:ldMed}=useQuery({queryKey:["pub-medecins",cliniqueId],queryFn:()=>pAPI.medecins(cliniqueId).then(r=>r.data.data||[]),enabled:step>=2});
 
   const cliniques=cliniquesData||[];
@@ -589,7 +590,7 @@ function PageRdvs(){
 // ════════════════════════════════════════════════════════════════════
 function PageRecherche(){
   const [search,setSearch]=useState(""); const [cliniqueFilter,setCliFilter]=useState(""); const [specFilter,setSpecFilter]=useState(""); const [selectedMed,setSelectedMed]=useState(null);
-  const {data:cliniquesData}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:cliniquesData}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data?.data||r.data||[]),retry:2});
   const {data:medecinsData,isLoading}=useQuery({queryKey:["pub-medecins",cliniqueFilter],queryFn:()=>pAPI.medecins(cliniqueFilter).then(r=>r.data.data||[])});
   const cliniques=cliniquesData||[];
   const specs=[...new Set((medecinsData||[]).map(m=>m.specialite).filter(Boolean))];
@@ -1003,7 +1004,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
   const [motif,setMotif]=useState("");
   const [assurance,setAssurance]=useState("");
 
-  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data?.data||r.data||[]),retry:2});
   const {data:medecinsData,isLoading:ldMed}=useQuery({
     queryKey:["pub-medecins",cliniqueId,typeMed],
     queryFn:()=>typeMed==="independant"
@@ -1052,7 +1053,12 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
         <span>🏥</span><span style={{fontSize:12,color:C.teal,fontWeight:600}}>Médecin de clinique</span>
         <button onClick={()=>setStep(1)} style={{marginLeft:"auto",background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>← Changer</button>
       </div>
-      {ldCl?<Loader/>:cliniques.length===0?<Empty icon="🏥" title="Aucune clinique disponible"/>:(
+      {ldCl?<Loader/>:cliniques.length===0?<div style={{textAlign:"center",padding:"24px 16px",color:C.dim}}>
+            <div style={{fontSize:32,marginBottom:10}}>⚠️</div>
+            <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:6}}>Aucune clinique trouvée</div>
+            <div style={{fontSize:12,color:C.dim,marginBottom:12}}>Vérifiez votre connexion ou réessayez.</div>
+            <button onClick={()=>window.location.reload()} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 16px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Recharger</button>
+          </div>:(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
           {cliniques.map(cl=>(
             <button key={cl.id} onClick={()=>{setCliniqueId(cl.id);setCliniqueNom(cl.nom||"Clinique");setStep(3);}}
