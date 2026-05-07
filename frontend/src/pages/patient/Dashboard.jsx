@@ -148,190 +148,7 @@ const statusColor={confirme:"green",en_attente:"amber",annule:"red",en_cours:"te
 //  Étape 2: Sélection médecin lié à la clinique
 //  Étape 3: Date/heure + aperçu des 2 types de factures
 // ════════════════════════════════════════════════════════════════════
-function FormPriseRdv({onClose,onSuccess,medecinPreselect=null}){
-  const {user}=useAuthStore();
-  const qc=useQueryClient();
-  const [step,setStep]=useState(medecinPreselect?3:1);
-  const [cliniqueId,setCliniqueId]=useState(medecinPreselect?.clinique_id||"");
-  const [cliniqueNom,setCliniqueNom]=useState("");
-  const [medecin,setMedecin]=useState(medecinPreselect||null);
-  const [dateRdv,setDateRdv]=useState(today());
-  const [heureRdv,setHeureRdv]=useState("09:00");
-  const [motif,setMotif]=useState("");
-  const [assurance,setAssurance]=useState("");
 
-  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data?.data||r.data||[]),retry:2});
-  const {data:medecinsData,isLoading:ldMed}=useQuery({queryKey:["pub-medecins",cliniqueId],queryFn:()=>pAPI.medecins(cliniqueId).then(r=>r.data.data||[]),enabled:step>=2});
-
-  const cliniques=cliniquesData||[];
-  const medecins=medecinsData||[];
-
-  const addMut=useMutation({
-    mutationFn:d=>pAPI.addRdv(d),
-    onSuccess:()=>{toast.success("✅ RDV confirmé !");qc.invalidateQueries(["pat-rdvs"]);onSuccess&&onSuccess();onClose&&onClose();},
-    onError:e=>toast.error("Erreur : "+(e?.response?.data?.message||"Réessayez")),
-  });
-
-  const patientNom=`${user?.prenom||""} ${user?.nom||""}`.trim();
-  const fraisService=TARIFS.abonnement_standard;
-  const fraisMedecin=medecin?.tarif?Number(medecin.tarif):0;
-  const total=fraisService+fraisMedecin;
-
-  // ÉTAPE 1 : Clinique
-  if(step===1) return(
-    <div>
-      <div style={{fontSize:13,color:C.muted,marginBottom:16,lineHeight:1.6}}>Sélectionnez la clinique où vous souhaitez consulter.</div>
-      {ldCl?<Loader/>:cliniques.length===0?<Empty icon="🏥" title="Aucune clinique" subtitle="Revenez bientôt"/>:(
-        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-          {cliniques.map(cl=>(
-            <button key={cl.id} onClick={()=>{setCliniqueId(cl.id);setCliniqueNom(cl.nom||"Clinique");setStep(2);}}
-              style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
-              onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:24}}>🏥</span>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>{cl.nom||"Clinique"}</div>
-                  <div style={{fontSize:12,color:C.muted}}>{cl.ville||cl.adresse||"—"}</div>
-                  {cl.telephone&&<div style={{fontSize:11,color:C.dim}}>📞 {cl.telephone}</div>}
-                </div>
-                <span style={{color:C.green,fontSize:18}}>→</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-      <Btn variant="outline" style={{width:"100%"}} onClick={onClose}>Annuler</Btn>
-    </div>
-  );
-
-  // ÉTAPE 2 : Médecin de la clinique
-  if(step===2) return(
-    <div>
-      {/* Clinique sélectionnée */}
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,padding:"10px 14px",background:C.hover,borderRadius:10}}>
-        <span style={{fontSize:20}}>🏥</span>
-        <div style={{flex:1}}>
-          <div style={{fontSize:13,fontWeight:700,color:C.text}}>{cliniqueNom}</div>
-          <button onClick={()=>setStep(1)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,padding:0,fontFamily:"inherit"}}>← Changer de clinique</button>
-        </div>
-      </div>
-      <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:10}}>Médecins disponibles</div>
-      {ldMed?<Loader/>:medecins.length===0
-        ?<Empty icon="👨‍⚕️" title="Aucun médecin pour cette clinique" subtitle="Essayez une autre clinique"/>
-        :(
-          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
-            {medecins.map(m=>(
-              <button key={m.id} onClick={()=>{setMedecin(m);setStep(3);}}
-                style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
-                onMouseOver={e=>e.currentTarget.style.borderColor=C.teal} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
-                <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.teal})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:14,flexShrink:0}}>
-                    {m.prenom?.[0]}{m.nom?.[0]}
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
-                    <div style={{fontSize:11,color:C.teal}}>{m.specialite||"Médecin"}</div>
-                    {m.jours_travail&&<div style={{fontSize:10,color:C.dim,marginTop:2}}>📅 {m.jours_travail}</div>}
-                  </div>
-                  <div style={{textAlign:"right",flexShrink:0}}>
-                    {m.tarif&&<><div style={{fontSize:14,fontWeight:800,color:C.green}}>{fmt(m.tarif)} F</div><div style={{fontSize:10,color:C.dim}}>consult.</div></>}
-                    <div style={{marginTop:4}}><Badge color={{Disponible:"green","En consultation":"amber",Absent:"red"}[m.statut]||"gray"}>{m.statut||"—"}</Badge></div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )
-      }
-      <div style={{display:"flex",gap:10}}>
-        <Btn variant="outline" style={{flex:1}} onClick={()=>setStep(1)}>← Retour</Btn>
-        <Btn variant="outline" style={{flex:1}} onClick={onClose}>Annuler</Btn>
-      </div>
-    </div>
-  );
-
-  // ÉTAPE 3 : Date / heure / factures
-  return(
-    <div>
-      {/* Médecin sélectionné */}
-      <div style={{background:`rgba(13,148,136,.08)`,border:`1px solid rgba(13,148,136,.2)`,borderRadius:12,padding:"12px 16px",marginBottom:18,display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:40,height:40,borderRadius:"50%",background:`linear-gradient(135deg,${C.purple},${C.teal})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:15,flexShrink:0}}>
-          {medecin?.prenom?.[0]}{medecin?.nom?.[0]}
-        </div>
-        <div style={{flex:1}}>
-          <div style={{fontSize:14,fontWeight:700,color:C.text}}>Dr. {medecin?.prenom} {medecin?.nom}</div>
-          <div style={{fontSize:12,color:C.teal}}>{medecin?.specialite} {cliniqueNom&&`· ${cliniqueNom}`}</div>
-        </div>
-        {!medecinPreselect&&<button onClick={()=>setStep(2)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Changer</button>}
-      </div>
-
-      <Grid cols={2} gap={12}>
-        <Inp label="Date *" type="date" required value={dateRdv} onChange={e=>setDateRdv(e.target.value)}/>
-        <Inp label="Heure *" type="time" required value={heureRdv} onChange={e=>setHeureRdv(e.target.value)}/>
-      </Grid>
-      <Inp label="Motif" value={motif} onChange={e=>setMotif(e.target.value)} placeholder="Consultation, suivi, douleurs…"/>
-      <Sel label="Assurance" value={assurance} onChange={e=>setAssurance(e.target.value)}
-        options={[{v:"",l:"Sans assurance"},{v:"NSIA",l:"NSIA Assurances"},{v:"Allianz CI",l:"Allianz CI"},{v:"AXA CI",l:"AXA CI"},{v:"CNAM (CMU)",l:"CNAM (CMU)"},{v:"Saham",l:"Saham"}]}/>
-
-      {/* Aperçu des 2 types de factures */}
-      <div style={{background:"rgba(10,143,88,.06)",border:"1px solid rgba(10,143,88,.2)",borderRadius:12,padding:16,marginBottom:14}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.green,textTransform:"uppercase",letterSpacing:".5px",marginBottom:12}}>💰 Aperçu des frais</div>
-
-        {/* Facture 1 — MediConnect */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-          <div>
-            <div style={{fontSize:13,fontWeight:600,color:C.text}}>Facture MediConnect</div>
-            <div style={{fontSize:11,color:C.dim}}>Abonnement mensuel — dossier + prise de RDV</div>
-          </div>
-          <div style={{fontSize:15,fontWeight:800,color:C.teal}}>{fmt(TARIFS.abonnement_standard)} F</div>
-        </div>
-
-        {/* Facture 2 — Médecin indépendant */}
-        {fraisMedecin>0&&(
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-            <div>
-              <div style={{fontSize:13,fontWeight:600,color:C.text}}>Frais d'assistance médicale</div>
-              <div style={{fontSize:11,color:C.dim}}>Dr. {medecin?.prenom} {medecin?.nom} — consultation</div>
-            </div>
-            <div style={{fontSize:15,fontWeight:800,color:C.amber}}>{fmt(fraisMedecin)} F</div>
-          </div>
-        )}
-
-        {/* Total */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:10}}>
-          <span style={{fontSize:14,fontWeight:700,color:C.text}}>Total estimé</span>
-          <span style={{fontSize:18,fontWeight:900,color:C.green}}>{fmt(total)} FCFA</span>
-        </div>
-
-        <div style={{fontSize:11,color:C.dim,marginTop:8,lineHeight:1.5}}>
-          {fraisMedecin>0
-            ?"⭐ Médecin indépendant — 2 factures distinctes : MediConnect + médecin."
-            :"ℹ️ Les frais de consultation de la clinique sont facturés séparément sur place."}
-        </div>
-      </div>
-
-      {user?.code_secret&&(
-        <div style={{fontSize:12,color:C.muted,padding:"7px 12px",background:C.hover,borderRadius:8,marginBottom:14}}>
-          Code à l'accueil : <strong style={{color:C.green,fontFamily:"monospace",letterSpacing:2}}>{user.code_secret}</strong>
-        </div>
-      )}
-
-      <div style={{display:"flex",gap:10}}>
-        {!medecinPreselect&&<Btn variant="outline" style={{flex:1}} onClick={()=>setStep(2)}>← Retour</Btn>}
-        {medecinPreselect&&<Btn variant="outline" style={{flex:1}} onClick={onClose}>Annuler</Btn>}
-        <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
-          if(!dateRdv||!heureRdv){toast.error("Date et heure requises");return;}
-          if(!medecin){toast.error("Sélectionnez un médecin");return;}
-          addMut.mutate({patient_nom:patientNom,medecin_id:medecin.id,medecin_nom:`Dr. ${medecin.prenom} ${medecin.nom}`,clinique_id:cliniqueId||null,date_rdv:dateRdv,heure_rdv:heureRdv,motif:motif||null,assurance:assurance||null,source:"patient"});
-        }}>✅ Confirmer — {fmt(total)} FCFA</Btn>
-      </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════
-//  HOME
-// ════════════════════════════════════════════════════════════════════
 function PageHome(){
   const {user}=useAuthStore(); const nav=useNavigate();
   const [showRdv,setShowRdv]=useState(false);
@@ -1004,13 +821,45 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
   const [motif,setMotif]=useState("");
   const [assurance,setAssurance]=useState("");
 
-  const {data:cliniquesData,isLoading:ldCl}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data?.data||r.data||[]),retry:2});
+  // Invalider le cache cliniques à chaque ouverture du formulaire
+  React.useEffect(()=>{
+    qc.invalidateQueries(["pub-cliniques"]);
+  },[]);
+
+  const {data:cliniquesData,isLoading:ldCl}=useQuery({
+    queryKey:["pub-cliniques"],
+    queryFn:async()=>{
+      try {
+        const r = await pAPI.cliniques();
+        const data = r.data?.data || r.data || [];
+        console.log("[RDV] Cliniques chargées:", data.length, data);
+        return data;
+      } catch(e) {
+        console.error("[RDV] Erreur cliniques:", e.message);
+        return [];
+      }
+    },
+    retry:3,
+    staleTime:0, // Toujours refetch
+  });
   const {data:medecinsData,isLoading:ldMed}=useQuery({
     queryKey:["pub-medecins",cliniqueId,typeMed],
-    queryFn:()=>typeMed==="independant"
-      ?pAPI.medecinsMI().then(r=>r.data.data||[])
-      :pAPI.medecins(cliniqueId).then(r=>r.data.data||[]),
-    enabled:step===3||step===22,
+    queryFn:async()=>{
+      try {
+        const r = typeMed==="independant"
+          ? await pAPI.medecinsMI()
+          : await pAPI.medecins(cliniqueId);
+        const data = r.data?.data || r.data || [];
+        console.log("[RDV] Médecins chargés:", data.length, "type:", typeMed, "clinique:", cliniqueId);
+        return data;
+      } catch(e) {
+        console.error("[RDV] Erreur médecins:", e.message);
+        return [];
+      }
+    },
+    enabled:step===3||step===22||step===4,
+    staleTime:0,
+    retry:2,
   });
 
   const cliniques=cliniquesData||[];
@@ -1055,9 +904,12 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
       </div>
       {ldCl?<Loader/>:cliniques.length===0?<div style={{textAlign:"center",padding:"24px 16px",color:C.dim}}>
             <div style={{fontSize:32,marginBottom:10}}>⚠️</div>
-            <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:6}}>Aucune clinique trouvée</div>
-            <div style={{fontSize:12,color:C.dim,marginBottom:12}}>Vérifiez votre connexion ou réessayez.</div>
-            <button onClick={()=>window.location.reload()} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 16px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Recharger</button>
+            <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:6}}>Aucune clinique disponible</div>
+            <div style={{fontSize:12,color:C.dim,marginBottom:12}}>La connexion au serveur peut être momentanément indisponible.</div>
+            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+              <button onClick={()=>{qc.invalidateQueries(["pub-cliniques"]);qc.refetchQueries(["pub-cliniques"]);}} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Réessayer</button>
+              <button onClick={()=>window.open("https://mediconnect-fed6.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
+            </div>
           </div>:(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
           {cliniques.map(cl=>(
@@ -1128,7 +980,12 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
         <span style={{fontSize:18}}>🏥</span>
         <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:C.text}}>{cliniqueNom}</div><button onClick={()=>setStep(2)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,padding:0,fontFamily:"inherit"}}>← Changer de clinique</button></div>
       </div>
-      {ldMed?<Loader/>:medecins.length===0?<Empty icon="👨‍⚕️" title="Aucun médecin pour cette clinique"/>:(
+      {ldMed?<Loader/>:medecins.length===0?<div style={{textAlign:"center",padding:"20px",color:C.dim}}>
+                <div style={{fontSize:28,marginBottom:8}}>👨‍⚕️</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:4}}>Aucun médecin disponible</div>
+                <div style={{fontSize:11,color:C.dim,marginBottom:10}}>Clinique: {cliniqueNom}</div>
+                <button onClick={()=>setStep(2)} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",color:C.muted,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>← Changer de clinique</button>
+              </div>:(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
           {medecins.map(m=>(
             <button key={m.id} onClick={()=>{setMedecin(m);setStep(4);}}
@@ -1208,6 +1065,12 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
 // ════════════════════════════════════════════════════════════════════
 //  PAGE RDV V2 — utilise FormPriseRdvV2
 // ════════════════════════════════════════════════════════════════════
+function FormPriseRdv(props){
+  // Alias vers FormPriseRdvV2 — version complète avec cliniques + médecins indép.
+  return <FormPriseRdvV2 {...props}/>;
+}
+
+
 function PageRdvsV2(){
   const [showAdd,setShowAdd]=useState(false);
   const [tab,setTab]=useState("upcoming");
