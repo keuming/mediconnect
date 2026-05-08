@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import useAuthStore from "../../context/authStore";
 import api from "../../services/api";
+import PageDossierDME from "./PageDossier";
 
 const C = {
   green:"#0A8F58",teal:"#0D9488",amber:"#D97706",red:"#E11D48",
@@ -487,57 +488,9 @@ function PageRecherche(){
 // ════════════════════════════════════════════════════════════════════
 //  DOSSIER MÉDICAL
 // ════════════════════════════════════════════════════════════════════
-function PageDossier(){
-  const {user}=useAuthStore();
-  const {data:consData}=useQuery({queryKey:["pat-consult"],queryFn:()=>pAPI.consults().then(r=>r.data.data||[]),retry:1});
-  const consults=consData||[];
-  const infos=[["Prénom",user?.prenom],["Nom",user?.nom],["Téléphone",user?.telephone],["Email",user?.email],["Groupe sanguin",user?.groupe_sanguin],["Ville",user?.ville],["Assurance",user?.assurance]];
-  return(
-    <div>
-      <PageHeader title="📋 Mon dossier médical" subtitle="Informations de santé"/>
-      <Grid cols={2} gap={20} style={{marginBottom:20}}>
-        <Panel title="👤 Informations">
-          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:14,paddingBottom:14,borderBottom:`1px solid ${C.border}`}}>
-            <Avatar prenom={user?.prenom} nom={user?.nom} size={52} fontSize={18}/>
-            <div>
-              <div style={{fontSize:17,fontWeight:800,color:C.text}}>{user?.prenom} {user?.nom}</div>
-              {user?.code_secret&&<div style={{fontFamily:"monospace",fontSize:13,color:C.green,fontWeight:700,letterSpacing:2,marginTop:4}}>{user.code_secret}</div>}
-            </div>
-          </div>
-          <Grid cols={2} gap={10}>
-            {infos.map(([k,v])=>(
-              <div key={k} style={{background:C.hover,borderRadius:8,padding:"9px 12px"}}>
-                <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{k}</div>
-                <div style={{fontSize:13,color:C.text,fontWeight:600}}>{v||"—"}</div>
-              </div>
-            ))}
-          </Grid>
-        </Panel>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {user?.groupe_sanguin&&<div style={{background:"rgba(225,29,72,.08)",border:"1px solid rgba(225,29,72,.2)",borderRadius:12,padding:16}}><div style={{fontSize:11,fontWeight:700,color:C.red,textTransform:"uppercase",marginBottom:6}}>🩸 Groupe sanguin</div><div style={{fontSize:36,fontWeight:900,color:C.red}}>{user.groupe_sanguin}</div></div>}
-          {user?.allergies&&<div style={{background:"rgba(217,119,6,.08)",border:"1px solid rgba(217,119,6,.2)",borderRadius:12,padding:14}}><div style={{fontSize:11,fontWeight:700,color:C.amber,textTransform:"uppercase",marginBottom:6}}>⚠️ Allergies</div><div style={{fontSize:13,color:C.text}}>{user.allergies}</div></div>}
-          {user?.antecedents&&<div style={{background:"rgba(37,99,235,.08)",border:"1px solid rgba(37,99,235,.2)",borderRadius:12,padding:14}}><div style={{fontSize:11,fontWeight:700,color:C.blue,textTransform:"uppercase",marginBottom:6}}>📋 Antécédents</div><div style={{fontSize:13,color:C.text}}>{user.antecedents}</div></div>}
-          {!user?.groupe_sanguin&&!user?.allergies&&!user?.antecedents&&<Empty icon="📋" title="Infos médicales incomplètes" subtitle="Contactez votre clinique"/>}
-        </div>
-      </Grid>
-      <Panel title="🩺 Consultations">
-        {consults.length===0?<Empty icon="🩺" title="Aucune consultation" subtitle="Votre historique apparaîtra ici"/>
-          :consults.map(c=>(
-            <div key={c.id} style={{background:C.hover,borderRadius:10,padding:14,marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><span style={{fontSize:13,fontWeight:700,color:C.teal}}>{fmtDate(c.created_at)}</span><span style={{fontSize:12,color:C.muted}}>{c.medecin_nom||"—"}</span></div>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>Diagnostic : {c.diagnostic||"—"}</div>
-              {c.traitement&&<div style={{fontSize:12,color:C.muted}}>Traitement : {c.traitement}</div>}
-            </div>
-          ))
-        }
-      </Panel>
-    </div>
-  );
-}
+function PageDossier(){ return <PageDossierDME/>; }
 
-// ════════════════════════════════════════════════════════════════════
-//  ORDONNANCES
-// ════════════════════════════════════════════════════════════════════
+
 function PageOrdonnances(){
   const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
   const ords=data||[];
