@@ -668,7 +668,8 @@ export default function PageDossier() {
                 <div style={{display:'flex',gap:8}}>
                   <Btn style={{flex:2,padding:'7px',fontSize:11}} onClick={()=>{
                     const u = useAuthStore.getState().user;
-                    const txt = `ORDONNANCE MÉDICALE\n${'='.repeat(30)}\nPatient : ${u?.prenom||''} ${u?.nom||''}\nDate    : ${new Date(o.created_at).toLocaleDateString('fr-CI')}\nMédecin : Dr. ${o.medecin_nom||'—'}\n\nPRESCRIPTION :\n${o.medicaments||'—'}\n\nPosologie : ${o.posologie||'—'}\nDurée     : ${o.duree||'—'}\n${o.notes_ord?'Notes : '+o.notes_ord+'\n':''}\nMediConnect Africa — Document médical officiel`;
+                    const sep = '='.repeat(30);
+                    const txt = 'ORDONNANCE MÉDICALE\n'+sep+'\nPatient : '+(u?.prenom||'')+' '+(u?.nom||'')+'\nDate    : '+new Date(o.created_at).toLocaleDateString('fr-CI')+'\nMédecin : Dr. '+(o.medecin_nom||'—')+'\n\nPRESCRIPTION :\n'+(o.medicaments||'—')+'\n\nPosologie : '+(o.posologie||'—')+'\nDurée     : '+(o.duree||'—')+'\n'+(o.notes_ord?'Notes : '+o.notes_ord+'\n':'')+'\nMediConnect Africa — Document médical officiel';
                     const blob = new Blob([txt],{type:'text/plain'});
                     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `ordonnance_${o.id?.slice(-6)||'mc'}.txt`; a.click();
                     toast.success('📥 Ordonnance téléchargée !');
