@@ -17,16 +17,31 @@ const fmtDate=(d)=>d?new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month
 const today=()=>new Date().toISOString().split("T")[0];
 const TARIFS={ abonnement_standard:300, abonnement_suivi:500 };
 
+// URL backend fixe — indépendant de la baseURL de services/api.js
+const BACKEND = 'https://mediconnect-fed6.vercel.app';
+
+// Fetch public (sans auth) avec URL absolue
+const fetchPublic = async (path) => {
+  const url = `${BACKEND}/api${path}`;
+  console.log('[pAPI public] GET', url);
+  const r = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+};
+
 const pAPI = {
   rdvs:       ()      => api.get("/rendez-vous").catch(()=>({data:{data:[]}})),
   addRdv:     (d)     => api.post("/rendez-vous", d),
   cancelRdv:  (id)    => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
   ords:       ()      => api.get("/ordonnances").catch(()=>({data:{data:[]}})),
   consults:   ()      => api.get("/consultations").catch(()=>({data:{data:[]}})),
-  // Route publique — pas de token requis
-  cliniques:  ()      => api.get("/public/cliniques").catch(()=>({data:{data:[]}})),
-  medecins:   (cid)   => api.get("/public/medecins",{params:cid?{clinique_id:cid}:{}}).catch(()=>({data:{data:[]}})),
-  medecinsMI: ()      => api.get("/public/medecins",{params:{independant:true}}).catch(()=>api.get("/medecins").catch(()=>({data:{data:[]}}))),
+  // Routes publiques via fetch() direct — URL absolue garantie
+  cliniques:  ()      => fetchPublic('/public/cliniques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  medecins:   (cid)   => fetchPublic(`/public/medecins${cid?`?clinique_id=${cid}`:''}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  medecinsMI: ()      => fetchPublic('/public/medecins?independant=true').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures").catch(()=>({data:{data:[]}}))),
   addCommande:(d)     => api.post("/commandes", d),
   commandes:  ()      => api.get("/commandes").catch(()=>({data:{data:[]}})),
