@@ -1,27 +1,27 @@
 const jwt = require('jsonwebtoken');
 
+const JWT_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
+
+// Vérifie le token JWT
 const auth = (req, res, next) => {
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Bearer '))
+    return res.status(401).json({ success: false, message: 'Token manquant' });
   try {
-    const header = req.headers.authorization || '';
-    if (!header.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: 'Token manquant' });
-    }
-    const token = header.slice(7);
-    const secret = process.env.JWT_SECRET || 'mediconnect_secret_dev';
-    const decoded = jwt.verify(token, secret);
-    req.user = decoded;
+    req.user = jwt.verify(h.slice(7), JWT_SECRET);
     next();
-  } catch (err) {
+  } catch {
     return res.status(401).json({ success: false, message: 'Token invalide ou expiré' });
   }
 };
 
-const authorize = (...roles) => (req, res, next) => {
-  if (!req.user) return res.status(401).json({ success: false, message: 'Non authentifié' });
-  if (!roles.includes(req.user.role)) {
+// Vérifie le rôle
+const can = (...roles) => (req, res, next) => {
+  if (!req.user)
+    return res.status(401).json({ success: false, message: 'Non authentifié' });
+  if (!roles.includes(req.user.role))
     return res.status(403).json({ success: false, message: `Accès refusé — rôle requis : ${roles.join(' ou ')}` });
-  }
   next();
 };
 
-module.exports = { auth, authorize };
+module.exports = { auth, can };

@@ -1,73 +1,70 @@
 const router = require('express').Router();
-const { query } = require('../config/db');
-const { auth } = require('../middleware/auth');
 const { v4: uuid } = require('uuid');
+const { query } = require('../config/db');
+const { auth, can } = require('../middleware/auth');
 
-const init = async () => {
-  await query(`CREATE TABLE IF NOT EXISTS medecins (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID, clinique_id UUID,
-    prenom VARCHAR(100), nom VARCHAR(100),
-    specialite VARCHAR(100), telephone VARCHAR(30),
-    email VARCHAR(200), tarif DECIMAL(10,2),
-    experience_ans INTEGER, statut VARCHAR(30) DEFAULT 'Disponible',
-    jours_travail VARCHAR(200) DEFAULT 'Lun,Mar,Mer,Jeu,Ven',
-    horaires_debut TIME DEFAULT '08:00',
-    horaires_fin TIME DEFAULT '17:00',
-    note_moyenne DECIMAL(3,2), photo_url TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-  )`).catch(e => console.error('Table medecins:', e.message));
-};
-init();
-
+// GET /api/medecins
 router.get('/', auth, async (req, res) => {
   try {
-    const cliniqueId = req.user?.clinique_id;
-    let sql = 'SELECT * FROM medecins WHERE 1=1';
-    const params = [];
-    if (cliniqueId) { params.push(cliniqueId); sql += ` AND clinique_id=$${params.length}`; }
-    sql += ' ORDER BY nom, prenom';
-    const r = await query(sql, params);
+    const { clinique_id } = req.query;
+    const cid = clinique_id || req.user?.profile_id;
+    const r = cid
+      ? await query('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom,prenom', [cid])
+      : await query('SELECT * FROM medecins ORDER BY nom,prenom');
     res.json({ success: true, data: r.rows });
-  } catch(err) { res.json({ success: true, data: [] }); }
+  } catch (e) { res.json({ success: true, data: [] }); }
 });
 
-router.post('/', auth, async (req, res) => {
+// POST /api/medecins
+router.post('/', auth, can('clinique', 'admin'), async (req, res) => {
+  const { prenom, nom, specialite, telephone, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+  if (!prenom || !nom || !specialite)
+    return res.status(400).json({ success: false, message: 'Prénom, nom et spécialité requis' });
   try {
-    const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
-    if (!prenom || !nom || !specialite) return res.status(400).json({ success: false, message: 'Prénom, nom et spécialité requis' });
-    const cliniqueId = req.user?.clinique_id;
+    const cr = await query('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1', [req.user.id]);
+    const jours = Array.isArray(jours_travail) ? jours_travail : ['Lun','Mar','Mer','Jeu','Ven'];
     const r = await query(
-      `INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,telephone,email,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [uuid(),cliniqueId,prenom,nom,specialite,telephone||null,email||null,tarif||null,experience_ans||null,jours_travail||'Lun,Mar,Mer,Jeu,Ven',horaires_debut||'08:00',horaires_fin||'17:00']
+      `INSERT INTO medecins
+         (id,clinique_id,prenom,nom,specialite,telephone,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [uuid(), cr.rows[0]?.id || null, prenom, nom, specialite, telephone || null,
+       tarif || 15000, experience_ans || 0, jours,
+       horaires_debut || '08:00', horaires_fin || '17:00']
     );
     res.status(201).json({ success: true, data: r.rows[0] });
-  } catch(err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-router.put('/:id', auth, async (req, res) => {
+// PUT /api/medecins/:id
+router.put('/:id', auth, can('clinique', 'admin'), async (req, res) => {
+  const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   try {
-    const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+    const jours = jours_travail
+      ? (Array.isArray(jours_travail) ? jours_travail : jours_travail.split(','))
+      : null;
     const r = await query(
-      `UPDATE medecins SET prenom=COALESCE($1,prenom), nom=COALESCE($2,nom), specialite=COALESCE($3,specialite),
-       statut=COALESCE($4,statut), tarif=COALESCE($5,tarif), telephone=COALESCE($6,telephone),
-       experience_ans=COALESCE($7,experience_ans), jours_travail=COALESCE($8,jours_travail),
-       horaires_debut=COALESCE($9,horaires_debut), horaires_fin=COALESCE($10,horaires_fin), updated_at=NOW()
+      `UPDATE medecins
+       SET prenom=COALESCE($1,prenom), nom=COALESCE($2,nom),
+           specialite=COALESCE($3,specialite), statut=COALESCE($4,statut),
+           tarif=COALESCE($5,tarif), telephone=COALESCE($6,telephone),
+           experience_ans=COALESCE($7,experience_ans),
+           jours_travail=COALESCE($8,jours_travail),
+           horaires_debut=COALESCE($9,horaires_debut),
+           horaires_fin=COALESCE($10,horaires_fin)
        WHERE id=$11 RETURNING *`,
-      [prenom,nom,specialite,statut,tarif,telephone,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]
+      [prenom, nom, specialite, statut, tarif, telephone, experience_ans,
+       jours, horaires_debut, horaires_fin, req.params.id]
     );
-    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Médecin introuvable' });
     res.json({ success: true, data: r.rows[0] });
-  } catch(err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-router.delete('/:id', auth, async (req, res) => {
+// DELETE /api/medecins/:id
+router.delete('/:id', auth, can('clinique', 'admin'), async (req, res) => {
   try {
     await query('DELETE FROM medecins WHERE id=$1', [req.params.id]);
-    res.json({ success: true, message: 'Médecin supprimé' });
-  } catch(err) { res.status(500).json({ success: false, message: err.message }); }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 module.exports = router;
