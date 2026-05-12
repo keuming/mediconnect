@@ -7,18 +7,22 @@ import useAuthStore from './context/authStore';
 import Login    from './pages/Login';
 import Register from './pages/Register';
 
-import DashboardPatient          from './pages/patient/Dashboard';
-import DashboardClinique         from './pages/clinique/Dashboard';
-import DashboardMedecin          from './pages/medecin/Dashboard';
-import DashboardMedecinIndep     from './pages/medecinIndependant/Dashboard';
-import DashboardPharmacie        from './pages/pharmacie/Dashboard';
-import DashboardLivreur          from './pages/livreur/Dashboard';
-import DashboardAdmin            from './pages/admin/Dashboard';
-import DashboardAssureur         from './pages/assureur/Dashboard';
-import DashboardImagerie         from './pages/imagerie/Dashboard';
-import DashboardLaboratoire      from './pages/laboratoire/Dashboard';
+import DashboardPatient      from './pages/patient/Dashboard';
+import DashboardClinique     from './pages/clinique/Dashboard';
+import DashboardMedecin      from './pages/medecin/Dashboard';
+import DashboardMedecinIndep from './pages/medecinIndependant/Dashboard';
+import DashboardPharmacie    from './pages/pharmacie/Dashboard';
+import DashboardLivreur      from './pages/livreur/Dashboard';
+import DashboardAdmin        from './pages/admin/Dashboard';
+import DashboardAssureur     from './pages/assureur/Dashboard';
+import DashboardImagerie     from './pages/imagerie/Dashboard';
+import DashboardLaboratoire  from './pages/laboratoire/Dashboard';
 import AppLayout from './components/layout/AppLayout';
 
+// ── Détection sous-domaine admin ─────────────────────────────────
+const isAdminSubdomain = window.location.hostname === 'admin.mediconnect4africa.cloud';
+
+// ── QueryClient ───────────────────────────────────────────────────
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -33,7 +37,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// ── Redirection selon le rôle après login ────────────────────────
+// ── Chemin par rôle ───────────────────────────────────────────────
 const ROLE_PATHS = {
   patient:             '/patient',
   clinique:            '/clinique',
@@ -47,33 +51,67 @@ const ROLE_PATHS = {
   laboratoire:         '/laboratoire',
 };
 
+// ── Garde de route ────────────────────────────────────────────────
 const PrivateRoute = ({ children, roles }) => {
   const { user, token } = useAuthStore();
+
   if (!token) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user?.role)) return <Navigate to="/login" replace />;
+
+  // Sur le sous-domaine admin, seul le rôle admin est autorisé
+  if (isAdminSubdomain && user?.role !== 'admin') {
+    useAuthStore.getState().logout();
+    return <Navigate to="/login" replace />;
+  }
+
+  if (roles && !roles.includes(user?.role))
+    return <Navigate to="/login" replace />;
+
   return children;
 };
 
-// Redirige vers le bon dashboard selon le rôle
+// ── Redirection vers le bon dashboard selon le rôle ──────────────
 const HomeRedirect = () => {
   const { user, token } = useAuthStore();
+
   if (!token || !user) return <Navigate to="/login" replace />;
+
+  // Sur le sous-domaine admin, bloquer les non-admins
+  if (isAdminSubdomain && user.role !== 'admin') {
+    useAuthStore.getState().logout();
+    return <Navigate to="/login" replace />;
+  }
+
   const path = ROLE_PATHS[user.role] || '/login';
   return <Navigate to={path} replace />;
 };
 
+// ── Page de login adaptée au sous-domaine ────────────────────────
+const LoginPage = () => {
+  // Sur le sous-domaine admin, déconnecter toute session non-admin
+  const { user, token } = useAuthStore();
+  if (isAdminSubdomain && token && user?.role !== 'admin') {
+    useAuthStore.getState().logout();
+  }
+  return <Login />;
+};
+
+// ── App ───────────────────────────────────────────────────────────
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Toaster position="top-right" />
-        <Suspense fallback={<div style={{ padding: 40, color: '#fff', background: '#060C12', minHeight: '100vh' }}>Chargement…</div>}>
+        <Suspense fallback={
+          <div style={{ padding: 40, color: '#fff', background: '#060C12', minHeight: '100vh' }}>
+            Chargement…
+          </div>
+        }>
           <Routes>
             {/* Pages publiques */}
-            <Route path="/login"    element={<Login />} />
+            <Route path="/login"    element={<LoginPage />} />
             <Route path="/register" element={<Register />} />
 
-            {/* Redirection accueil → dashboard du rôle */}
+            {/* Redirection accueil */}
             <Route path="/"    element={<HomeRedirect />} />
             <Route path="/app" element={<HomeRedirect />} />
 
