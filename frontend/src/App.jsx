@@ -6,10 +6,11 @@ import useAuthStore from './context/authStore';
 
 import Login    from './pages/Login';
 import Register from './pages/Register';
+
 import DashboardPatient          from './pages/patient/Dashboard';
 import DashboardClinique         from './pages/clinique/Dashboard';
-import DashboardMedecin          from './pages/medecin/Dashboard'; 
-// Correction ici : On importe le fichier Dashboard.jsx que vous avez fourni
+import DashboardMedecin          from './pages/medecin/Dashboard';
+import DashboardMedecinIndep     from './pages/medecinIndependant/Dashboard';
 import DashboardPharmacie        from './pages/pharmacie/Dashboard';
 import DashboardLivreur          from './pages/livreur/Dashboard';
 import DashboardAdmin            from './pages/admin/Dashboard';
@@ -32,11 +33,33 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Redirection selon le rôle après login ────────────────────────
+const ROLE_PATHS = {
+  patient:             '/patient',
+  clinique:            '/clinique',
+  medecin:             '/medecin',
+  medecin_independant: '/medecin-independant',
+  pharmacie:           '/pharmacie',
+  livreur:             '/livreur',
+  admin:               '/admin',
+  assureur:            '/assureur',
+  imagerie:            '/imagerie',
+  laboratoire:         '/laboratoire',
+};
+
 const PrivateRoute = ({ children, roles }) => {
   const { user, token } = useAuthStore();
   if (!token) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user?.role)) return <Navigate to="/" replace />;
+  if (roles && !roles.includes(user?.role)) return <Navigate to="/login" replace />;
   return children;
+};
+
+// Redirige vers le bon dashboard selon le rôle
+const HomeRedirect = () => {
+  const { user, token } = useAuthStore();
+  if (!token || !user) return <Navigate to="/login" replace />;
+  const path = ROLE_PATHS[user.role] || '/login';
+  return <Navigate to={path} replace />;
 };
 
 export default function App() {
@@ -44,54 +67,88 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Toaster position="top-right" />
-        <Suspense fallback={<div className="p-10 text-white">Chargement...</div>}>
+        <Suspense fallback={<div style={{ padding: 40, color: '#fff', background: '#060C12', minHeight: '100vh' }}>Chargement…</div>}>
           <Routes>
-            <Route path="/login" element={<Login />} />
+            {/* Pages publiques */}
+            <Route path="/login"    element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            {/* Accueil / Redirection selon rôle */}
-            <Route path="/" element={
-              <PrivateRoute>
-                <Navigate to={`/${useAuthStore.getState().user?.role}/dashboard`} replace />
-              </PrivateRoute>
-            } />
+            {/* Redirection accueil → dashboard du rôle */}
+            <Route path="/"    element={<HomeRedirect />} />
+            <Route path="/app" element={<HomeRedirect />} />
 
-            {/* Patient */}
+            {/* ── Patient ── */}
             <Route path="/patient/*" element={
               <PrivateRoute roles={['patient']}>
                 <AppLayout role="patient"><DashboardPatient /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Médecin (Clinique et Indépendant) */}
+            {/* ── Clinique ── */}
+            <Route path="/clinique/*" element={
+              <PrivateRoute roles={['clinique']}>
+                <AppLayout role="clinique"><DashboardClinique /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Médecin employé ── */}
             <Route path="/medecin/*" element={
               <PrivateRoute roles={['medecin']}>
-                {/* On utilise le composant Dashboard qui correspond à votre fichier Dashboard.jsx */}
                 <AppLayout role="medecin"><DashboardMedecin /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Pharmacie */}
+            {/* ── Médecin indépendant ── */}
+            <Route path="/medecin-independant/*" element={
+              <PrivateRoute roles={['medecin_independant']}>
+                <AppLayout role="medecin_independant"><DashboardMedecinIndep /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Pharmacie ── */}
             <Route path="/pharmacie/*" element={
               <PrivateRoute roles={['pharmacie']}>
                 <AppLayout role="pharmacie"><DashboardPharmacie /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Autres rôles... */}
+            {/* ── Livreur ── */}
             <Route path="/livreur/*" element={
               <PrivateRoute roles={['livreur']}>
                 <AppLayout role="livreur"><DashboardLivreur /></AppLayout>
               </PrivateRoute>
             } />
 
+            {/* ── Admin ── */}
             <Route path="/admin/*" element={
               <PrivateRoute roles={['admin']}>
                 <AppLayout role="admin"><DashboardAdmin /></AppLayout>
               </PrivateRoute>
             } />
 
-            <Route path="/* " element={<Navigate to="/login" replace />} />
+            {/* ── Assureur ── */}
+            <Route path="/assureur/*" element={
+              <PrivateRoute roles={['assureur']}>
+                <AppLayout role="assureur"><DashboardAssureur /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Imagerie médicale ── */}
+            <Route path="/imagerie/*" element={
+              <PrivateRoute roles={['imagerie']}>
+                <AppLayout role="imagerie"><DashboardImagerie /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Laboratoire ── */}
+            <Route path="/laboratoire/*" element={
+              <PrivateRoute roles={['laboratoire']}>
+                <AppLayout role="laboratoire"><DashboardLaboratoire /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Suspense>
       </BrowserRouter>
