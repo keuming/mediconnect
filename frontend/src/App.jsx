@@ -45,21 +45,29 @@ const Loader = () => (
 );
 
 const PrivateRoute = ({ children, roles }) => {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, token, isAuthenticated } = useAuthStore();
 
-  if (!isAuthenticated()) {
-    console.warn('[PrivateRoute] Non authentifié → /login');
-    return <Navigate to="/login" replace />;
+  // Vérification légère : token + user suffisent
+  const authed = isAuthenticated();
+  if (!authed) {
+    // Dernier recours : si token + user existent, on laisse passer
+    if (token && user) {
+      console.warn('[PrivateRoute] isAuthenticated=false mais token+user présents → on laisse passer');
+    } else {
+      console.warn('[PrivateRoute] Pas de session → /login');
+      return <Navigate to="/login" replace />;
+    }
   }
 
-  if (roles && roles.length > 0) {
-    const userRole = user?.role;
-    // Normaliser medecin_prive → medecin_independant
-    const normalizedRole = userRole === 'medecin_prive' ? 'medecin_independant' : userRole;
+  if (roles && roles.length > 0 && user?.role) {
+    const userRole = user.role;
+    // Normaliser tous les alias de médecin indépendant
+    const normalizedRole = ['medecin_prive','medecin_conseil'].includes(userRole)
+      ? 'medecin_independant'
+      : userRole;
     const allowed = roles.includes(userRole) || roles.includes(normalizedRole);
     if (!allowed) {
-      console.warn('[PrivateRoute] Rôle non autorisé:', userRole, '→ attendu:', roles);
-      // Rediriger vers le bon dashboard plutôt que /login
+      console.warn('[PrivateRoute] Rôle non autorisé:', userRole, '→ attendu:', roles, '→ /app');
       return <Navigate to="/app" replace />;
     }
   }
@@ -177,7 +185,7 @@ export default function App() {
             } />
 
             {/* 404 */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
+            <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

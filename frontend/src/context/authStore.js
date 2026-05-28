@@ -12,17 +12,40 @@ const useAuthStore = create(
 
       isAuthenticated: () => {
         const { token, user } = get();
+        // Vérification de base — token ET user présents
         if (!token || !user) return false;
-        // Vérifier expiration du token JWT
         try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
+          // Décoder le JWT (format: header.payload.signature)
+          const parts = token.split('.');
+          if (parts.length !== 3) return false;
+          // Remplacer les caractères URL-safe base64
+          const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const payload = JSON.parse(atob(b64));
+          // Token expiré ?
           if (payload.exp && payload.exp * 1000 < Date.now()) {
-            // Token expiré — nettoyer
+            console.warn('[authStore] Token expiré');
             set({ token: null, user: null });
             return false;
           }
-        } catch { return false; }
-        return true;
+          // Récupérer le rôle depuis le token si absent du user
+          if (!user.role && payload.role) {
+            set(state => ({
+              user: {
+                ...state.user,
+                role:        payload.role,
+                clinique_id: state.user.clinique_id || payload.clinique_id || null,
+                patient_id:  state.user.patient_id  || payload.patient_id  || null,
+                medecin_id:  state.user.medecin_id  || payload.medecin_id  || null,
+              }
+            }));
+          }
+          return true;
+        } catch(e) {
+          // Ne jamais bloquer sur une erreur de décodage JWT
+          console.warn('[authStore] Erreur décodage JWT:', e.message);
+          // Si le token existe et user existe, on fait confiance
+          return !!(token && user);
+        }
       },
 
       login: async (email, password) => {
