@@ -14,7 +14,6 @@ import DashboardAdmin       from './pages/admin/Dashboard';
 import DashboardAssureur    from './pages/assureur/Dashboard';
 import DashboardImagerie    from './pages/imagerie/Dashboard';
 import DashboardLaboratoire from './pages/laboratoire/Dashboard';
-import DashboardMedecin      from './pages/medecin/Dashboard';
 import DashboardMedecinIndep  from './pages/medecin/DashboardIndependant';
 import AppLayout from './components/layout/AppLayout';
 
@@ -47,8 +46,24 @@ const Loader = () => (
 
 const PrivateRoute = ({ children, roles }) => {
   const { user, isAuthenticated } = useAuthStore();
-  if (!isAuthenticated()) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user?.role)) return <Navigate to="/login" replace />;
+
+  if (!isAuthenticated()) {
+    console.warn('[PrivateRoute] Non authentifié → /login');
+    return <Navigate to="/login" replace />;
+  }
+
+  if (roles && roles.length > 0) {
+    const userRole = user?.role;
+    // Normaliser medecin_prive → medecin_independant
+    const normalizedRole = userRole === 'medecin_prive' ? 'medecin_independant' : userRole;
+    const allowed = roles.includes(userRole) || roles.includes(normalizedRole);
+    if (!allowed) {
+      console.warn('[PrivateRoute] Rôle non autorisé:', userRole, '→ attendu:', roles);
+      // Rediriger vers le bon dashboard plutôt que /login
+      return <Navigate to="/app" replace />;
+    }
+  }
+
   return children;
 };
 
@@ -57,8 +72,8 @@ const RoleRedirect = () => {
   const routes = {
     patient:             '/patient',
     clinique:            '/clinique',
-    medecin:             '/medecin',
     medecin_independant: '/medecin/independant',
+    medecin_conseil:     '/medecin/independant',
     medecin_prive:       '/medecin/independant',
     pharmacie:           '/pharmacie',
     livreur:             '/livreur',
@@ -67,10 +82,14 @@ const RoleRedirect = () => {
     imagerie:            '/imagerie',
     laboratoire:         '/laboratoire',
   };
-  const dest = routes[user?.role];
+  const role = user?.role;
+  // Normaliser
+  const normalizedRole = role === 'medecin_prive' ? 'medecin_independant' : role;
+  const dest = routes[role] || routes[normalizedRole];
   if (!dest) {
-    console.error('[RoleRedirect] Rôle inconnu:', user?.role);
-    return <Navigate to="/login" replace />;
+    console.error('[RoleRedirect] Rôle inconnu:', role, '— redirection accueil');
+    // Fallback patient si rôle inconnu
+    return <Navigate to="/patient" replace />;
   }
   return <Navigate to={dest} replace />;
 };
@@ -150,16 +169,9 @@ export default function App() {
               </PrivateRoute>
             } />
 
-            {/* Médecin employé de clinique */}
-            <Route path="/medecin/*" element={
-              <PrivateRoute roles={['medecin']}>
-                <AppLayout role="medecin"><DashboardMedecin /></AppLayout>
-              </PrivateRoute>
-            } />
-
-            {/* Médecin indépendant */}
+            {/* Médecin indépendant — DOIT être AVANT /medecin/* */}
             <Route path="/medecin/independant/*" element={
-              <PrivateRoute roles={['medecin_independant','medecin_prive']}>
+              <PrivateRoute roles={['medecin_independant','medecin_conseil','medecin_prive']}>
                 <AppLayout role="medecin_independant"><DashboardMedecinIndep /></AppLayout>
               </PrivateRoute>
             } />

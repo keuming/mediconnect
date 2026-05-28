@@ -35,14 +35,8 @@ const NAV = {
     { path:'/clinique/qualite',     icon:'📋', label:'Qualité & Docs' },
     { path:'/clinique/stats',       icon:'📊', label:'Statistiques' },
   ],
-  medecin: [
-    { path:'/medecin',              icon:'🏠', label:'Tableau de bord' },
-    { path:'/medecin/planning',     icon:'📅', label:'Mon planning' },
-    { path:'/medecin/patients',     icon:'👤', label:'Mes patients' },
-    { path:'/medecin/consultations',icon:'🩺', label:'Consultations' },
-    { path:'/medecin/ordonnances',  icon:'💊', label:'Ordonnances' },
-    { path:'/medecin/stats',        icon:'📊', label:'Statistiques' },
-  ],
+  // medecin employé : géré par la clinique, pas de compte propre
+
   pharmacie: [
     { path:'/pharmacie',            icon:'📊', label:'Dashboard' },
     { path:'/pharmacie/stock',      icon:'💊', label:'Stock' },
@@ -102,7 +96,7 @@ const ROLE_LABELS = {
   patient:'Espace Patient',
   clinique:'Espace Clinique',
   medecin:'Espace Médecin',
-  medecin_independant:'Médecin Indépendant',
+  medecin_independant:'Médecin Conseil',
   pharmacie:'Espace Pharmacie',
   livreur:'Espace Livreur',
   admin:'Administration',
@@ -112,8 +106,7 @@ const ROLE_LABELS = {
 };
 
 const ROLE_COLORS = {
-  patient: C.teal, clinique: C.green, medecin: '#7C3AED',
-  pharmacie: '#0891B2', livreur: '#D97706', admin: C.green, assureur: '#2563EB',
+  patient: C.teal, clinique: C.green,   pharmacie: '#0891B2', livreur: '#D97706', admin: C.green, assureur: '#2563EB',
 };
 
 export default function AppLayout({ children }) {

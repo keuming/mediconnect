@@ -9,7 +9,7 @@ const ROLES = [
   { value: 'pharmacie',           label: 'Pharmacie',            icon: '💊', desc: 'Ordonnances, commandes, livraisons' },
   { value: 'livreur',             label: 'Livreur',              icon: '🛵', desc: 'Gérer mes missions de livraison' },
   { value: 'assureur',            label: 'Assureur',             icon: '🛡️', desc: 'Traiter les dossiers tiers-payant' },
-  { value: 'medecin_independant', label: 'Médecin Indépendant',  icon: '⭐', desc: 'Suivi privé · 500 F/mois MediConnect' },
+  { value: 'medecin_independant', label: 'Médecin Conseil',      icon: '⭐', desc: 'Médecin de famille · Suivi privé · 500 F/mois' },
   { value: 'imagerie',            label: 'Imagerie Médicale',    icon: '🩻', desc: 'Radiologie, IRM, Scanner' },
   { value: 'laboratoire',         label: 'Laboratoire',          icon: '🧪', desc: 'Analyses biologiques' },
 ];
@@ -236,10 +236,11 @@ export default function Register() {
             {role==='assureur' && extraInp("Nom de la compagnie *", 'nom_ass', { placeholder:'NSIA Assurances CI' })}
             {role==='medecin_independant' && (
               <div style={{ background:'rgba(10,143,88,.07)', border:'1px solid rgba(10,143,88,.2)', borderRadius:12, padding:16, marginBottom:16 }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.green, marginBottom:8 }}>⭐ Médecin Indépendant — MediConnect</div>
+                <div style={{ fontSize:13, fontWeight:700, color:C.green, marginBottom:8 }}>⭐ Médecin Conseil — MediConnect Africa</div>
                 <div style={{ fontSize:12, color:C.muted, lineHeight:1.6 }}>
-                  Votre profil sera visible sur <strong style={{ color:C.text }}>rdv.mediconnect4africa.cloud</strong>. Vous pourrez gérer votre planning, vos patients et votre facturation.
-                  <br/>Abonnement : <strong style={{ color:C.text }}>500 FCFA/mois</strong>
+                  En tant que Médecin Conseil, votre profil sera visible publiquement sur la plateforme. Vos patients peuvent vous trouver, prendre RDV et demander un suivi médical privé.<br/>
+                  Vous gérez votre planning, vos consultations, vos ordonnances et votre facturation depuis votre tableau de bord.<br/>
+                  <strong style={{ color:C.text }}>Abonnement : 500 FCFA/mois</strong>
                 </div>
               </div>
             )}

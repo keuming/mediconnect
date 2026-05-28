@@ -4,16 +4,15 @@ import toast from 'react-hot-toast';
 import useAuthStore from '../context/authStore';
 
 const DEMOS = [
-  { role: 'patient',             label: 'Patient',         icon: '👤', email: 'patient@demo.ci' },
-  { role: 'clinique',            label: 'Clinique',         icon: '🏥', email: 'clinique@demo.ci' },
-  { role: 'medecin',             label: 'Médecin',          icon: '🩺', email: 'medecin@demo.ci' },
-  { role: 'medecin_independant', label: 'Méd. Indép.',      icon: '⭐', email: 'medecin.indep@demo.ci' },
-  { role: 'pharmacie',           label: 'Pharmacie',        icon: '💊', email: 'pharmacie@demo.ci' },
-  { role: 'livreur',             label: 'Livreur',          icon: '🛵', email: 'livreur@demo.ci' },
-  { role: 'admin',               label: 'Admin',            icon: '⚙️', email: 'admin@demo.ci' },
-  { role: 'assureur',            label: 'Assureur',         icon: '🛡️', email: 'assureur@demo.ci' },
-  { role: 'imagerie',            label: 'Imagerie',         icon: '🩻', email: 'imagerie@demo.ci' },
-  { role: 'laboratoire',         label: 'Laboratoire',      icon: '🧪', email: 'laboratoire@demo.ci' },
+  { role: 'patient',             label: 'Patient',          icon: '👤', email: 'patient@demo.ci' },
+  { role: 'clinique',            label: 'Clinique',          icon: '🏥', email: 'clinique@demo.ci' },
+  { role: 'medecin_independant', label: 'Méd. Conseil',      icon: '⭐', email: 'medecin.indep@demo.ci' },
+  { role: 'pharmacie',           label: 'Pharmacie',         icon: '💊', email: 'pharmacie@demo.ci' },
+  { role: 'livreur',             label: 'Livreur',           icon: '🛵', email: 'livreur@demo.ci' },
+  { role: 'admin',               label: 'Admin',             icon: '⚙️', email: 'admin@demo.ci' },
+  { role: 'assureur',            label: 'Assureur',          icon: '🛡️', email: 'assureur@demo.ci' },
+  { role: 'imagerie',            label: 'Imagerie',          icon: '🩻', email: 'imagerie@demo.ci' },
+  { role: 'laboratoire',         label: 'Laboratoire',       icon: '🧪', email: 'laboratoire@demo.ci' },
 ];
 
 export default function Login() {
@@ -25,8 +24,8 @@ export default function Login() {
   const ROLE_ROUTES = {
     patient:             '/patient',
     clinique:            '/clinique',
-    medecin:             '/medecin',
     medecin_independant: '/medecin/independant',
+    medecin_conseil:     '/medecin/independant',
     medecin_prive:       '/medecin/independant',
     pharmacie:           '/pharmacie',
     livreur:             '/livreur',
