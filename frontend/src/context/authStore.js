@@ -1,74 +1,108 @@
 import { create } from 'zustand';
-import { authAPI } from '../services/api';
+import { persist } from 'zustand/middleware';
 
-const useAuthStore = create((set, get) => ({
-  user:    JSON.parse(localStorage.getItem('mc_user') || 'null'),
-  token:   localStorage.getItem('mc_token') || null,
-  loading: false,
-  error:   null,
+const API = 'https://mediconnect-fed6.vercel.app/api';
 
-  login: async (email, password) => {
-    set({ loading: true, error: null });
-    try {
-      const { data } = await authAPI.login({ email, password });
-      if (!data.success || !data.token) throw new Error('Réponse invalide du serveur');
-      localStorage.setItem('mc_token', data.token);
-      localStorage.setItem('mc_user',  JSON.stringify(data.user));
-      set({ user: data.user, token: data.token, loading: false, error: null });
-      return { success: true };
-    } catch (err) {
-      let msg = 'Erreur de connexion';
-      if (err.response?.data?.message) msg = err.response.data.message;
-      else if (err.code === 'ERR_NETWORK') msg = 'Serveur inaccessible. Vérifiez votre connexion.';
-      else if (err.code === 'ECONNABORTED') msg = 'Délai dépassé. Réessayez.';
-      else if (err.message) msg = err.message;
-      set({ loading: false, error: msg });
-      return { success: false, message: msg };
+const useAuthStore = create(
+  persist(
+    (set, get) => ({
+      user:    null,
+      token:   null,
+      loading: false,
+
+      isAuthenticated: () => {
+        const { token, user } = get();
+        if (!token || !user) return false;
+        // Vérifier expiration du token JWT
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.exp && payload.exp * 1000 < Date.now()) {
+            // Token expiré — nettoyer
+            set({ token: null, user: null });
+            return false;
+          }
+        } catch { return false; }
+        return true;
+      },
+
+      login: async (email, password) => {
+        set({ loading: true });
+        try {
+          const res = await fetch(`${API}/auth/login`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email, password }),
+          });
+          const data = await res.json();
+
+          if (data.success && data.token && data.user) {
+            // S'assurer que le rôle est bien présent
+            const user = data.user;
+            // Fallback : décoder le JWT si le rôle n'est pas dans data.user
+            if (!user.role && data.token) {
+              try {
+                const payload = JSON.parse(atob(data.token.split('.')[1]));
+                user.role = payload.role;
+                user.clinique_id = user.clinique_id || payload.clinique_id;
+                user.patient_id  = user.patient_id  || payload.patient_id;
+                user.medecin_id  = user.medecin_id  || payload.medecin_id;
+              } catch {}
+            }
+            set({ token: data.token, user, loading: false });
+            return { success: true, user };
+          }
+          set({ loading: false });
+          return { success: false, message: data.message || 'Email ou mot de passe incorrect' };
+        } catch (e) {
+          set({ loading: false });
+          return { success: false, message: 'Erreur de connexion au serveur' };
+        }
+      },
+
+      register: async (payload) => {
+        set({ loading: true });
+        try {
+          const res = await fetch(`${API}/auth/register`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(payload),
+          });
+          const data = await res.json();
+
+          if (data.success && data.token && data.user) {
+            const user = data.user;
+            if (!user.role && data.token) {
+              try {
+                const p = JSON.parse(atob(data.token.split('.')[1]));
+                user.role = p.role || payload.role;
+              } catch {}
+            }
+            // S'assurer que le rôle est normalisé
+            if (user.role === 'medecin_prive') user.role = 'medecin_independant';
+            set({ token: data.token, user, loading: false });
+            return { success: true, user };
+          }
+          set({ loading: false });
+          return { success: false, message: data.message || 'Erreur lors de l\'inscription' };
+        } catch (e) {
+          set({ loading: false });
+          return { success: false, message: 'Erreur de connexion au serveur' };
+        }
+      },
+
+      logout: () => {
+        set({ user: null, token: null });
+      },
+
+      updateUser: (updates) => {
+        set(state => ({ user: { ...state.user, ...updates } }));
+      },
+    }),
+    {
+      name: 'mediconnect-auth',
+      partialize: (state) => ({ token: state.token, user: state.user }),
     }
-  },
-
-  register: async (formData) => {
-    set({ loading: true, error: null });
-    try {
-      const { data } = await authAPI.register(formData);
-      if (!data.success || !data.token) throw new Error('Réponse invalide du serveur');
-      localStorage.setItem('mc_token', data.token);
-      localStorage.setItem('mc_user',  JSON.stringify(data.user));
-      set({ user: data.user, token: data.token, loading: false, error: null });
-      return { success: true };
-    } catch (err) {
-      let msg = "Erreur lors de l'inscription";
-      if (err.response?.data?.message) msg = err.response.data.message;
-      else if (err.code === 'ERR_NETWORK') msg = 'Serveur inaccessible.';
-      else if (err.message) msg = err.message;
-      set({ loading: false, error: msg });
-      return { success: false, message: msg };
-    }
-  },
-
-  logout: () => {
-    localStorage.removeItem('mc_token');
-    localStorage.removeItem('mc_user');
-    set({ user: null, token: null, error: null });
-  },
-
-  isAuthenticated: () => {
-    const { token, user } = get();
-    if (!token || !user) return false;
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (payload.exp && payload.exp * 1000 < Date.now()) {
-        localStorage.removeItem('mc_token');
-        localStorage.removeItem('mc_user');
-        return false;
-      }
-    } catch {
-      return false;
-    }
-    return true;
-  },
-
-  clearError: () => set({ error: null }),
-}));
+  )
+);
 
 export default useAuthStore;
