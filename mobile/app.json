@@ -1,28 +1,16 @@
 {
   "expo": {
-    "name": "MediConnect",
-    "slug": "mobile",
-    "version": "1.0.0",
+    "name": "MediConnect Africa",
+    "slug": "mediconnect-africa",
+    "version": "3.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0D1B2A"
-    },
+    "scheme": "mediconnect",
+    "backgroundColor": "#060E18",
+    "splash": { "backgroundColor": "#060E18" },
     "android": {
-      "package": "com.mediconnect.app",
-      "versionCode": 1,
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0D1B2A"
-      }
+      "package": "cloud.mediconnect4africa",
+      "adaptiveIcon": { "backgroundColor": "#0A8F58" }
     },
-    "extra": {
-      "eas": {
-        "projectId": "dacdbe86-1647-46be-bbf2-c6d1428fdf0d"
-      }
-    }
+    "ios": { "bundleIdentifier": "cloud.mediconnect4africa" }
   }
 }

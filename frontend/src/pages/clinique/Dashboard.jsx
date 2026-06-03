@@ -731,6 +731,259 @@ function PageDossiersAss() {
 }
 
 // ── ROUTER ────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════
+// PAGE SPÉCIALITÉS CLINIQUE
+// ══════════════════════════════════════════════════════════════════
+const SPECIALITES_PRESET = [
+  'Médecine générale','Pédiatrie','Gynécologie-Obstétrique','Cardiologie',
+  'Dermatologie','Ophtalmologie','Orthopédie','Neurologie','Urologie',
+  'Gastro-entérologie','ORL','Endocrinologie','Pneumologie','Oncologie',
+  'Psychiatrie','Rhumatologie','Néphrologie','Chirurgie générale',
+  'Radiologie','Laboratoire d\'analyses','Dentisterie','Kinésithérapie',
+  'Diabétologie','Infectiologie','Médecine du travail',
+];
+
+function PageSpecialites() {
+  const qc = useQueryClient();
+  const [showForm, setShowForm]   = useState(false);
+  const [editing,  setEditing]    = useState(null);
+  const [form, setForm]           = useState({ nom:'', description:'', tarif_consultation:'' });
+  const [search, setSearch]       = useState('');
+
+  const { data:specData, isLoading } = useQuery({
+    queryKey: ['cl-specs'],
+    queryFn:  () => api.get('/cliniques/specialites').then(r => r.data.data || []),
+  });
+  const specs = specData || [];
+
+  const saveMut = useMutation({
+    mutationFn: (d) => editing
+      ? api.put(`/cliniques/specialites/${editing.id}`, d).then(r => r.data)
+      : api.post('/cliniques/specialites', d).then(r => r.data),
+    onSuccess: (r) => {
+      if (!r.success) { toast.error(r.message); return; }
+      qc.invalidateQueries(['cl-specs']);
+      toast.success(editing ? 'Spécialité modifiée !' : 'Spécialité ajoutée !');
+      resetForm();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id) => api.delete(`/cliniques/specialites/${id}`).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries(['cl-specs']); toast.success('Spécialité retirée.'); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const resetForm = () => {
+    setForm({ nom:'', description:'', tarif_consultation:'' });
+    setEditing(null);
+    setShowForm(false);
+  };
+
+  const openEdit = (s) => {
+    setEditing(s);
+    setForm({ nom:s.nom, description:s.description||'', tarif_consultation:s.tarif_consultation||'' });
+    setShowForm(true);
+  };
+
+  const handleSave = () => {
+    if (!form.nom) { toast.error('Nom de la spécialité requis'); return; }
+    saveMut.mutate({
+      nom:              form.nom,
+      description:      form.description || null,
+      tarif_consultation: form.tarif_consultation ? Number(form.tarif_consultation) : null,
+    });
+  };
+
+  const filtered = specs.filter(s =>
+    s.nom.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // Spécialités preset non encore ajoutées
+  const notAdded = SPECIALITES_PRESET.filter(n =>
+    !specs.some(s => s.nom.toLowerCase() === n.toLowerCase())
+  );
+
+  const C = {
+    bg:'#060C12',card:'#0E1620',input:'#141E2B',hover:'#1A2535',
+    border:'#1E2F42',text:'#F0F4F8',muted:'#8BA0B5',dim:'#4E657A',
+    green:'#0A8F58',teal:'#0D9488',amber:'#D97706',red:'#E11D48',
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="🩺 Spécialités médicales"
+        subtitle={`${specs.filter(s=>s.disponible).length} spécialité(s) active(s)`}
+        actions={
+          <Btn onClick={() => setShowForm(true)} style={{ background:C.green, color:'#fff', border:'none', padding:'9px 20px', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer' }}>
+            + Ajouter une spécialité
+          </Btn>
+        }
+      />
+
+      {/* Bannière info */}
+      <div style={{ background:'rgba(10,143,88,.07)', border:'1px solid rgba(10,143,88,.18)', borderRadius:12, padding:'14px 20px', marginBottom:24, display:'flex', alignItems:'flex-start', gap:14 }}>
+        <span style={{ fontSize:22 }}>💡</span>
+        <div style={{ fontSize:13, color:C.muted, lineHeight:1.7 }}>
+          <strong style={{ color:C.text }}>Pourquoi renseigner vos spécialités ?</strong><br/>
+          Vos spécialités sont affichées publiquement sur <strong style={{ color:'#4ade80' }}>mediconnect4africa.cloud</strong>. 
+          Les patients recherchent une clinique selon leurs besoins médicaux (cardiologie, pédiatrie, gynécologie…) 
+          avant de prendre rendez-vous. Plus votre liste est complète, plus vous attirez de patients ciblés.
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
+        {[
+          { l:'Spécialités actives', v:specs.filter(s=>s.disponible!==false).length, icon:'🩺', c:'#0A8F58' },
+          { l:'Avec tarif renseigné',v:specs.filter(s=>s.tarif_consultation).length, icon:'💰', c:'#D97706' },
+          { l:'Consultable en ligne', v:specs.filter(s=>s.disponible!==false).length, icon:'🌐', c:'#0D9488' },
+          { l:'Méd. associés (total)',v:specs.reduce((a,s)=>a+(s.medecins_count||0),0), icon:'👨‍⚕️', c:'#7C3AED' },
+        ].map(st => (
+          <div key={st.l} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <span style={{ fontSize:22 }}>{st.icon}</span>
+              <span style={{ fontSize:11, color:C.dim, textTransform:'uppercase', letterSpacing:.5 }}>{st.l}</span>
+            </div>
+            <div style={{ fontSize:28, fontWeight:800, color:st.c }}>{st.v}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Recherche */}
+      <Input
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        placeholder="🔍 Rechercher une spécialité…"
+        style={{ marginBottom:16, maxWidth:400 }}
+      />
+
+      {/* Liste spécialités actives */}
+      {isLoading ? <Loader /> : filtered.length === 0 ? (
+        <Empty icon="🩺" title="Aucune spécialité" subtitle="Ajoutez vos spécialités pour être visible sur la plateforme" />
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:14, marginBottom:32 }}>
+          {filtered.map(s => (
+            <div key={s.id} style={{ background:C.card, border:`1px solid ${s.disponible!==false ? 'rgba(10,143,88,.2)' : C.border}`, borderRadius:14, padding:18, position:'relative', transition:'border-color .2s' }}>
+              {s.disponible===false && (
+                <div style={{ position:'absolute', top:12, right:12 }}>
+                  <span style={{ fontSize:10, background:'rgba(225,29,72,.15)', color:'#FDA4AF', borderRadius:20, padding:'2px 10px', fontWeight:700 }}>DÉSACTIVÉE</span>
+                </div>
+              )}
+              <div style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
+                <div style={{ width:44, height:44, borderRadius:12, background:'rgba(10,143,88,.12)', border:'1px solid rgba(10,143,88,.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🩺</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{s.nom}</div>
+                  {s.description && <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:6 }}>{s.description}</div>}
+                  <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                    {s.tarif_consultation && (
+                      <span style={{ fontSize:12, background:'rgba(217,119,6,.12)', color:'#FCD34D', borderRadius:20, padding:'2px 10px', fontWeight:600 }}>
+                        💰 {Number(s.tarif_consultation).toLocaleString('fr-CI')} FCFA
+                      </span>
+                    )}
+                    {s.nb_medecins > 0 && (
+                      <span style={{ fontSize:12, background:'rgba(124,58,237,.12)', color:'#C4B5FD', borderRadius:20, padding:'2px 10px', fontWeight:600 }}>
+                        👨‍⚕️ {s.nb_medecins} médecin(s)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:8, marginTop:14, borderTop:`1px solid ${C.border}`, paddingTop:12 }}>
+                <button onClick={() => openEdit(s)} style={{ flex:1, background:'rgba(255,255,255,.05)', border:`1px solid ${C.border}`, color:C.muted, borderRadius:8, padding:'7px 0', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                  ✏️ Modifier
+                </button>
+                <button onClick={() => { if(window.confirm('Désactiver cette spécialité ?')) delMut.mutate(s.id); }} style={{ flex:1, background:'rgba(225,29,72,.08)', border:'1px solid rgba(225,29,72,.2)', color:'#FDA4AF', borderRadius:8, padding:'7px 0', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                  🗑️ Retirer
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Suggestions rapides */}
+      {notAdded.length > 0 && (
+        <div style={{ marginTop:8 }}>
+          <div style={{ fontSize:12, color:C.dim, fontWeight:700, textTransform:'uppercase', letterSpacing:.5, marginBottom:12 }}>
+            ⚡ Ajout rapide — spécialités courantes
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {notAdded.slice(0, 15).map(nom => (
+              <button
+                key={nom}
+                onClick={() => saveMut.mutate({ nom, description:null, tarif_consultation:null })}
+                disabled={saveMut.isPending}
+                style={{ background:'rgba(10,143,88,.08)', border:'1px solid rgba(10,143,88,.2)', color:'rgba(74,222,128,.85)', borderRadius:20, padding:'7px 16px', fontSize:12, fontWeight:500, cursor:'pointer', transition:'all .2s' }}
+              >
+                + {nom}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal ajout/édition */}
+      {showForm && (
+        <Modal onClose={resetForm} title={editing ? '✏️ Modifier la spécialité' : '+ Nouvelle spécialité'}>
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            {!editing ? (
+              <div>
+                <label style={{ fontSize:11, color:C.dim, textTransform:'uppercase', letterSpacing:.5, marginBottom:6, display:'block' }}>Spécialité *</label>
+                <select
+                  value={form.nom}
+                  onChange={e => setForm(p => ({...p, nom:e.target.value}))}
+                  style={{ width:'100%', background:C.input, border:`1px solid ${C.border}`, color:form.nom?C.text:C.dim, borderRadius:8, padding:'10px 12px', fontSize:14 }}
+                >
+                  <option value="">-- Choisir ou saisir --</option>
+                  {SPECIALITES_PRESET.filter(n => !specs.some(s=>s.nom===n)).map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <input
+                  value={form.nom}
+                  onChange={e => setForm(p => ({...p, nom:e.target.value}))}
+                  placeholder="Ou saisissez un nom personnalisé"
+                  style={{ width:'100%', background:C.input, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:'10px 12px', fontSize:14, marginTop:8, boxSizing:'border-box' }}
+                />
+              </div>
+            ) : (
+              <Input label="Nom" value={form.nom} onChange={e => setForm(p=>({...p,nom:e.target.value}))} />
+            )}
+            <Textarea
+              label="Description (optionnel)"
+              value={form.description}
+              onChange={e => setForm(p => ({...p, description:e.target.value}))}
+              placeholder="Détail des actes pratiqués, équipements disponibles…"
+              rows={3}
+            />
+            <Input
+              label="Tarif consultation (FCFA, optionnel)"
+              type="number"
+              value={form.tarif_consultation}
+              onChange={e => setForm(p => ({...p, tarif_consultation:e.target.value}))}
+              placeholder="ex: 15000"
+            />
+            <div style={{ display:'flex', gap:10, marginTop:8 }}>
+              <Btn variant="outline" onClick={resetForm} style={{ flex:1 }}>Annuler</Btn>
+              <Btn
+                onClick={handleSave}
+                loading={saveMut.isPending}
+                style={{ flex:2, background:C.green, color:'#fff', border:'none', borderRadius:10, padding:'11px 0', fontWeight:700, cursor:'pointer', fontSize:14 }}
+              >
+                {editing ? 'Enregistrer les modifications' : 'Ajouter la spécialité'}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardClinique() {
   return (
     <Routes>
@@ -745,6 +998,7 @@ export default function DashboardClinique() {
       <Route path="stats"        element={<PageStats />} />
       <Route path="assurance"    element={<PageAssurance />} />
       <Route path="dossiers-ass" element={<PageDossiersAss />} />
+      <Route path="specialites"  element={<PageSpecialites />} />
       <Route path="*" element={<div style={{ textAlign: "center", padding: 60, color: "#4E657A" }}><div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div><div>Section en développement</div></div>} />
     </Routes>
   );

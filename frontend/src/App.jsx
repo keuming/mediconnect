@@ -11,6 +11,7 @@ import DashboardClinique    from './pages/clinique/Dashboard';
 import DashboardPharmacie   from './pages/pharmacie/Dashboard';
 import DashboardLivreur     from './pages/livreur/Dashboard';
 import DashboardAdmin       from './pages/admin/Dashboard';
+import DashboardMinistere   from './pages/admin/DashboardMinistere';
 import DashboardAssureur    from './pages/assureur/Dashboard';
 import DashboardImagerie    from './pages/imagerie/Dashboard';
 import DashboardLaboratoire from './pages/laboratoire/Dashboard';
@@ -150,6 +151,13 @@ export default function App() {
             } />
 
             {/* Admin */}
+            {/* Ministère de la Santé — route dédiée avec son propre layout */}
+            <Route path="/admin/ministere/*" element={
+              <PrivateRoute roles={['admin']}>
+                <AppLayout role="admin"><DashboardMinistere /></AppLayout>
+              </PrivateRoute>
+            } />
+
             <Route path="/admin/*" element={
               <PrivateRoute roles={['admin']}>
                 <AppLayout role="admin"><DashboardAdmin /></AppLayout>
