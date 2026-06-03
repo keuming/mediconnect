@@ -165,10 +165,6 @@ const initTables = async () => {
     // Rendre patient_id nullable (ancienne contrainte NOT NULL)
     "ALTER TABLE rendez_vous ALTER COLUMN patient_id DROP NOT NULL",
     "ALTER TABLE rendez_vous ALTER COLUMN clinique_id DROP NOT NULL",
-    // Activer toutes les cliniques qui ont is_active NULL
-    "UPDATE cliniques SET is_active=true WHERE is_active IS NULL",
-    // Activer tous les utilisateurs actifs avec is_active NULL
-    "UPDATE utilisateurs SET is_active=true WHERE is_active IS NULL",
   ];
   for (const sql of alterations) {
     await db(sql).catch(() => {});
@@ -217,7 +213,7 @@ app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ success:false, message:'Email et mot de passe requis' });
   try {
-    const r = await db('SELECT * FROM utilisateurs WHERE email=$1 AND is_active=true LIMIT 1', [email]);
+    const r = await db('SELECT * FROM utilisateurs WHERE email=$1 AND is_active IS NOT false LIMIT 1', [email]);
     if (!r.rows.length) return res.status(401).json({ success:false, message:'Email ou mot de passe incorrect' });
     const user = r.rows[0];
     const ok = await bcrypt.compare(password, user.password);
@@ -291,32 +287,14 @@ medecinRouter('get', '/', auth, async (req, res) => {
 // Route publique médecins (sans auth) — pour le dashboard patient
 app.get('/api/public/medecins', async (req, res) => {
   try {
-    const { clinique_id, independant, specialite } = req.query;
-    // Filtrer sur statut Disponible pour les patients (route publique)
-    let sql = 'SELECT m.id,m.prenom,m.nom,m.specialite,m.tarif,m.statut,m.ville,m.jours_travail,m.horaires_debut,m.horaires_fin,m.note_moyenne,m.experience_ans,m.type_contrat,c.nom AS clinique_nom FROM medecins m LEFT JOIN cliniques c ON c.id=m.clinique_id WHERE 1=1';
-    const params = [];
-    if (clinique_id) {
-      params.push(clinique_id);
-      sql += ` AND m.clinique_id=$${params.length}`;
-    } else if (independant === 'true') {
-      sql += ` AND (m.clinique_id IS NULL OR m.type_contrat='independant')`;
-    }
-    if (specialite) {
-      params.push(specialite);
-      sql += ` AND m.specialite=$${params.length}`;
-    }
-    sql += ' ORDER BY m.nom,m.prenom';
-    const r = await db(sql, params);
-    console.log('[public/medecins]', r.rows.length, 'retournés, clinique_id='+( clinique_id||'all'));
+    const { clinique_id, specialite } = req.query;
+    let sql = 'SELECT * FROM medecins WHERE 1=1'; const p = [];
+    if (clinique_id) { p.push(clinique_id); sql += ` AND clinique_id=$${p.length}`; }
+    if (specialite)  { p.push(specialite);  sql += ` AND specialite=$${p.length}`; }
+    sql += ' ORDER BY nom,prenom';
+    const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
-  } catch(e) {
-    console.error('[public/medecins]', e.message);
-    // Fallback sans jointure
-    try {
-      const r2 = await db('SELECT * FROM medecins ORDER BY nom,prenom LIMIT 100');
-      res.json({ success:true, data:r2.rows });
-    } catch(e2) { res.json({ success:true, data:[] }); }
-  }
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
 medecinRouter('post', '/', auth, async (req, res) => {
   const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
@@ -650,11 +628,8 @@ app.put('/api/livreurs/position', auth, async (req, res) => {
 
 // ── PUBLIC RDV (sans auth) ────────────────────────────────────────
 app.get('/api/public/cliniques', async (req, res) => {
-  try {
-    // is_active=true OU is_active IS NULL (cliniques créées avant la migration)
-    const r = await db(`SELECT c.*,COALESCE(c.ville,u.ville) AS ville,COALESCE(c.telephone,u.telephone) AS telephone FROM cliniques c LEFT JOIN utilisateurs u ON u.id=c.user_id WHERE c.is_active IS NOT false ORDER BY c.nom`);
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
+  try { const r=await db('SELECT * FROM cliniques WHERE is_active=true ORDER BY nom'); res.json({ success:true, data:r.rows }); }
+  catch(e) { res.json({ success:true, data:[] }); }
 });
 app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
   res.json({ success:true, data:[] });
@@ -670,165 +645,74 @@ app.post('/api/public/rdv', async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
-
-// ════════════════════════════════════════════════════════════════════
-// PLANNING MÉDECIN — Disponibilités & Calendrier
-// ════════════════════════════════════════════════════════════════════
-
-// Auto-création table disponibilites
-db(`CREATE TABLE IF NOT EXISTS disponibilites (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  medecin_id UUID NOT NULL,
-  clinique_id UUID,
-  date DATE NOT NULL,
-  heure_debut TIME NOT NULL,
-  heure_fin TIME NOT NULL,
-  statut VARCHAR(20) DEFAULT 'disponible',
-  motif_absence TEXT,
-  recurrent BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-)`).catch(()=>{});
-
-// GET /api/planning/disponibilites — planning du médecin connecté
-app.get('/api/planning/disponibilites', auth, async (req, res) => {
+// ── BULLETINS (imagerie + laboratoire) ──────────────────────────
+app.get('/api/bulletins', auth, async (req, res) => {
   try {
-    const { mois, annee, clinique_id } = req.query;
-    const mid = req.user?.medecin_id || req.user?.id;
-    const m = mois || new Date().getMonth()+1;
-    const a = annee || new Date().getFullYear();
-    let sql = `
-      SELECT d.*, rdv.patient_nom, rdv.motif AS rdv_motif, rdv.statut AS rdv_statut, rdv.id AS rdv_id
-      FROM disponibilites d
-      LEFT JOIN rendez_vous rdv ON rdv.medecin_id=d.medecin_id
-        AND rdv.date_rdv=d.date AND rdv.heure_rdv=d.heure_debut
-        AND rdv.statut NOT IN ('annule')
-      WHERE d.medecin_id=$1
-        AND EXTRACT(MONTH FROM d.date)=$2
-        AND EXTRACT(YEAR FROM d.date)=$3
-    `;
-    const params = [mid, m, a];
-    if (clinique_id) { params.push(clinique_id); sql += ` AND d.clinique_id=$${params.length}`; }
-    sql += ' ORDER BY d.date, d.heure_debut';
-    const r = await db(sql, params);
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-
-// POST /api/planning/disponibilites — ajouter un créneau
-app.post('/api/planning/disponibilites', auth, async (req, res) => {
-  try {
-    const { clinique_id, date, heure_debut, heure_fin, recurrent } = req.body;
-    if (!date||!heure_debut||!heure_fin) return res.status(400).json({ success:false, message:'Date et heures requises' });
-    const mid = req.user?.medecin_id || req.user?.id;
-    // Vérifier doublon
-    const exists = await db('SELECT id FROM disponibilites WHERE medecin_id=$1 AND date=$2 AND heure_debut=$3', [mid,date,heure_debut]);
-    if (exists.rows.length) return res.status(409).json({ success:false, message:'Créneau déjà existant' });
-    const r = await db(
-      'INSERT INTO disponibilites (id,medecin_id,clinique_id,date,heure_debut,heure_fin,recurrent) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6) RETURNING *',
-      [mid, clinique_id||null, date, heure_debut, heure_fin, recurrent||false]
-    );
-    res.status(201).json({ success:true, data:r.rows[0] });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-// DELETE /api/planning/disponibilites/:id
-app.delete('/api/planning/disponibilites/:id', auth, async (req, res) => {
-  try {
-    await db('DELETE FROM disponibilites WHERE id=$1', [req.params.id]);
-    res.json({ success:true });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-// GET /api/planning/mes-cliniques — cliniques du médecin
-app.get('/api/planning/mes-cliniques', auth, async (req, res) => {
-  try {
-    const mid = req.user?.medecin_id || req.user?.id;
-    // Chercher par user_id ou par clinique_id du user
-    const r = await db(`
-      SELECT DISTINCT c.id, c.nom, u.ville, u.telephone, u.adresse
-      FROM cliniques c
-      JOIN utilisateurs u ON u.id=c.user_id
-      JOIN medecins m ON m.clinique_id=c.id AND m.id=$1
-    `, [mid]).catch(async () => {
-      // Fallback: retourner toutes les cliniques
-      return await db('SELECT id, nom FROM cliniques LIMIT 10');
-    });
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-
-// GET /api/planning/mes-patients — patients consultés par ce médecin
-app.get('/api/planning/mes-patients', auth, async (req, res) => {
-  try {
-    const mid = req.user?.medecin_id || req.user?.id;
-    const r = await db(`
-      SELECT DISTINCT p.*
-      FROM patients p
-      WHERE p.id IN (
-        SELECT DISTINCT c.patient_id FROM consultations c WHERE c.medecin_id=$1
-        UNION
-        SELECT DISTINCT r.patient_id FROM rendez_vous r WHERE r.medecin_id=$1 AND r.patient_id IS NOT NULL
-      )
-      ORDER BY p.nom, p.prenom
-    `, [mid]);
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-
-// GET /api/planning/stats — stats du médecin
-app.get('/api/planning/stats', auth, async (req, res) => {
-  try {
-    const mid = req.user?.medecin_id || req.user?.id;
-    const today = new Date().toISOString().split('T')[0];
-    const [rdvJ, rdvM, cons, dispo] = await Promise.all([
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE medecin_id=$1 AND date_rdv=$2 AND statut NOT IN ('annule')", [mid,today]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE medecin_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')", [mid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM consultations WHERE medecin_id=$1", [mid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM disponibilites WHERE medecin_id=$1 AND statut='disponible' AND date>=CURRENT_DATE", [mid]).catch(()=>({rows:[{c:0}]})),
-    ]);
-    res.json({ success:true, data:{
-      rdv_aujourd_hui: rdvJ.rows[0]?.c||0,
-      rdv_ce_mois: rdvM.rows[0]?.c||0,
-      consultations_total: cons.rows[0]?.c||0,
-      creneaux_disponibles: dispo.rows[0]?.c||0,
-    }});
-  } catch(e) { res.json({ success:true, data:{rdv_aujourd_hui:0,rdv_ce_mois:0,consultations_total:0,creneaux_disponibles:0} }); }
-});
-
-// GET /api/planning/rdvs — RDV du médecin
-app.get('/api/planning/rdvs', auth, async (req, res) => {
-  try {
-    const { date, statut } = req.query;
-    const mid = req.user?.medecin_id || req.user?.id;
-    let sql = 'SELECT * FROM rendez_vous WHERE medecin_id=$1'; const p=[mid];
-    if (date) { p.push(date); sql+=` AND date_rdv=$${p.length}`; }
-    if (statut) { p.push(statut); sql+=` AND statut=$${p.length}`; }
-    sql += ' ORDER BY date_rdv, heure_rdv LIMIT 100';
+    const { categorie, statut } = req.query;
+    const cid = req.user?.clinique_id;
+    let sql = 'SELECT * FROM bulletins WHERE 1=1'; const p = [];
+    if (categorie) { p.push(categorie); sql += ` AND categorie=$${p.length}`; }
+    if (statut)    { p.push(statut);    sql += ` AND statut=$${p.length}`; }
+    if (cid)       { p.push(cid);       sql += ` AND (clinique_id=$${p.length} OR clinique_id IS NULL)`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
     const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
-// POST /api/consultations/depuis-rdv — créer une consultation depuis un RDV
-app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
+app.post('/api/bulletins', auth, async (req, res) => {
+  const { type, categorie, patient_nom, patient_id, emetteur_nom, fichier_nom, rapport, notes } = req.body;
+  if (!type) return res.status(400).json({ success:false, message:'Type requis' });
   try {
-    const { rdv_id, patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, ordonnance } = req.body;
-    if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
-    const mid = req.user?.medecin_id || req.user?.id;
-    // Créer la consultation
-    const cons = await db(
-      'INSERT INTO consultations (id,patient_id,medecin_id,rdv_id,diagnostic,traitement,notes,tension_arterielle,temperature,poids,taille) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [patient_id||null, mid, rdv_id||null, diagnostic, traitement||null, notes||null, tension_arterielle||null, temperature||null, poids||null, taille||null]
+    const r = await db(
+      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,fichier_nom,rapport,notes) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [type, categorie||'imagerie', patient_nom||null, patient_id||null, emetteur_nom||null, req.user?.clinique_id||null, fichier_nom||null, rapport||null, notes||null]
     );
-    // Créer ordonnance si fournie
-    if (ordonnance?.medicaments) {
-      await db('INSERT INTO ordonnances (id,patient_id,medecin_id,consultation_id,medicaments,posologie,duree,notes_ord) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7)',
-        [patient_id||null, mid, cons.rows[0].id, ordonnance.medicaments, ordonnance.posologie||null, ordonnance.duree||null, ordonnance.notes||null]);
-    }
-    // Mettre à jour le statut du RDV
-    if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1", [rdv_id]).catch(()=>{});
-    res.status(201).json({ success:true, data:cons.rows[0] });
+    res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/bulletins/:id', auth, async (req, res) => {
+  const { statut, rapport, notes } = req.body;
+  try {
+    const r = await db(
+      "UPDATE bulletins SET statut=COALESCE($1,statut),rapport=COALESCE($2,rapport),notes=COALESCE($3,notes),updated_at=NOW() WHERE id=$4 RETURNING *",
+      [statut||null, rapport||null, notes||null, req.params.id]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── PATIENTS me ───────────────────────────────────────────────────
+app.get('/api/patients/me', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
+    res.json({ success:true, data:r.rows[0]||null });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── PHARMACIE commandes ───────────────────────────────────────────
+app.get('/api/pharmacie/commandes', auth, async (req, res) => {
+  try {
+    const { statut } = req.query;
+    let sql = "SELECT c.*,u.prenom||' '||u.nom AS patient_nom_full FROM commandes c LEFT JOIN utilisateurs u ON u.id=c.patient_id WHERE 1=1";
+    const p = [];
+    if (statut) { p.push(statut); sql += ` AND c.statut=$${p.length}`; }
+    sql += ' ORDER BY c.created_at DESC LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.get('/api/livreurs/commandes', auth, async (req, res) => {
+  try {
+    const lid = req.user?.id;
+    const r = await db(
+      "SELECT c.*,u.prenom||' '||u.nom AS patient_nom FROM commandes c LEFT JOIN utilisateurs u ON u.id=c.patient_id WHERE (c.livreur_id=$1 OR (c.livreur_id IS NULL AND c.statut='confirmee')) ORDER BY c.created_at DESC LIMIT 50",
+      [lid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
 
 // ── ERREURS ───────────────────────────────────────────────────────
