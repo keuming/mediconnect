@@ -46,31 +46,19 @@ const Loader = () => (
 );
 
 const PrivateRoute = ({ children, roles }) => {
-  const { user, token, isAuthenticated } = useAuthStore();
+  const { user, token } = useAuthStore();
 
-  // Vérification légère : token + user suffisent
-  const authed = isAuthenticated();
-  if (!authed) {
-    // Dernier recours : si token + user existent, on laisse passer
-    if (token && user) {
-      console.warn('[PrivateRoute] isAuthenticated=false mais token+user présents → on laisse passer');
-    } else {
-      console.warn('[PrivateRoute] Pas de session → /login');
-      return <Navigate to="/login" replace />;
-    }
+  // Pas de session du tout → login
+  if (!token && !user) {
+    return <Navigate to="/login" replace />;
   }
 
+  // Vérification du rôle si précisé
   if (roles && roles.length > 0 && user?.role) {
-    const userRole = user.role;
-    // Normaliser tous les alias de médecin indépendant
-    const normalizedRole = ['medecin_prive','medecin_conseil'].includes(userRole)
-      ? 'medecin_independant'
-      : userRole;
-    const allowed = roles.includes(userRole) || roles.includes(normalizedRole);
-    if (!allowed) {
-      console.warn('[PrivateRoute] Rôle non autorisé:', userRole, '→ attendu:', roles, '→ /app');
-      return <Navigate to="/app" replace />;
-    }
+    const r = user.role;
+    const normalized = ['medecin_prive','medecin_conseil'].includes(r) ? 'medecin_independant' : r;
+    const allowed = roles.includes(r) || roles.includes(normalized);
+    if (!allowed) return <Navigate to="/app" replace />;
   }
 
   return children;
