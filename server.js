@@ -235,8 +235,8 @@ app.get('/', (req, res) => res.json({ success:true, message:'MediConnect API v2'
 // ── PRIORITY ROUTES (BULLETINS & PLANNING) ───────────────────────
 // =================================================================
 
-// ── BULLETINS ROUTES ─────────────────────────────────────────────
-app.get('/api/bulletins', auth, async (req, res) => {
+// ── BULLETINS ROUTES (Supporte avec et sans le préfixe /api) ──────
+const getBulletins = async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const r = cid 
@@ -244,9 +244,11 @@ app.get('/api/bulletins', auth, async (req, res) => {
       : await db('SELECT * FROM bulletins ORDER BY created_at DESC');
     res.json({ success: true, data: r.rows });
   } catch(e) { res.json({ success: false, message: e.message, data: [] }); }
-});
+};
+app.get('/api/bulletins', auth, getBulletins);
+app.get('/bulletins', auth, getBulletins); // <-- Sécurité Vercel
 
-app.post('/api/bulletins', auth, async (req, res) => {
+const postBulletins = async (req, res) => {
   const { type, categorie, patient_nom, patient_id, emetteur_nom, rapport, notes } = req.body;
   if (!type) return res.status(400).json({ success: false, message: 'Le type est requis' });
   try {
@@ -256,66 +258,29 @@ app.post('/api/bulletins', auth, async (req, res) => {
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
-app.put('/api/bulletins/:id', auth, async (req, res) => {
-  const { statut, rapport, notes } = req.body;
-  try {
-    const r = await db(
-      'UPDATE bulletins SET statut=COALESCE($1,statut), rapport=COALESCE($2,rapport), notes=COALESCE($3,notes), updated_at=NOW() WHERE id=$4 RETURNING *',
-      [statut, rapport, notes, req.params.id]
-    );
-    res.json({ success: true, data: r.rows[0] });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-});
+};
+app.post('/api/bulletins', auth, postBulletins);
+app.post('/bulletins', auth, postBulletins); // <-- Sécurité Vercel
 
 // ── PLANNING / DISPONIBILITÉS ROUTES ──────────────────────────────
-app.get('/api/planning/stats', auth, async (req, res) => {
+const getPlanningStats = async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const mid = req.user?.medecin_id;
-    
     let total_rdv = 0, en_attente = 0, confirmes = 0;
     
     if (mid) {
       const r = await db("SELECT count(*) t, count(case when statut='en_attente' then 1 end) w, count(case when statut='confirme' then 1 end) c FROM rendez_vous WHERE medecin_id=$1", [mid]);
-      total_rdv = r.rows[0]?.t || 0;
-      en_attente = r.rows[0]?.w || 0;
-      confirmes = r.rows[0]?.c || 0;
+      total_rdv = r.rows[0]?.t || 0; en_attente = r.rows[0]?.w || 0; confirmes = r.rows[0]?.c || 0;
     } else if (cid) {
       const r = await db("SELECT count(*) t, count(case when statut='en_attente' then 1 end) w, count(case when statut='confirme' then 1 end) c FROM rendez_vous WHERE clinique_id=$1", [cid]);
-      total_rdv = r.rows[0]?.t || 0;
-      en_attente = r.rows[0]?.w || 0;
-      confirmes = r.rows[0]?.c || 0;
+      total_rdv = r.rows[0]?.t || 0; en_attente = r.rows[0]?.w || 0; confirmes = r.rows[0]?.c || 0;
     }
     res.json({ success: true, data: { total_rdv: parseInt(total_rdv), en_attente: parseInt(en_attente), confirmes: parseInt(confirmes) } });
   } catch(e) { res.json({ success: false, message: e.message }); }
-});
-
-app.get('/api/planning/disponibilites', auth, async (req, res) => {
-  try {
-    const mid = req.query.medecin_id || req.user?.medecin_id;
-    if (!mid) return res.json({ success: true, data: [] });
-    const r = await db('SELECT * FROM disponibilites WHERE medecin_id=$1 ORDER BY date, heure_debut', [mid]);
-    res.json({ success: true, data: r.rows });
-  } catch(e) { res.json({ success: false, message: e.message }); }
-});
-
-app.post('/api/planning/disponibilites', auth, async (req, res) => {
-  const { medecin_id, date, heure_debut, heure_fin, statut, recurrent, motif_absence } = req.body;
-  const mid = medecin_id || req.user?.medecin_id;
-  if (!mid || !date || !heure_debut || !heure_fin) {
-    return res.status(400).json({ success: false, message: 'Médecin, date, heure_debut et heure_fin requis' });
-  }
-  try {
-    const r = await db(
-      'INSERT INTO disponibilites (id, medecin_id, clinique_id, date, heure_debut, heure_fin, statut, recurrent, motif_absence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [uuid(), mid, req.user?.clinique_id, date, heure_debut, heure_fin, statut||'disponible', recurrent||false, motif_absence||null]
-    );
-    res.status(201).json({ success: true, data: r.rows[0] });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
+};
+app.get('/api/planning/stats', auth, getPlanningStats);
+app.get('/planning/stats', auth, getPlanningStats); // <-- Sécurité Vercel
 
 // =================================================================
 // ── STANDARD SECURED API ROUTES ──────────────────────────────────
