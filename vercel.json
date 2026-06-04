@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "backend/server.js",
+      "src": "server.js",
       "use": "@vercel/node"
     }
   ],
@@ -10,11 +10,11 @@
     {
       "src": "/api/(.*)",
       "methods": ["GET","POST","PUT","DELETE","PATCH","OPTIONS"],
-      "dest": "backend/server.js"
+      "dest": "server.js"
     },
     {
       "src": "/(.*)",
-      "dest": "backend/server.js"
+      "dest": "server.js"
     }
   ]
 }
