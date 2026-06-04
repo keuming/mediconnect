@@ -7,7 +7,6 @@ const { Pool }   = require('pg');
 const bcrypt     = require('bcryptjs');
 const jwt        = require('jsonwebtoken');
 const { v4: uuid } = require('uuid');
-const path       = require('path');
 
 const isProd = process.env.NODE_ENV === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
@@ -195,20 +194,11 @@ const initTables = async () => {
   console.log('[DB] Tables vérifiées et migrées');
 };
 
-// ── App Express ───────────────────────────────────────────────────
+// ── App Express & Middlewares Globaux ───────────────────────────────────────────────
 const app = express();
 app.set('trust proxy', 1);
 
-// 🔥 RE-ROUTAGE INTELLIGENT COMPATIBLE VERCEL PROXY
-// Si l'URL commence par /api/, on crée un alias interne nettoyé pour le routeur d'Express
-app.use((req, res, next) => {
-  if (req.url && req.url.startsWith('/api/')) {
-    req.url = req.url.replace('/api/', '/');
-  }
-  next();
-});
-
-// Configuration des CORS
+// Configuration unifiée des CORS
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
@@ -223,33 +213,31 @@ app.use(morgan(isProd ? 'tiny' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Limiteurs de requêtes
+// Limiteurs de requêtes réseau
 app.use('/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==='OPTIONS' }));
-app.use('/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
 
-// ── HEALTH ────────────────────────────────────────────────────────
-app.get('/health', async (req, res) => {
+// ── INSTANCIATION DU ROUTEUR ÉTANCHE POUR VERCEL ──────────────────
+const apiRouter = express.Router();
+app.use('/api', apiRouter);
+
+// ── HEALTH & ROOT CHECKS (Ancrés sur app et apiRouter) ────────────
+const healthHandler = async (req, res) => {
   try {
     await db('SELECT 1');
     res.json({ success:true, status:'ok', db:'connected', env: process.env.NODE_ENV||'unknown', ts:new Date().toISOString() });
   } catch(e) {
     res.status(503).json({ success:false, db:'error', error:e.message });
   }
-});
-app.get('/api/health', async (req, res) => {
-  try {
-    await db('SELECT 1');
-    res.json({ success:true, status:'ok', db:'connected', env: process.env.NODE_ENV||'unknown', ts:new Date().toISOString() });
-  } catch(e) {
-    res.status(503).json({ success:false, db:'error', error:e.message });
-  }
-});
+};
+app.get('/health', healthHandler);
+apiRouter.get('/health', healthHandler);
 
 app.get('/', (req, res) => res.json({ success:true, message:'MediConnect API v2', health:'/api/health' }));
+apiRouter.get('/', (req, res) => res.json({ success:true, message:'MediConnect API Sub-Router v2' }));
 
 
 // =================================================================
-// ── COEUR DES APIS ROUTÉES (DOUBLE ANCRAGE POUR SÉCURITÉ VERCEL) ─
+// ── COEUR DES APIS ENCAPSULÉES DANS LE ROUTEUR ───────────────────
 // =================================================================
 
 // ── BULLETINS ROUTES ─────────────────────────────────────────────
@@ -262,9 +250,7 @@ const getBulletinsHandler = async (req, res) => {
     res.json({ success: true, data: r.rows });
   } catch(e) { res.json({ success: false, message: e.message, data: [] }); }
 };
-
-app.get('/api/bulletins', auth, getBulletinsHandler);
-app.get('/bulletins', auth, getBulletinsHandler);
+apiRouter.get('/bulletins', auth, getBulletinsHandler);
 
 const postBulletinsHandler = async (req, res) => {
   const { type, categorie, patient_nom, patient_id, emetteur_nom, rapport, notes } = req.body;
@@ -277,9 +263,7 @@ const postBulletinsHandler = async (req, res) => {
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 };
-
-app.post('/api/bulletins', auth, postBulletinsHandler);
-app.post('/bulletins', auth, postBulletinsHandler);
+apiRouter.post('/bulletins', auth, postBulletinsHandler);
 
 const putBulletinsHandler = async (req, res) => {
   const { statut, rapport, notes } = req.body;
@@ -291,9 +275,7 @@ const putBulletinsHandler = async (req, res) => {
     res.json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 };
-
-app.put('/api/bulletins/:id', auth, putBulletinsHandler);
-app.put('/bulletins/:id', auth, putBulletinsHandler);
+apiRouter.put('/bulletins/:id', auth, putBulletinsHandler);
 
 
 // ── PLANNING / DISPONIBILITÉS ROUTES ──────────────────────────────
@@ -313,9 +295,7 @@ const getPlanningStatsHandler = async (req, res) => {
     res.json({ success: true, data: { total_rdv: parseInt(total_rdv), en_attente: parseInt(en_attente), confirmes: parseInt(confirmes) } });
   } catch(e) { res.json({ success: false, message: e.message }); }
 };
-
-app.get('/api/planning/stats', auth, getPlanningStatsHandler);
-app.get('/planning/stats', auth, getPlanningStatsHandler);
+apiRouter.get('/planning/stats', auth, getPlanningStatsHandler);
 
 const getPlanningDispoHandler = async (req, res) => {
   try {
@@ -325,9 +305,7 @@ const getPlanningDispoHandler = async (req, res) => {
     res.json({ success: true, data: r.rows });
   } catch(e) { res.json({ success: false, message: e.message }); }
 };
-
-app.get('/api/planning/disponibilites', auth, getPlanningDispoHandler);
-app.get('/planning/disponibilites', auth, getPlanningDispoHandler);
+apiRouter.get('/planning/disponibilites', auth, getPlanningDispoHandler);
 
 const postPlanningDispoHandler = async (req, res) => {
   const { medecin_id, date, heure_debut, heure_fin, statut, recurrent, motif_absence } = req.body;
@@ -343,14 +321,8 @@ const postPlanningDispoHandler = async (req, res) => {
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 };
+apiRouter.post('/planning/disponibilites', auth, postPlanningDispoHandler);
 
-app.post('/api/planning/disponibilites', auth, postPlanningDispoHandler);
-app.post('/planning/disponibilites', auth, postPlanningDispoHandler);
-
-
-// =================================================================
-// ── SECURED API CHANNELS ─────────────────────────────────────────
-// =================================================================
 
 // ── AUTH ──────────────────────────────────────────────────────────
 const loginHandler = async (req, res) => {
@@ -367,8 +339,7 @@ const loginHandler = async (req, res) => {
     res.json({ success:true, token, user:u });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.post('/api/auth/login', loginHandler);
-app.post('/auth/login', loginHandler);
+apiRouter.post('/auth/login', loginHandler);
 
 const registerHandler = async (req, res) => {
   const { email, password, prenom, nom, role, telephone } = req.body;
@@ -385,8 +356,8 @@ const registerHandler = async (req, res) => {
     res.status(201).json({ success:true, token, user:u });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.post('/api/auth/register', registerHandler);
-app.post('/auth/register', registerHandler);
+apiRouter.post('/auth/register', registerHandler);
+
 
 // ── UTILISATEURS ──────────────────────────────────────────────────
 const getUsersHandler = async (req, res) => {
@@ -395,8 +366,7 @@ const getUsersHandler = async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/utilisateurs', auth, can('admin'), getUsersHandler);
-app.get('/utilisateurs', auth, can('admin'), getUsersHandler);
+apiRouter.get('/utilisateurs', auth, can('admin'), getUsersHandler);
 
 const getMeHandler = async (req, res) => {
   try {
@@ -404,16 +374,15 @@ const getMeHandler = async (req, res) => {
     res.json({ success:true, data:r.rows[0]||{} });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.get('/api/utilisateurs/me', auth, getMeHandler);
-app.get('/utilisateurs/me', auth, getMeHandler);
+apiRouter.get('/utilisateurs/me', auth, getMeHandler);
+
 
 // ── CLINIQUES ─────────────────────────────────────────────────────
 const getCliniquesHandler = async (req, res) => {
   try { const r = await db('SELECT * FROM cliniques ORDER BY nom'); res.json({ success:true, data:r.rows }); }
   catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/cliniques', getCliniquesHandler);
-app.get('/cliniques', getCliniquesHandler);
+apiRouter.get('/cliniques', getCliniquesHandler);
 
 const getCliniquesStatsHandler = async (req, res) => {
   try {
@@ -427,8 +396,8 @@ const getCliniquesStatsHandler = async (req, res) => {
     res.json({ success:true, data:{ medecins_actifs:m.rows[0]?.c||0, rdv_ce_mois:r.rows[0]?.c||0, patients_mois:p.rows[0]?.c||0 } });
   } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0 } }); }
 };
-app.get('/api/cliniques/stats', auth, getCliniquesStatsHandler);
-app.get('/cliniques/stats', auth, getCliniquesStatsHandler);
+apiRouter.get('/cliniques/stats', auth, getCliniquesStatsHandler);
+
 
 // ── MÉDECINS ──────────────────────────────────────────────────────
 const getMedecinsHandler = async (req, res) => {
@@ -438,8 +407,7 @@ const getMedecinsHandler = async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/medecins', auth, getMedecinsHandler);
-app.get('/medecins', auth, getMedecinsHandler);
+apiRouter.get('/medecins', auth, getMedecinsHandler);
 
 const getPublicMedecinsHandler = async (req, res) => {
   try {
@@ -451,8 +419,7 @@ const getPublicMedecinsHandler = async (req, res) => {
     const r = await db(sql, p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/public/medecins', getPublicMedecinsHandler);
-app.get('/public/medecins', getPublicMedecinsHandler);
+apiRouter.get('/public/medecins', getPublicMedecinsHandler);
 
 const postMedecinsHandler = async (req, res) => {
   const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
@@ -463,8 +430,7 @@ const postMedecinsHandler = async (req, res) => {
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.post('/api/medecins', auth, postMedecinsHandler);
-app.post('/medecins', auth, postMedecinsHandler);
+apiRouter.post('/medecins', auth, postMedecinsHandler);
 
 const putMedecinsHandler = async (req, res) => {
   const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
@@ -474,8 +440,8 @@ const putMedecinsHandler = async (req, res) => {
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.put('/api/medecins/:id', auth, putMedecinsHandler);
-app.put('/medecins/:id', auth, putMedecinsHandler);
+apiRouter.put('/medecins/:id', auth, putMedecinsHandler);
+
 
 // ── PATIENTS ──────────────────────────────────────────────────────
 const vd = d => d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
@@ -486,8 +452,7 @@ const getPatientsHandler = async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/patients', auth, getPatientsHandler);
-app.get('/patients', auth, getPatientsHandler);
+apiRouter.get('/patients', auth, getPatientsHandler);
 
 const postPatientsHandler = async (req, res) => {
   const { prenom, nom, telephone, email, date_naissance, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police } = req.body;
@@ -499,8 +464,8 @@ const postPatientsHandler = async (req, res) => {
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.post('/api/patients', auth, postPatientsHandler);
-app.post('/patients', auth, postPatientsHandler);
+apiRouter.post('/patients', auth, postPatientsHandler);
+
 
 // ── RENDEZ-VOUS ───────────────────────────────────────────────────
 const getRdvHandler = async (req, res) => {
@@ -515,8 +480,7 @@ const getRdvHandler = async (req, res) => {
     const r = await db(sql, p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/rendez-vous', auth, getRdvHandler);
-app.get('/rendez-vous', auth, getRdvHandler);
+apiRouter.get('/rendez-vous', auth, getRdvHandler);
 
 const postRdvHandler = async (req, res) => {
   const { patient_nom, patient_id, medecin_nom, medecin_id, date_rdv, heure_rdv, motif, statut, assurance, notes } = req.body;
@@ -528,8 +492,8 @@ const postRdvHandler = async (req, res) => {
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.post('/api/rendez-vous', auth, postRdvHandler);
-app.post('/rendez-vous', auth, postRdvHandler);
+apiRouter.post('/rendez-vous', auth, postRdvHandler);
+
 
 // ── CONSULTATIONS ─────────────────────────────────────────────────
 const getConsultationsHandler = async (req, res) => {
@@ -542,8 +506,8 @@ const getConsultationsHandler = async (req, res) => {
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/consultations', auth, getConsultationsHandler);
-app.get('/consultations', auth, getConsultationsHandler);
+apiRouter.get('/consultations', auth, getConsultationsHandler);
+
 
 // ── STOCK ─────────────────────────────────────────────────────────
 const stockHandler = async (req, res, extra={}) => {
@@ -554,10 +518,9 @@ const stockHandler = async (req, res, extra={}) => {
   try { const r=await db(sql,p); res.json({ success:true, data:r.rows, ...extra }); }
   catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/stock', auth, (req,res)=>stockHandler(req,res));
-app.get('/stock', auth, (req,res)=>stockHandler(req,res));
-app.get('/api/stock/clinique', auth, (req,res)=>stockHandler(req,res));
-app.get('/stock/clinique', auth, (req,res)=>stockHandler(req,res));
+apiRouter.get('/stock', auth, (req,res)=>stockHandler(req,res));
+apiRouter.get('/stock/clinique', auth, (req,res)=>stockHandler(req,res));
+
 
 // ── FACTURES ──────────────────────────────────────────────────────
 const getFacturesHandler = async (req, res) => {
@@ -570,8 +533,8 @@ const getFacturesHandler = async (req, res) => {
     const r=await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 };
-app.get('/api/factures', auth, getFacturesHandler);
-app.get('/factures', auth, getFacturesHandler);
+apiRouter.get('/factures', auth, getFacturesHandler);
+
 
 // ── CAISSE SESSIONS ───────────────────────────────────────────────
 const getCaisseActiveHandler = async (req, res) => {
@@ -581,8 +544,8 @@ const getCaisseActiveHandler = async (req, res) => {
     res.json({ success:true, data:r.rows[0]||null });
   } catch(e) { res.json({ success:true, data:null }); }
 };
-app.get('/api/caisse/sessions/active', auth, getCaisseActiveHandler);
-app.get('/caisse/sessions/active', auth, getCaisseActiveHandler);
+apiRouter.get('/caisse/sessions/active', auth, getCaisseActiveHandler);
+
 
 // ── STATS MINISTÈRE (ADMINS) ──────────────────────────────────────
 const getMinistereStatsHandler = async (req, res) => {
@@ -594,11 +557,10 @@ const getMinistereStatsHandler = async (req, res) => {
     res.json({ success:true, data:{ cliniques:parseInt(c.rows[0].c), medecins:parseInt(m.rows[0].c), patients:parseInt(p.rows[0].c), consultations:parseInt(v.rows[0].c) } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 };
-app.get('/api/ministere/stats-globales', auth, can('admin'), getMinistereStatsHandler);
-app.get('/ministere/stats-globales', auth, can('admin'), getMinistereStatsHandler);
+apiRouter.get('/ministere/stats-globales', auth, can('admin'), getMinistereStatsHandler);
 
 
-// ── GESTIONNAIRE DE ROUTE INTROUVABLE EN DERNIER ──────────────────
+// ── GESTIONNAIRE DE ROUTE INTROUVABLE EN DERNIER (FALLBACK 404) ───
 app.use((req, res) => {
   res.status(404).json({ success: false, message: `Route introuvable: ${req.method} ${req.url}` });
 });
