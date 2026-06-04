@@ -36,7 +36,6 @@ const auth = (req, res, next) => {
   } catch { return res.status(401).json({ success:false, message:'Token invalide' }); }
 };
 
-// MODIFICATION : can prend en charge l'héritage admin globalement et renvoie un vrai 403
 const can = (...roles) => (req, res, next) => {
   if (!req.user) return res.status(401).json({ success:false, message:'Non authentifié' });
   if (req.user.role === 'admin' || roles.includes(req.user.role)) {
@@ -200,7 +199,16 @@ const initTables = async () => {
 const app = express();
 app.set('trust proxy', 1);
 
-// CORS EN PREMIER
+// 🔥 CORRECTEUR DE ROUTAGE UNIVERSEL POUR LE PROXY VERCEL
+// Si Vercel enlève le préfixe /api lors du transfert, Express le remet de force en interne
+app.use((req, res, next) => {
+  if (req.url && !req.url.startsWith('/api')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
+
+// Configuration des CORS
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
@@ -215,7 +223,7 @@ app.use(morgan(isProd ? 'tiny' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
+// Limiteurs de requêtes
 app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==='OPTIONS' }));
 app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
 
@@ -232,11 +240,11 @@ app.get('/', (req, res) => res.json({ success:true, message:'MediConnect API v2'
 
 
 // =================================================================
-// ── PRIORITY ROUTES (BULLETINS & PLANNING) ───────────────────────
+// ── ROUTES PRIORITAIRES (BULLETINS & PLANNING STATS) ─────────────
 // =================================================================
 
-// ── BULLETINS ROUTES (Supporte avec et sans le préfixe /api) ──────
-const getBulletins = async (req, res) => {
+// ── BULLETINS ROUTES ─────────────────────────────────────────────
+app.get('/api/bulletins', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const r = cid 
@@ -244,11 +252,9 @@ const getBulletins = async (req, res) => {
       : await db('SELECT * FROM bulletins ORDER BY created_at DESC');
     res.json({ success: true, data: r.rows });
   } catch(e) { res.json({ success: false, message: e.message, data: [] }); }
-};
-app.get('/api/bulletins', auth, getBulletins);
-app.get('/bulletins', auth, getBulletins); // <-- Sécurité Vercel
+});
 
-const postBulletins = async (req, res) => {
+app.post('/api/bulletins', auth, async (req, res) => {
   const { type, categorie, patient_nom, patient_id, emetteur_nom, rapport, notes } = req.body;
   if (!type) return res.status(400).json({ success: false, message: 'Le type est requis' });
   try {
@@ -258,29 +264,66 @@ const postBulletins = async (req, res) => {
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-};
-app.post('/api/bulletins', auth, postBulletins);
-app.post('/bulletins', auth, postBulletins); // <-- Sécurité Vercel
+});
+
+app.put('/api/bulletins/:id', auth, async (req, res) => {
+  const { statut, rapport, notes } = req.body;
+  try {
+    const r = await db(
+      'UPDATE bulletins SET statut=COALESCE($1,statut), rapport=COALESCE($2,rapport), notes=COALESCE($3,notes), updated_at=NOW() WHERE id=$4 RETURNING *',
+      [statut, rapport, notes, req.params.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
 
 // ── PLANNING / DISPONIBILITÉS ROUTES ──────────────────────────────
-const getPlanningStats = async (req, res) => {
+app.get('/api/planning/stats', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const mid = req.user?.medecin_id;
+    
     let total_rdv = 0, en_attente = 0, confirmes = 0;
     
     if (mid) {
       const r = await db("SELECT count(*) t, count(case when statut='en_attente' then 1 end) w, count(case when statut='confirme' then 1 end) c FROM rendez_vous WHERE medecin_id=$1", [mid]);
-      total_rdv = r.rows[0]?.t || 0; en_attente = r.rows[0]?.w || 0; confirmes = r.rows[0]?.c || 0;
+      total_rdv = r.rows[0]?.t || 0;
+      en_attente = r.rows[0]?.w || 0;
+      confirmes = r.rows[0]?.c || 0;
     } else if (cid) {
       const r = await db("SELECT count(*) t, count(case when statut='en_attente' then 1 end) w, count(case when statut='confirme' then 1 end) c FROM rendez_vous WHERE clinique_id=$1", [cid]);
-      total_rdv = r.rows[0]?.t || 0; en_attente = r.rows[0]?.w || 0; confirmes = r.rows[0]?.c || 0;
+      total_rdv = r.rows[0]?.t || 0;
+      en_attente = r.rows[0]?.w || 0;
+      confirmes = r.rows[0]?.c || 0;
     }
     res.json({ success: true, data: { total_rdv: parseInt(total_rdv), en_attente: parseInt(en_attente), confirmes: parseInt(confirmes) } });
   } catch(e) { res.json({ success: false, message: e.message }); }
-};
-app.get('/api/planning/stats', auth, getPlanningStats);
-app.get('/planning/stats', auth, getPlanningStats); // <-- Sécurité Vercel
+});
+
+app.get('/api/planning/disponibilites', auth, async (req, res) => {
+  try {
+    const mid = req.query.medecin_id || req.user?.medecin_id;
+    if (!mid) return res.json({ success: true, data: [] });
+    const r = await db('SELECT * FROM disponibilites WHERE medecin_id=$1 ORDER BY date, heure_debut', [mid]);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: false, message: e.message }); }
+});
+
+app.post('/api/planning/disponibilites', auth, async (req, res) => {
+  const { medecin_id, date, heure_debut, heure_fin, statut, recurrent, motif_absence } = req.body;
+  const mid = medecin_id || req.user?.medecin_id;
+  if (!mid || !date || !heure_debut || !heure_fin) {
+    return res.status(400).json({ success: false, message: 'Médecin, date, heure_debut et heure_fin requis' });
+  }
+  try {
+    const r = await db(
+      'INSERT INTO disponibilites (id, medecin_id, clinique_id, date, heure_debut, heure_fin, statut, recurrent, motif_absence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [uuid(), mid, req.user?.clinique_id, date, heure_debut, heure_fin, statut||'disponible', recurrent||false, motif_absence||null]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 
 // =================================================================
 // ── STANDARD SECURED API ROUTES ──────────────────────────────────
@@ -351,8 +394,7 @@ app.get('/api/cliniques/stats', auth, async (req, res) => {
 });
 
 // ── MÉDECINS ──────────────────────────────────────────────────────
-const medecinRouter = (method, path, ...handlers) => app[method]('/api/medecins' + path, ...handlers);
-medecinRouter('get', '/', auth, async (req, res) => {
+app.get('/api/medecins', auth, async (req, res) => {
   try {
     const cid = req.query.clinique_id || req.user?.clinique_id;
     const r = cid
@@ -373,7 +415,7 @@ app.get('/api/public/medecins', async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-medecinRouter('post', '/', auth, async (req, res) => {
+app.post('/api/medecins', auth, async (req, res) => {
   const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   if (!prenom||!nom||!specialite) return res.status(400).json({ success:false, message:'Prénom, nom et spécialité requis' });
   try {
@@ -382,7 +424,7 @@ medecinRouter('post', '/', auth, async (req, res) => {
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-medecinRouter('put', '/:id', auth, async (req, res) => {
+app.put('/api/medecins/:id', auth, async (req, res) => {
   const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   try {
     const r = await db('UPDATE medecins SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),specialite=COALESCE($3,specialite),statut=COALESCE($4,statut),tarif=COALESCE($5,tarif),telephone=COALESCE($6,telephone),experience_ans=COALESCE($7,experience_ans),jours_travail=COALESCE($8,jours_travail),horaires_debut=COALESCE($9,horaires_debut),horaires_fin=COALESCE($10,horaires_fin),updated_at=NOW() WHERE id=$11 RETURNING *',
@@ -390,7 +432,7 @@ medecinRouter('put', '/:id', auth, async (req, res) => {
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-medecinRouter('delete', '/:id', auth, async (req, res) => {
+app.delete('/api/medecins/:id', auth, async (req, res) => {
   try { await db('DELETE FROM medecins WHERE id=$1', [req.params.id]); res.json({ success:true }); }
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
@@ -626,7 +668,7 @@ app.post('/api/caisse/sessions/fermer', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
-// ── STATS MINISTÈRE (ADMINS OU ROLES MINISTÈRE) ─────────────────────
+// ── STATS MINISTÈRE (ADMINS) ──────────────────────────────────────
 app.get('/api/ministere/stats-globales', auth, can('admin'), async (req, res) => {
   try {
     const [c,m,p,v] = await Promise.all([
@@ -642,7 +684,7 @@ app.get('/api/ministere/demographie', auth, can('admin'), async (req, res) => {
     const r = await db(`
       SELECT 
         CASE WHEN age_patient < 15 THEN '0-14 ans' WHEN age_patient < 40 THEN '15-39 ans' WHEN age_patient < 60 THEN '40-59 ans' ELSE '60 ans et +' END AS tranche_age,
-        COUNT(*) AS total, COUNT(CASE WHEN sexe_patient='Masculin' THEN 1 END) AS hommes, COUNT(CASE Harrison WHEN 'Féminin' THEN 1 END) AS femmes
+        COUNT(*) AS total, COUNT(CASE WHEN sexe_patient='Masculin' THEN 1 END) AS hommes, COUNT(CASE WHEN sexe_patient='Féminin' THEN 1 END) AS femmes
       FROM consultations WHERE EXTRACT(YEAR FROM created_at)=$1 AND age_patient IS NOT NULL GROUP BY tranche_age ORDER BY MIN(age_patient)
     `, [a]);
     res.json({ success:true, data:r.rows });
