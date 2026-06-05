@@ -219,6 +219,7 @@ app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==
 app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
 
 // ── HEALTH ────────────────────────────────────────────────────────
+app.get('/api/version', (req,res) => res.json({version:'2.0-NEW',routes:80}));
 app.get('/api/health', async (req, res) => {
   try {
     await db('SELECT 1');
@@ -1176,3 +1177,4 @@ if (!process.env.VERCEL) {
 }
 
 module.exports = app;
+// deploy Ven  5 jui 2026 13:27:49 GMT
