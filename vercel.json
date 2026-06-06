@@ -1,15 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
-    }
-  ],
+  "builds": [{ "src": "backend/server.js", "use": "@vercel/node", "config": { "includeFiles": ["backend/routes/**","backend/config/**","backend/middleware/**"] } }],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "server.js"
-    }
+    { "src": "/api/(.*)", "methods": ["GET","POST","PUT","DELETE","PATCH","OPTIONS"], "dest": "backend/server.js" },
+    { "src": "/(.*)", "dest": "backend/server.js" }
   ]
 }

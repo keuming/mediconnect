@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const API = 'https://mediconnect-fed6.vercel.app/api';
+const API = 'https://mediconnect-backend-v2.vercel.app/api';
 
 const useAuthStore = create(
   persist(

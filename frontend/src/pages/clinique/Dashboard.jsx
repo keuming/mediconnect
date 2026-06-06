@@ -1,659 +1,1361 @@
-import React, { useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import toast from 'react-hot-toast';
-import { cliniqueAPI, consultationAPI, caisseAPI } from '../../services/api';
-import { Card, Modal, Input, Textarea, Select, Btn, Badge, Table, Panel, ListItem, Avatar, Grid, PageHeader, SectionLabel, Loader, Empty, ProgressBar } from '../../components/common/UI';
+import React, { useState, useCallback } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import useAuthStore from "../../context/authStore";
+import api from "../../services/api";
 
-const fmt = (n) => Number(n || 0).toLocaleString('fr-CI');
-const today = () => new Date().toISOString().split('T')[0];
-const stBadge = (st) => ({ confirme:'green', en_cours:'teal', en_attente:'amber', termine:'gray', annule:'red', Disponible:'green', 'En consultation':'teal', Congé:'amber' })[st] || 'gray';
+// ── Palette & helpers ─────────────────────────────────────────────
+const C = {
+  green:"#0A8F58", teal:"#0D9488", amber:"#D97706", red:"#E11D48",
+  blue:"#2563EB", purple:"#7C3AED", bg:"#060C12", card:"#0E1620",
+  input:"#141E2B", hover:"#1A2535", border:"#1E2F42",
+  text:"#F0F4F8", muted:"#8BA0B5", dim:"#4E657A",
+};
+const fmt = (n) => Number(n||0).toLocaleString("fr-CI");
+const today = () => new Date().toISOString().split("T")[0];
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"}) : "—";
 
-// ── DASHBOARD HOME ────────────────────────────────────────────────
-function DashboardHome() {
+// ── API calls ─────────────────────────────────────────────────────
+const cAPI = {
+  // Dashboard
+  stats:        () => api.get("/cliniques/stats"),
+  // RDV & Planning
+  rdvs:         (p) => api.get("/rendez-vous", { params: p }),
+  addRdv:       (d) => api.post("/rendez-vous", d),
+  updateRdv:    (id,d) => api.put(`/rendez-vous/${id}`, d),
+  deleteRdv:    (id) => api.delete(`/rendez-vous/${id}`),
+  // DME - Dossiers patients
+  patients:     () => api.get("/patients"),
+  addPatient:   (d) => api.post("/patients", d),
+  consultations:(pid) => api.get(`/consultations?patient_id=${pid}`),
+  addConsult:   (d) => api.post("/consultations", d),
+  ordonnances:  (pid) => api.get(`/ordonnances?patient_id=${pid}`),
+  addOrdonnance:(d) => api.post("/ordonnances", d),
+  // Stock
+  stock:        () => api.get("/stock"),
+  addStock:     (d) => api.post("/stock", d),
+  updateStock:  (id,d) => api.put(`/stock/${id}`, d),
+  // Médecins & RH
+  medecins:     () => api.get("/medecins"),
+  addMedecin:   (d) => api.post("/medecins", d),
+  updateMedecin:(id,d) => api.put(`/medecins/${id}`, d),
+  // Finance
+  factures:     () => api.get("/factures"),
+  caisse:       () => api.get("/caisse"),
+  // Assurances
+  dossiers:     () => api.get("/assurances"),
+  addDossier:   (d) => api.post("/assurances", d),
+  updateDossier:(id,d) => api.put(`/assurances/${id}`, d),
+  deleteDossier:(id) => api.delete(`/assurances/${id}`),
+};
+
+// ── UI Components ─────────────────────────────────────────────────
+const Card = ({ label, value, icon, color=C.green, sub, onClick }) => (
+  <div onClick={onClick} style={{ background:C.input, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"18px 16px", cursor:onClick?"pointer":"default", transition:"border-color .15s" }}
+    onMouseOver={e=>onClick&&(e.currentTarget.style.borderColor=color)} onMouseOut={e=>onClick&&(e.currentTarget.style.borderColor=C.border)}>
+    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+      {icon && <span style={{ fontSize:18 }}>{icon}</span>}
+      <span style={{ fontSize:11, textTransform:"uppercase", letterSpacing:".5px", color:C.dim, fontWeight:700 }}>{label}</span>
+    </div>
+    <div style={{ fontSize:26, fontWeight:900, color, marginBottom:sub?3:0 }}>{value}</div>
+    {sub && <div style={{ fontSize:12, color:C.muted }}>{sub}</div>}
+  </div>
+);
+
+const Panel = ({ title, children, actions, accent, style:s={} }) => (
+  <div style={{ background:C.input, border:`1.5px solid ${accent||C.border}`, borderRadius:14, padding:20, ...s }}>
+    {(title||actions) && (
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+        {title && <h3 style={{ fontSize:14, fontWeight:700, color:C.text, margin:0 }}>{title}</h3>}
+        {actions && <div style={{ display:"flex", gap:8 }}>{actions}</div>}
+      </div>
+    )}
+    {children}
+  </div>
+);
+
+const Badge = ({ children, color="gray" }) => {
+  const m = { green:[C.green,"rgba(10,143,88,.15)"], teal:[C.teal,"rgba(13,148,136,.15)"],
+    amber:[C.amber,"rgba(217,119,6,.15)"], red:[C.red,"rgba(225,29,72,.15)"],
+    blue:[C.blue,"rgba(37,99,235,.15)"], purple:[C.purple,"rgba(124,58,237,.15)"],
+    gray:[C.muted,"rgba(255,255,255,.08)"] };
+  const [text,bg] = m[color]||m.gray;
+  return <span style={{ background:bg, color:text, fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20 }}>{children}</span>;
+};
+
+const Btn = ({ children, onClick, variant="primary", loading, style:s={}, type="button" }) => {
+  const v = {
+    primary:{ background:`linear-gradient(135deg,${C.green},${C.teal})`, color:"#fff", border:"none" },
+    outline:{ background:"transparent", color:C.muted, border:`1.5px solid ${C.border}` },
+    danger: { background:"rgba(225,29,72,.1)", color:C.red, border:`1.5px solid rgba(225,29,72,.25)` },
+    amber:  { background:C.amber, color:"#fff", border:"none" },
+    blue:   { background:C.blue, color:"#fff", border:"none" },
+    purple: { background:C.purple, color:"#fff", border:"none" },
+  };
+  return (
+    <button type={type} onClick={onClick} disabled={loading}
+      style={{ borderRadius:9, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?.65:1, fontFamily:"inherit", transition:"opacity .15s", ...v[variant]||v.primary, ...s }}>
+      {loading ? "⏳…" : children}
+    </button>
+  );
+};
+
+const Inp = ({ label, value, onChange, type="text", placeholder, required, style:s={} }) => (
+  <div style={{ marginBottom:14, ...s }}>
+    <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
+    <input type={type} value={value||""} onChange={onChange} placeholder={placeholder} required={required}
+      style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:14, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}
+      onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
+  </div>
+);
+
+const Sel = ({ label, value, onChange, options=[], required, style:s={} }) => (
+  <div style={{ marginBottom:14, ...s }}>
+    <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
+    <select value={value||""} onChange={onChange} required={required}
+      style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:14, outline:"none", fontFamily:"inherit" }}>
+      {options.map(o => typeof o==="string" ? <option key={o}>{o}</option> : <option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  </div>
+);
+
+const Modal = ({ open, onClose, title, children, width=520 }) => {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:28, width, maxWidth:"95vw", maxHeight:"90vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+          <h2 style={{ fontSize:17, fontWeight:700, color:C.text, margin:0 }}>{title}</h2>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:20, lineHeight:1 }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+const Loader = () => <div style={{ textAlign:"center", padding:48, color:C.dim }}>⏳ Chargement…</div>;
+const Empty = ({ icon, title, subtitle }) => (
+  <div style={{ textAlign:"center", padding:"40px 20px", color:C.dim }}>
+    <div style={{ fontSize:36, marginBottom:10 }}>{icon}</div>
+    {title && <div style={{ fontSize:15, fontWeight:700, color:C.muted, marginBottom:4 }}>{title}</div>}
+    {subtitle && <div style={{ fontSize:13 }}>{subtitle}</div>}
+  </div>
+);
+const Grid = ({ cols=2, gap=16, children, style:s={} }) => (
+  <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap, ...s }}>{children}</div>
+);
+const ProgressBar = ({ value, max=100, color=C.green }) => (
+  <div style={{ background:C.hover, borderRadius:4, height:5 }}>
+    <div style={{ width:`${Math.min(100,Math.round(value/Math.max(max,1)*100))}%`, height:"100%", background:color, borderRadius:4, transition:"width .4s" }} />
+  </div>
+);
+
+const PageHeader = ({ title, subtitle, actions }) => (
+  <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:24 }}>
+    <div>
+      <h1 style={{ fontSize:22, fontWeight:800, color:C.text, margin:"0 0 4px" }}>{title}</h1>
+      {subtitle && <p style={{ fontSize:13, color:C.muted, margin:0 }}>{subtitle}</p>}
+    </div>
+    {actions && <div style={{ display:"flex", gap:10 }}>{actions}</div>}
+  </div>
+);
+
+const Table = ({ columns, rows, emptyMsg="Aucune donnée" }) => (
+  <div style={{ overflowX:"auto" }}>
+    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+      <thead>
+        <tr style={{ borderBottom:`1px solid ${C.border}` }}>
+          {columns.map(c=><th key={c.key+c.label} style={{ textAlign:"left", padding:"8px 12px", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".5px", color:C.dim, whiteSpace:"nowrap" }}>{c.label}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length===0
+          ? <tr><td colSpan={columns.length} style={{ textAlign:"center", padding:32, color:C.dim }}>{emptyMsg}</td></tr>
+          : rows.map((row,i)=>(
+            <tr key={i} style={{ borderBottom:`1px solid ${C.border}` }}
+              onMouseOver={e=>e.currentTarget.style.background=C.hover}
+              onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+              {columns.map(c=><td key={c.key+c.label} style={{ padding:"10px 12px", color:C.text, verticalAlign:"middle" }}>{c.render?c.render(row[c.key],row):row[c.key]??"—"}</td>)}
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+);
+
+// ════════════════════════════════════════════════════════════════════
+//  1. PAGE DASHBOARD HOME
+// ════════════════════════════════════════════════════════════════════
+function PageHome() {
+  const { user } = useAuthStore();
   const nav = useNavigate();
-  const { data: stats, isLoading } = useQuery({ queryKey: ['cl-stats'], queryFn: () => cliniqueAPI.stats().then(r => r.data.data) });
-  const { data: rdvsData } = useQuery({ queryKey: ['cl-rdvs'], queryFn: () => cliniqueAPI.rdvs({ date: today() }).then(r => r.data.data || []) });
-  if (isLoading) return <Loader />;
-  const s = stats || {};
-  const rdvs = rdvsData || [];
+  const { data: stats } = useQuery({ queryKey:["cl-stats"], queryFn:()=>cAPI.stats().then(r=>r.data.data||{}), retry:1 });
+  const { data: rdvsData } = useQuery({ queryKey:["cl-rdvs-today"], queryFn:()=>cAPI.rdvs({ date:today() }).then(r=>r.data.data||[]), retry:1 });
+  const { data: stockData } = useQuery({ queryKey:["cl-stock-alerts"], queryFn:()=>cAPI.stock().then(r=>r.data.data||[]), retry:1 });
+
+  const rdvs = rdvsData||[]; const stock = stockData||[];
+  const alertesStock = stock.filter(s=>s.quantite<=s.seuil_alerte);
+  const rdvAujourdhui = rdvs.length;
+  const rdvConfirmes = rdvs.filter(r=>r.statut==="confirme").length;
+
+  const modules = [
+    { icon:"📅", label:"Planning & RDV",    path:"planning",    color:C.teal,   stat:`${rdvAujourdhui} RDV aujourd'hui` },
+    { icon:"👤", label:"Dossiers patients", path:"dossiers",    color:C.blue,   stat:"DME complets" },
+    { icon:"🩺", label:"Consultation",      path:"consultation",color:C.green,  stat:"En cours" },
+    { icon:"💰", label:"Caisse",            path:"caisse",      color:C.amber,  stat:"Ouverte" },
+    { icon:"📄", label:"Facturation",       path:"facturation", color:C.purple, stat:"États financiers" },
+    { icon:"👨‍⚕️", label:"Médecins & RH",   path:"medecins",    color:"#0891B2", stat:"Personnel" },
+    { icon:"💊", label:"Stock",             path:"stock",       color:alertesStock.length>0?C.red:C.green, stat:alertesStock.length>0?`${alertesStock.length} alertes`:stock.length+" produits" },
+    { icon:"🛡️", label:"Assurances",        path:"assurance",   color:C.teal,   stat:"Tiers-payant" },
+    { icon:"📋", label:"Qualité & Docs",    path:"qualite",     color:C.purple, stat:"Politiques" },
+    { icon:"📊", label:"Statistiques",      path:"stats",       color:C.green,  stat:"Rapports" },
+  ];
+
   return (
     <div>
-      <PageHeader title="Dashboard Clinique" subtitle={new Date().toLocaleDateString("fr-CI", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} />
+      <PageHeader title={`🏥 Bienvenue, ${user?.nom||"Clinique"}`} subtitle={`${new Date().toLocaleDateString("fr-CI",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`} />
 
-      {/* Rappel tarifaire */}
-      <div style={{ background:"rgba(13,148,136,.05)",border:"1px solid rgba(13,148,136,.15)",borderRadius:10,padding:"10px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:12,fontSize:12 }}>
-        <span style={{fontSize:18}}>ℹ️</span>
-        <span style={{color:"#8BA0B5"}}>
-          Votre abonnement MediConnect : <strong style={{color:"#0D9488"}}>3 000 FCFA/mois</strong> · Mise en service : <strong style={{color:"#F0F4F8"}}>100 000 FCFA</strong> (one-time) ·
-          Patients : <strong style={{color:"#0A8F58"}}>300 FCFA/mois</strong> standard · <strong style={{color:"#0A8F58"}}>500 FCFA/mois</strong> avec suivi privé
-        </span>
+      <Grid cols={4} gap={14} style={{ marginBottom:20 }}>
+        <Card label="RDV aujourd'hui"   value={rdvAujourdhui}                    icon="📅" color={C.teal}   sub={`${rdvConfirmes} confirmés`} onClick={()=>nav("planning")} />
+        <Card label="Alertes stock"     value={alertesStock.length}              icon="⚠️" color={alertesStock.length>0?C.red:C.green} sub="Ruptures proches" onClick={()=>nav("stock")} />
+        <Card label="Médecins actifs"   value={stats?.medecins_actifs||"—"}      icon="👨‍⚕️" color={C.blue}  sub="Disponibles" onClick={()=>nav("medecins")} />
+        <Card label="Patients ce mois"  value={stats?.patients_mois||"—"}        icon="👤" color={C.purple} sub="Consultations" onClick={()=>nav("dossiers")} />
+      </Grid>
+
+      {/* Modules grid */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:14, marginBottom:24 }}>
+        {modules.map(m=>(
+          <button key={m.path} onClick={()=>nav(m.path)}
+            style={{ background:C.input, border:`1.5px solid ${C.border}`, borderRadius:14, padding:20, cursor:"pointer", textAlign:"left", fontFamily:"inherit", transition:"all .15s" }}
+            onMouseOver={e=>{e.currentTarget.style.borderColor=m.color;e.currentTarget.style.transform="translateY(-2px)";}}
+            onMouseOut={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
+            <div style={{ fontSize:28, marginBottom:10 }}>{m.icon}</div>
+            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>{m.label}</div>
+            <div style={{ fontSize:11, color:C.dim }}>{m.stat}</div>
+          </button>
+        ))}
       </div>
 
-      <Grid cols={4} gap={14} style={{ marginBottom: 24 }}>
-        <Card label="RDV aujourd'hui" value={s.rdv_today ?? 0} icon="📅" color="#0A8F58" sub="Rendez-vous" />
-        <Card label="Médecins actifs" value={s.medecins_actifs ?? 0} icon="👨‍⚕️" color="#0D9488" sub="Disponibles" />
-        <Card label="Alertes stock" value={s.stock_alertes ?? 0} icon="⚠️" color="#E11D48" sub="À réapprovisionner" />
-        <Card label="Dossiers rejetés" value={s.dossiers_rejetes ?? 0} icon="🛡️" color="#D97706" sub="Par les assureurs" />
-      </Grid>
+      {/* RDV du jour + Alertes */}
       <Grid cols={2} gap={20}>
-        <Panel title="📅 RDV du jour" actions={<Btn variant="outline" style={{ padding: "6px 14px", fontSize: 12 }} onClick={() => nav("planning")}>Voir tout →</Btn>}>
-          {rdvs.length === 0 ? <Empty icon="📅" title="Aucun RDV aujourd'hui" /> : rdvs.slice(0, 5).map(r => (
-            <ListItem key={r.id}
-              left={<div style={{ width: 44, fontSize: 11, fontFamily: "monospace", color: "#4E657A" }}>{r.heure_rdv?.slice(0,5)}</div>}
-              center={<><div style={{ fontSize: 13, fontWeight: 700, color: "#F0F4F8" }}>{r.patient_nom}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{r.medecin_nom} · {r.motif}</div></>}
-              right={<Badge color={stBadge(r.statut)}>{r.statut}</Badge>}
-            />
+        <Panel title="📅 RDV du jour" actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>nav("planning")}>Tout voir →</Btn>}>
+          {rdvs.length===0
+            ? <Empty icon="📅" title="Aucun RDV aujourd'hui" />
+            : rdvs.slice(0,5).map(r=>(
+              <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+                <div style={{ textAlign:"center", minWidth:48, background:C.hover, borderRadius:8, padding:"4px 8px" }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:C.text }}>{r.heure_rdv?.slice(0,5)||"—"}</div>
+                </div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{r.patient_nom||"Patient"}</div>
+                  <div style={{ fontSize:11, color:C.muted }}>{r.medecin_nom||"—"} · {r.motif||"Consultation"}</div>
+                </div>
+                <Badge color={{ confirme:"green", en_attente:"amber", annule:"red" }[r.statut]||"gray"}>{r.statut||"—"}</Badge>
+              </div>
+            ))
+          }
+        </Panel>
+
+        <Panel title="⚠️ Alertes stock" actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>nav("stock")}>Gérer →</Btn>}>
+          {alertesStock.length===0
+            ? <Empty icon="✅" title="Stock OK" subtitle="Aucune alerte en cours" />
+            : alertesStock.slice(0,5).map(s=>(
+              <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:22 }}>💊</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{s.nom}</div>
+                  <div style={{ fontSize:11, color:C.muted }}>Stock : {s.quantite} / Seuil : {s.seuil_alerte}</div>
+                  <ProgressBar value={s.quantite} max={s.seuil_alerte*2} color={s.quantite===0?C.red:C.amber} />
+                </div>
+                <Badge color={s.quantite===0?"red":"amber"}>{s.quantite===0?"Rupture":"Alerte"}</Badge>
+              </div>
+            ))
+          }
+        </Panel>
+      </Grid>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  2. PAGE PLANNING & RDV
+// ════════════════════════════════════════════════════════════════════
+function PagePlanning() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(today());
+  const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
+
+  const { data, isLoading } = useQuery({ queryKey:["cl-rdvs",selectedDate], queryFn:()=>cAPI.rdvs({ date:selectedDate }).then(r=>r.data.data||[]) });
+  const rdvs = data||[];
+
+  const addMut = useMutation({ mutationFn:d=>cAPI.addRdv(d), onSuccess:()=>{ toast.success("RDV ajouté !"); qc.invalidateQueries(["cl-rdvs"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
+  const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateRdv(id,{statut}), onSuccess:()=>{ toast.success("RDV mis à jour"); qc.invalidateQueries(["cl-rdvs"]); }, onError:()=>toast.error("Erreur") });
+  const delMut = useMutation({ mutationFn:id=>cAPI.deleteRdv(id), onSuccess:()=>{ toast.success("RDV supprimé"); qc.invalidateQueries(["cl-rdvs"]); }, onError:()=>toast.error("Erreur") });
+
+  const f = (k) => e => setForm(p=>({...p,[k]:e.target.value}));
+
+  const statuts = ["en_attente","confirme","en_cours","termine","annule"];
+  const statutColor = { en_attente:"amber", confirme:"green", en_cours:"teal", termine:"gray", annule:"red" };
+
+  return (
+    <div>
+      <PageHeader title="📅 Planning & Rendez-vous" subtitle={`${rdvs.length} RDV pour le ${fmtDate(selectedDate)}`}
+        actions={<><Btn onClick={()=>setShowAdd(true)}>+ Nouveau RDV</Btn></>} />
+
+      {/* Sélecteur de date */}
+      <div style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+        <label style={{ fontSize:12, fontWeight:700, color:C.muted, textTransform:"uppercase" }}>Date</label>
+        <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
+          style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontSize:14, outline:"none", fontFamily:"inherit" }} />
+        <div style={{ display:"flex", gap:8 }}>
+          {["Hier","Aujourd'hui","Demain"].map((l,i)=>{
+            const d = new Date(); d.setDate(d.getDate()+(i-1));
+            const ds = d.toISOString().split("T")[0];
+            return <Btn key={l} variant={selectedDate===ds?"primary":"outline"} style={{padding:"7px 14px",fontSize:12}} onClick={()=>setSelectedDate(ds)}>{l}</Btn>;
+          })}
+        </div>
+        <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
+          {statuts.map(s => <Badge key={s} color={statutColor[s]}>{rdvs.filter(r=>r.statut===s).length} {s}</Badge>)}
+        </div>
+      </div>
+
+      {isLoading ? <Loader /> : (
+        <Panel>
+          {rdvs.length===0
+            ? <Empty icon="📅" title="Aucun RDV ce jour" subtitle="Cliquez sur + Nouveau RDV pour en ajouter" />
+            : <Table columns={[
+                { key:"heure_rdv", label:"Heure", render:v=><span style={{fontFamily:"monospace",fontWeight:700,color:C.teal}}>{v?.slice(0,5)||"—"}</span> },
+                { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||"—"}</div><div style={{fontSize:11,color:C.muted}}>{r.assurance||"Sans assurance"}</div></> },
+                { key:"medecin_nom", label:"Médecin", render:v=>v||"—" },
+                { key:"motif", label:"Motif", render:v=><span style={{color:C.muted,fontSize:12}}>{v?.slice(0,40)||"—"}</span> },
+                { key:"statut", label:"Statut", render:v=><Badge color={statutColor[v]||"gray"}>{v||"—"}</Badge> },
+                { key:"id", label:"Actions", render:(id,row)=>(
+                  <div style={{display:"flex",gap:6}}>
+                    {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>updMut.mutate({id,statut:"confirme"})}>Confirmer</Btn>}
+                    {row.statut==="confirme" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_cours"})}>Démarrer</Btn>}
+                    {row.statut==="en_cours" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.muted}} onClick={()=>updMut.mutate({id,statut:"termine"})}>Terminer</Btn>}
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.red}} onClick={()=>window.confirm("Supprimer ce RDV ?")&&delMut.mutate(id)}>✕</Btn>
+                  </div>
+                )},
+              ]} rows={rdvs} />
+          }
+        </Panel>
+      )}
+
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📅 Nouveau rendez-vous">
+        <Grid cols={2} gap={12}>
+          <Inp label="Nom du patient" required value={form.patient_nom} onChange={f("patient_nom")} placeholder="Koné Adjoua" />
+          <Inp label="Médecin" value={form.medecin_nom} onChange={f("medecin_nom")} placeholder="Dr. Traoré" />
+          <Inp label="Date" type="date" required value={form.date_rdv} onChange={f("date_rdv")} />
+          <Inp label="Heure" type="time" required value={form.heure_rdv} onChange={f("heure_rdv")} />
+        </Grid>
+        <Inp label="Motif" value={form.motif} onChange={f("motif")} placeholder="Consultation générale, suivi…" />
+        <Grid cols={2} gap={12}>
+          <Sel label="Assurance" value={form.assurance} onChange={f("assurance")} options={["","NSIA","Allianz CI","AXA CI","CNAM (CMU)","Saham","Aucune"]} />
+          <Sel label="Statut" value={form.statut} onChange={f("statut")} options={statuts} />
+        </Grid>
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>addMut.mutate(form)}>Enregistrer le RDV</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  3. PAGE DME — DOSSIERS MÉDICAUX ÉLECTRONIQUES
+// ════════════════════════════════════════════════════════════════════
+function PageDossiers() {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [activeTab, setActiveTab] = useState("infos");
+  const [showAdd, setShowAdd] = useState(false);
+  const [showConsult, setShowConsult] = useState(false);
+  const [showOrd, setShowOrd] = useState(false);
+  const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"" });
+  const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
+  const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
+
+  const { data, isLoading } = useQuery({ queryKey:["cl-patients"], queryFn:()=>cAPI.patients().then(r=>r.data.data||[]) });
+  const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:()=>selected?cAPI.consultations(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
+  const { data: ords } = useQuery({ queryKey:["cl-ords",selected?.id], queryFn:()=>selected?cAPI.ordonnances(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
+
+  const patients = (data||[]).filter(p => {
+    const q = search.toLowerCase();
+    return !q || `${p.prenom} ${p.nom} ${p.telephone||""}`.toLowerCase().includes(q);
+  });
+
+  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:()=>{ toast.success("Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
+  const addCons = useMutation({ mutationFn:d=>cAPI.addConsult(d), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
+  const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); }, onError:()=>toast.error("Erreur") });
+
+  const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
+  const fc = k => e => setCForm(p=>({...p,[k]:e.target.value}));
+  const fo = k => e => setOForm(p=>({...p,[k]:e.target.value}));
+
+  const TABS = [
+    { key:"infos", label:"Infos", icon:"👤" },
+    { key:"consultations", label:"Consultations", icon:"🩺" },
+    { key:"ordonnances", label:"Ordonnances", icon:"💊" },
+    { key:"examens", label:"Examens", icon:"🔬" },
+    { key:"factures", label:"Factures", icon:"📄" },
+  ];
+
+  const bloodGroups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
+
+  return (
+    <div style={{ display:"flex", gap:20, height:"calc(100vh - 140px)" }}>
+      {/* Liste patients */}
+      <div style={{ width:280, flexShrink:0, display:"flex", flexDirection:"column", gap:12 }}>
+        <div style={{ display:"flex", gap:10 }}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un patient…"
+            style={{ flex:1, background:C.input, border:`1px solid ${C.border}`, borderRadius:9, padding:"9px 12px", color:C.text, fontSize:13, outline:"none", fontFamily:"inherit" }} />
+          <Btn style={{flexShrink:0,padding:"9px 12px"}} onClick={()=>setShowAdd(true)}>+</Btn>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:6 }}>
+          {isLoading ? <Loader /> : patients.length===0
+            ? <Empty icon="👤" title="Aucun patient" subtitle={search?"Aucun résultat":"Ajoutez un patient"} />
+            : patients.map(p=>(
+              <button key={p.id} onClick={()=>setSelected(p)}
+                style={{ background:selected?.id===p.id?C.input:C.card, border:`1.5px solid ${selected?.id===p.id?C.green:C.border}`, borderRadius:12, padding:"12px 14px", cursor:"pointer", textAlign:"left", fontFamily:"inherit", transition:"all .15s" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:36, height:36, background:`linear-gradient(135deg,${C.green},${C.teal})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:14, flexShrink:0 }}>
+                    {p.prenom?.[0]}{p.nom?.[0]}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.prenom} {p.nom}</div>
+                    <div style={{ fontSize:11, color:C.muted }}>{p.telephone||p.email||p.code_secret||"—"}</div>
+                  </div>
+                  {p.groupe_sanguin && <span style={{ fontSize:10, fontWeight:700, color:C.red, background:"rgba(225,29,72,.1)", padding:"2px 6px", borderRadius:6 }}>{p.groupe_sanguin}</span>}
+                </div>
+              </button>
+            ))
+          }
+        </div>
+      </div>
+
+      {/* Dossier patient */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column", gap:16, overflowY:"auto" }}>
+        {!selected
+          ? <Empty icon="👤" title="Sélectionnez un patient" subtitle="Cliquez sur un patient pour voir son dossier médical" />
+          : <>
+            {/* En-tête patient */}
+            <Panel>
+              <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:16 }}>
+                <div style={{ width:56, height:56, background:`linear-gradient(135deg,${C.green},${C.teal})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#fff", fontSize:20 }}>
+                  {selected.prenom?.[0]}{selected.nom?.[0]}
+                </div>
+                <div style={{ flex:1 }}>
+                  <h2 style={{ margin:0, fontSize:18, fontWeight:800, color:C.text }}>{selected.prenom} {selected.nom}</h2>
+                  <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
+                    {selected.date_naissance && `Né(e) le ${fmtDate(selected.date_naissance)} · `}
+                    {selected.telephone||""} {selected.email&&`· ${selected.email}`}
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {selected.groupe_sanguin && <Badge color="red">{selected.groupe_sanguin}</Badge>}
+                  <Badge color="green">Dossier actif</Badge>
+                </div>
+              </div>
+              {selected.allergies && (
+                <div style={{ background:"rgba(225,29,72,.08)", border:"1px solid rgba(225,29,72,.2)", borderRadius:8, padding:"8px 14px", fontSize:12, color:C.red, marginBottom:12 }}>
+                  ⚠️ <strong>Allergies :</strong> {selected.allergies}
+                </div>
+              )}
+              {selected.antecedents && (
+                <div style={{ background:"rgba(37,99,235,.08)", border:"1px solid rgba(37,99,235,.2)", borderRadius:8, padding:"8px 14px", fontSize:12, color:C.blue }}>
+                  📋 <strong>Antécédents :</strong> {selected.antecedents}
+                </div>
+              )}
+            </Panel>
+
+            {/* Tabs */}
+            <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4 }}>
+              {TABS.map(t=>(
+                <button key={t.key} onClick={()=>setActiveTab(t.key)}
+                  style={{ flex:1, background:activeTab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"8px 4px", cursor:"pointer", fontFamily:"inherit", color:activeTab===t.key?C.text:C.muted, fontSize:12, fontWeight:activeTab===t.key?700:400, transition:"all .15s" }}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab: Infos */}
+            {activeTab==="infos" && (
+              <Panel title="Informations personnelles">
+                <Grid cols={2} gap={12}>
+                  {[["Prénom",selected.prenom],["Nom",selected.nom],["Téléphone",selected.telephone],["Email",selected.email],["Date de naissance",fmtDate(selected.date_naissance)],["Groupe sanguin",selected.groupe_sanguin],["Code secret",selected.code_secret]].map(([k,v])=>(
+                    <div key={k} style={{ background:C.hover, borderRadius:8, padding:"10px 14px" }}>
+                      <div style={{ fontSize:10, color:C.dim, fontWeight:700, textTransform:"uppercase", marginBottom:2 }}>{k}</div>
+                      <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>{v||"—"}</div>
+                    </div>
+                  ))}
+                </Grid>
+              </Panel>
+            )}
+
+            {/* Tab: Consultations */}
+            {activeTab==="consultations" && (
+              <Panel title="Historique des consultations"
+                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>setShowConsult(true)}>+ Consultation</Btn>}>
+                {(consults||[]).length===0
+                  ? <Empty icon="🩺" title="Aucune consultation" subtitle="Ajoutez la première consultation" />
+                  : (consults||[]).map(c=>(
+                    <div key={c.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:C.teal }}>{fmtDate(c.created_at)}</span>
+                        <span style={{ fontSize:12, color:C.muted }}>{c.medecin_nom||"—"}</span>
+                      </div>
+                      <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Diagnostic : {c.diagnostic||"—"}</div>
+                      {c.traitement && <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>Traitement : {c.traitement}</div>}
+                      {c.notes && <div style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>{c.notes}</div>}
+                      <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11, color:C.dim }}>
+                        {c.tension_arterielle && <span>TA: {c.tension_arterielle}</span>}
+                        {c.temperature && <span>T°: {c.temperature}°C</span>}
+                        {c.poids && <span>Poids: {c.poids}kg</span>}
+                        {c.taille && <span>Taille: {c.taille}cm</span>}
+                      </div>
+                    </div>
+                  ))
+                }
+              </Panel>
+            )}
+
+            {/* Tab: Ordonnances */}
+            {activeTab==="ordonnances" && (
+              <Panel title="Ordonnances et prescriptions"
+                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>setShowOrd(true)}>+ Ordonnance</Btn>}>
+                {(ords||[]).length===0
+                  ? <Empty icon="💊" title="Aucune ordonnance" />
+                  : (ords||[]).map(o=>(
+                    <div key={o.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10, display:"flex", gap:14 }}>
+                      <div style={{ width:3, background:C.green, borderRadius:2, flexShrink:0 }} />
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:C.green }}>Ordonnance du {fmtDate(o.created_at)}</span>
+                          <Badge color="green">Active</Badge>
+                        </div>
+                        <div style={{ fontSize:13, color:C.text, marginBottom:4, fontWeight:600 }}>{o.medicaments||"—"}</div>
+                        {o.posologie && <div style={{ fontSize:12, color:C.muted }}>Posologie : {o.posologie}</div>}
+                        {o.duree && <div style={{ fontSize:12, color:C.muted }}>Durée : {o.duree}</div>}
+                        {o.notes_ord && <div style={{ fontSize:12, color:C.dim, marginTop:4, fontStyle:"italic" }}>{o.notes_ord}</div>}
+                      </div>
+                    </div>
+                  ))
+                }
+              </Panel>
+            )}
+
+            {/* Tab: Examens */}
+            {activeTab==="examens" && (
+              <Panel title="Résultats d'examens et imagerie">
+                <Empty icon="🔬" title="Module examens" subtitle="Intégration laboratoire et radiologie — disponible prochainement" />
+              </Panel>
+            )}
+
+            {/* Tab: Factures */}
+            {activeTab==="factures" && (
+              <Panel title="Factures et paiements">
+                <Empty icon="📄" title="Historique financier patient" subtitle="Toutes les factures de ce patient apparaîtront ici" />
+              </Panel>
+            )}
+          </>
+        }
+      </div>
+
+      {/* Modal: Nouveau patient */}
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="👤 Nouveau dossier patient" width={580}>
+        <Grid cols={2} gap={12}>
+          <Inp label="Prénom *" required value={pForm.prenom} onChange={fp("prenom")} placeholder="Adjoua" />
+          <Inp label="Nom *" required value={pForm.nom} onChange={fp("nom")} placeholder="Koné" />
+          <Inp label="Téléphone" value={pForm.telephone} onChange={fp("telephone")} placeholder="+225 07 00 00 00 00" type="tel" />
+          <Inp label="Email" value={pForm.email} onChange={fp("email")} placeholder="patient@exemple.com" type="email" />
+          <Inp label="Date de naissance" value={pForm.date_naissance} onChange={fp("date_naissance")} type="date" />
+          <Sel label="Groupe sanguin" value={pForm.groupe_sanguin} onChange={fp("groupe_sanguin")} options={["",...bloodGroups]} />
+        </Grid>
+        <Inp label="Allergies connues" value={pForm.allergies} onChange={fp("allergies")} placeholder="Pénicilline, Aspirine…" />
+        <Inp label="Antécédents médicaux" value={pForm.antecedents} onChange={fp("antecedents")} placeholder="Diabète, HTA, Opération…" />
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addPat.isPending} onClick={()=>{ if(!pForm.prenom||!pForm.nom){toast.error("Prénom et nom requis");return;} addPat.mutate(pForm); }}>Créer le dossier</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Nouvelle consultation */}
+      <Modal open={showConsult} onClose={()=>setShowConsult(false)} title={`🩺 Consultation — ${selected?.prenom} ${selected?.nom}`} width={560}>
+        <Inp label="Diagnostic *" required value={cForm.diagnostic} onChange={fc("diagnostic")} placeholder="Ex: Hypertension artérielle" />
+        <Inp label="Traitement prescrit" value={cForm.traitement} onChange={fc("traitement")} placeholder="Ex: Amlodipine 5mg" />
+        <Grid cols={4} gap={10}>
+          <Inp label="T.A." value={cForm.tension_arterielle} onChange={fc("tension_arterielle")} placeholder="120/80" />
+          <Inp label="Temp (°C)" value={cForm.temperature} onChange={fc("temperature")} placeholder="37.2" type="number" />
+          <Inp label="Poids (kg)" value={cForm.poids} onChange={fc("poids")} placeholder="70" type="number" />
+          <Inp label="Taille (cm)" value={cForm.taille} onChange={fc("taille")} placeholder="175" type="number" />
+        </Grid>
+        <div style={{marginBottom:14}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Notes cliniques</label>
+          <textarea value={cForm.notes} onChange={fc("notes")} rows={3} placeholder="Observations, recommandations…"
+            style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}
+            onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowConsult(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addCons.isPending} onClick={()=>{ if(!cForm.diagnostic){toast.error("Diagnostic requis");return;} addCons.mutate({...cForm,patient_id:selected.id}); }}>Enregistrer</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Ordonnance */}
+      <Modal open={showOrd} onClose={()=>setShowOrd(false)} title={`💊 Ordonnance — ${selected?.prenom} ${selected?.nom}`}>
+        <Inp label="Médicaments *" required value={oForm.medicaments} onChange={fo("medicaments")} placeholder="Amoxicilline 500mg, Paracétamol 1g…" />
+        <Grid cols={2} gap={12}>
+          <Inp label="Posologie" value={oForm.posologie} onChange={fo("posologie")} placeholder="2 cp/jour matin et soir" />
+          <Inp label="Durée du traitement" value={oForm.duree} onChange={fo("duree")} placeholder="7 jours" />
+        </Grid>
+        <Inp label="Notes / Instructions" value={oForm.notes_ord} onChange={fo("notes_ord")} placeholder="À prendre pendant les repas…" />
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowOrd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{ if(!oForm.medicaments){toast.error("Médicaments requis");return;} addOrd.mutate({...oForm,patient_id:selected.id}); }}>Créer l'ordonnance</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  4. PAGE MÉDECINS & RH
+// ════════════════════════════════════════════════════════════════════
+function PageMedecins() {
+  const qc = useQueryClient();
+  const [tab, setTab] = useState("medecins");
+  const [showAdd, setShowAdd] = useState(false);
+  const [showPersonnel, setShowPersonnel] = useState(false);
+  const [form, setForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", tarif:"", experience_ans:"", statut:"Disponible", jours_travail:"Lun,Mar,Mer,Jeu,Ven", horaires_debut:"08:00", horaires_fin:"17:00" });
+  const [pForm, setPForm] = useState({ nom:"", poste:"", contrat:"CDI", salaire:"", date_embauche:"", statut:"Actif" });
+
+  const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data.data||[]) });
+  const medecins = data||[];
+
+  const addMut = useMutation({ mutationFn:d=>cAPI.addMedecin(d), onSuccess:()=>{ toast.success("Médecin ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
+  const updMut = useMutation({ mutationFn:({id,...d})=>cAPI.updateMedecin(id,d), onSuccess:()=>{ toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-medecins"]); }, onError:()=>toast.error("Erreur") });
+
+  const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
+
+  const SPECS = ["Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Neurologie","Dermatologie","ORL","Ophtalmologie","Orthopédie","Psychiatrie","Radiologie","Chirurgie"];
+  const CONTRATS = ["CDI","CDD","Vacation","Libéral","Stage"];
+  const POSTES = ["Médecin","Infirmier(e)","Sage-femme","Technicien labo","Aide-soignant","Administratif","Comptable","Agent sécurité"];
+
+  const RH_TABS = [
+    { key:"medecins", label:"Médecins" },
+    { key:"personnel", label:"Personnel RH" },
+    { key:"conges", label:"Congés" },
+    { key:"evaluations", label:"Évaluations" },
+    { key:"formations", label:"Formations" },
+  ];
+
+  // Données RH simulées
+  const PERSONNEL_DEMO = [
+    { id:1, nom:"Kouamé Akissi", poste:"Infirmière", contrat:"CDI", salaire:180000, statut:"Actif", date_embauche:"2022-01-15" },
+    { id:2, nom:"Traoré Moussa", poste:"Technicien labo", contrat:"CDI", salaire:150000, statut:"Actif", date_embauche:"2021-06-01" },
+    { id:3, nom:"Bamba Fanta", poste:"Sage-femme", contrat:"CDD", salaire:200000, statut:"Actif", date_embauche:"2023-03-10" },
+    { id:4, nom:"N'Guessan Kra", poste:"Aide-soignant", contrat:"Vacation", salaire:80000, statut:"Actif", date_embauche:"2024-01-01" },
+  ];
+
+  const CONGES_DEMO = [
+    { id:1, employe:"Kouamé Akissi", type:"Congé annuel", debut:"2026-06-01", fin:"2026-06-15", jours:14, statut:"approuve" },
+    { id:2, employe:"Traoré Moussa", type:"Maladie", debut:"2026-05-10", fin:"2026-05-12", jours:2, statut:"en_attente" },
+    { id:3, employe:"Bamba Fanta", type:"Maternité", debut:"2026-07-01", fin:"2026-09-30", jours:91, statut:"approuve" },
+  ];
+
+  return (
+    <div>
+      <PageHeader title="👨‍⚕️ Médecins & Ressources Humaines" subtitle="Personnel · Contrats · Plannings · Évaluations"
+        actions={<><Btn onClick={()=>setShowAdd(true)}>+ Médecin</Btn><Btn variant="outline" onClick={()=>setShowPersonnel(true)}>+ Personnel</Btn></>} />
+
+      {/* Tabs RH */}
+      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
+        {RH_TABS.map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)}
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab: Médecins */}
+      {tab==="medecins" && (
+        <>
+          <Grid cols={4} gap={14} style={{marginBottom:20}}>
+            <Card label="Médecins total" value={medecins.length} icon="👨‍⚕️" color={C.blue} />
+            <Card label="Disponibles" value={medecins.filter(m=>m.statut==="Disponible").length} icon="✅" color={C.green} />
+            <Card label="En consultation" value={medecins.filter(m=>m.statut==="En consultation").length} icon="🩺" color={C.amber} />
+            <Card label="Absents" value={medecins.filter(m=>m.statut==="Absent").length} icon="❌" color={C.red} />
+          </Grid>
+          {isLoading ? <Loader /> : medecins.length===0
+            ? <Empty icon="👨‍⚕️" title="Aucun médecin" subtitle="Ajoutez un médecin à votre clinique" />
+            : <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:14 }}>
+              {medecins.map(m=>(
+                <Panel key={m.id}>
+                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
+                    <div style={{ width:48, height:48, background:`linear-gradient(135deg,#7C3AED,#0D9488)`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:16 }}>
+                      {m.prenom?.[0]}{m.nom?.[0]}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Dr. {m.prenom} {m.nom}</div>
+                      <div style={{ fontSize:12, color:C.muted }}>{m.specialite||"—"}</div>
+                    </div>
+                    <Badge color={{ Disponible:"green", "En consultation":"teal", Absent:"red" }[m.statut]||"gray"}>{m.statut}</Badge>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:12 }}>
+                    {[["💰 Tarif",`${fmt(m.tarif)} F`],["⏱️ Expérience",`${m.experience_ans||"—"} ans`],["📞 Tel",m.telephone||"—"],["🕐 Horaires",`${m.horaires_debut||"—"}–${m.horaires_fin||"—"}`]].map(([k,v])=>(
+                      <div key={k} style={{ background:C.hover, borderRadius:7, padding:"7px 10px" }}>
+                        <div style={{ fontSize:10, color:C.dim, marginBottom:2 }}>{k}</div>
+                        <div style={{ color:C.text, fontWeight:600 }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {m.jours_travail && <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>Jours : {m.jours_travail}</div>}
+                  <div style={{ display:"flex", gap:8 }}>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>updMut.mutate({id:m.id,statut:"Disponible"})}>✓ Disponible</Btn>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.amber}} onClick={()=>updMut.mutate({id:m.id,statut:"En consultation"})}>🩺 Consult.</Btn>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.red}} onClick={()=>updMut.mutate({id:m.id,statut:"Absent"})}>Absent</Btn>
+                  </div>
+                </Panel>
+              ))}
+            </div>
+          }
+        </>
+      )}
+
+      {/* Tab: Personnel RH */}
+      {tab==="personnel" && (
+        <Panel title="Personnel administratif et médical">
+          <Grid cols={3} gap={14} style={{marginBottom:20}}>
+            <Card label="Total personnel" value={PERSONNEL_DEMO.length} icon="👥" color={C.blue} />
+            <Card label="Masse salariale" value={`${fmt(PERSONNEL_DEMO.reduce((s,p)=>s+p.salaire,0))} F`} icon="💰" color={C.green} sub="Mensuelle" />
+            <Card label="CDI" value={PERSONNEL_DEMO.filter(p=>p.contrat==="CDI").length} icon="📄" color={C.teal} />
+          </Grid>
+          <Table columns={[
+            { key:"nom", label:"Nom", render:v=><span style={{fontWeight:700}}>{v}</span> },
+            { key:"poste", label:"Poste" },
+            { key:"contrat", label:"Contrat", render:v=><Badge color="blue">{v}</Badge> },
+            { key:"salaire", label:"Salaire", render:v=><span style={{fontWeight:700,color:C.green}}>{fmt(v)} F</span> },
+            { key:"date_embauche", label:"Embauche", render:v=>fmtDate(v) },
+            { key:"statut", label:"Statut", render:v=><Badge color="green">{v}</Badge> },
+          ]} rows={PERSONNEL_DEMO} />
+        </Panel>
+      )}
+
+      {/* Tab: Congés */}
+      {tab==="conges" && (
+        <Panel title="Demandes de congé" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Demande</Btn>}>
+          <Table columns={[
+            { key:"employe", label:"Employé", render:v=><span style={{fontWeight:700}}>{v}</span> },
+            { key:"type", label:"Type de congé" },
+            { key:"debut", label:"Début", render:v=>fmtDate(v) },
+            { key:"fin", label:"Fin", render:v=>fmtDate(v) },
+            { key:"jours", label:"Durée", render:v=>`${v} j` },
+            { key:"statut", label:"Statut", render:v=><Badge color={{ approuve:"green", en_attente:"amber", refuse:"red" }[v]||"gray"}>{v}</Badge> },
+            { key:"id", label:"Actions", render:()=>(
+              <div style={{display:"flex",gap:6}}>
+                <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>toast.success("Approuvé !")}>✓</Btn>
+                <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.red}} onClick={()=>toast.error("Refusé")}>✕</Btn>
+              </div>
+            )},
+          ]} rows={CONGES_DEMO} />
+        </Panel>
+      )}
+
+      {/* Tab: Évaluations */}
+      {tab==="evaluations" && (
+        <Panel title="Évaluations de performance">
+          <Empty icon="📊" title="Module évaluations" subtitle="Grilles d'évaluation et rapports de performance — en cours d'implémentation" />
+        </Panel>
+      )}
+
+      {/* Tab: Formations */}
+      {tab==="formations" && (
+        <Panel title="Formation et développement du personnel">
+          <Empty icon="🎓" title="Module formation" subtitle="Programmes, suivi et certifications — en cours d'implémentation" />
+        </Panel>
+      )}
+
+      {/* Modal: Nouveau médecin */}
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="👨‍⚕️ Nouveau médecin" width={560}>
+        <Grid cols={2} gap={12}>
+          <Inp label="Prénom *" required value={form.prenom} onChange={f("prenom")} placeholder="Amadou" />
+          <Inp label="Nom *" required value={form.nom} onChange={f("nom")} placeholder="Koné" />
+        </Grid>
+        <Sel label="Spécialité *" required value={form.specialite} onChange={f("specialite")} options={["",...SPECS]} />
+        <Grid cols={2} gap={12}>
+          <Inp label="Téléphone" value={form.telephone} onChange={f("telephone")} placeholder="+225 07 00 00 00 00" type="tel" />
+          <Inp label="Email" value={form.email} onChange={f("email")} placeholder="dr@exemple.com" type="email" />
+          <Inp label="Tarif consultation (FCFA)" value={form.tarif} onChange={f("tarif")} placeholder="15000" type="number" />
+          <Inp label="Années d'expérience" value={form.experience_ans} onChange={f("experience_ans")} placeholder="10" type="number" />
+          <Inp label="Heure début" value={form.horaires_debut} onChange={f("horaires_debut")} type="time" />
+          <Inp label="Heure fin" value={form.horaires_fin} onChange={f("horaires_fin")} type="time" />
+        </Grid>
+        <Inp label="Jours de travail" value={form.jours_travail} onChange={f("jours_travail")} placeholder="Lun,Mar,Mer,Jeu,Ven" />
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{ if(!form.prenom||!form.nom||!form.specialite){toast.error("Champs requis manquants");return;} addMut.mutate(form); }}>Ajouter le médecin</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Nouveau personnel */}
+      <Modal open={showPersonnel} onClose={()=>setShowPersonnel(false)} title="👥 Nouveau membre du personnel">
+        <Inp label="Nom complet *" required value={pForm.nom} onChange={fp("nom")} placeholder="Koné Adjoua" />
+        <Grid cols={2} gap={12}>
+          <Sel label="Poste" value={pForm.poste} onChange={fp("poste")} options={["",...POSTES]} />
+          <Sel label="Type de contrat" value={pForm.contrat} onChange={fp("contrat")} options={CONTRATS} />
+          <Inp label="Salaire mensuel (FCFA)" value={pForm.salaire} onChange={fp("salaire")} placeholder="150000" type="number" />
+          <Inp label="Date d'embauche" value={pForm.date_embauche} onChange={fp("date_embauche")} type="date" />
+        </Grid>
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowPersonnel(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} onClick={()=>{ toast.success("Personnel ajouté !"); setShowPersonnel(false); }}>Ajouter</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  5. PAGE STOCK — FOURNITURES MÉDICALES
+// ════════════════════════════════════════════════════════════════════
+function PageStock() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [tab, setTab] = useState("inventaire");
+  const [form, setForm] = useState({ nom:"", categorie:"Médicament", quantite:"", unite:"boite", seuil_alerte:"", prix_unitaire:"", fournisseur:"", date_expiration:"" });
+
+  const { data, isLoading } = useQuery({ queryKey:["cl-stock"], queryFn:()=>cAPI.stock().then(r=>r.data.data||[]) });
+  const stock = data||[];
+  const alertes = stock.filter(s=>s.quantite<=s.seuil_alerte);
+  const totalValeur = stock.reduce((s,p)=>(s+(+p.quantite*(+p.prix_unitaire||0))),0);
+
+  const addMut = useMutation({ mutationFn:d=>cAPI.addStock(d), onSuccess:()=>{ toast.success("Produit ajouté !"); qc.invalidateQueries(["cl-stock"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
+
+  const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const CATS = ["Médicament","Consommable","Équipement","Désinfectant","Dispositif médical"];
+  const UNITES = ["boite","flacon","sachet","ampoule","comprimé","litre","pièce","carton"];
+
+  // Fournisseurs démo
+  const FOURNISSEURS = [
+    { id:1, nom:"Pharma Ivoire SARL", contact:"+225 27 00 00 00", produits:"Médicaments généraux" },
+    { id:2, nom:"MediSupply CI", contact:"+225 27 11 11 11", produits:"Consommables médicaux" },
+    { id:3, nom:"BioLab Diagnostics", contact:"+225 27 22 22 22", produits:"Réactifs, équipements labo" },
+  ];
+
+  const STOCK_TABS = [
+    { key:"inventaire", label:"Inventaire" },
+    { key:"alertes", label:`Alertes (${alertes.length})` },
+    { key:"fournisseurs", label:"Fournisseurs" },
+    { key:"commandes", label:"Commandes" },
+  ];
+
+  return (
+    <div>
+      <PageHeader title="💊 Gestion du Stock" subtitle="Médicaments · Consommables · Équipements"
+        actions={<><Btn onClick={()=>setShowAdd(true)}>+ Ajouter</Btn><Btn variant="outline">Commande →</Btn></>} />
+
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
+        <Card label="Produits total" value={stock.length} icon="📦" color={C.blue} />
+        <Card label="Alertes stock" value={alertes.length} icon="⚠️" color={alertes.length>0?C.red:C.green} sub="Sous le seuil" />
+        <Card label="Valeur inventaire" value={`${fmt(totalValeur)} F`} icon="💰" color={C.green} />
+        <Card label="Ruptures" value={stock.filter(s=>s.quantite===0).length} icon="🚫" color={C.red} />
+      </Grid>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
+        {STOCK_TABS.map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)}
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab==="inventaire" && (
+        isLoading ? <Loader /> : (
+          <Panel>
+            {stock.length===0
+              ? <Empty icon="💊" title="Stock vide" subtitle="Ajoutez votre premier produit" />
+              : <Table columns={[
+                  { key:"nom", label:"Produit", render:(v,r)=><><div style={{fontWeight:700}}>{v}</div><div style={{fontSize:11,color:C.muted}}>{r.categorie}</div></> },
+                  { key:"quantite", label:"Qté", render:(v,r)=>(
+                    <div>
+                      <span style={{ fontWeight:700, color:v===0?C.red:v<=r.seuil_alerte?C.amber:C.green, fontSize:15 }}>{v}</span>
+                      <span style={{ fontSize:11, color:C.dim }}> {r.unite}</span>
+                    </div>
+                  )},
+                  { key:"seuil_alerte", label:"Seuil", render:v=><span style={{color:C.muted}}>{v||"—"}</span> },
+                  { key:"prix_unitaire", label:"Prix unit.", render:v=>v?`${fmt(v)} F`:"—" },
+                  { key:"date_expiration", label:"Expiration", render:v=>v?<span style={{color:new Date(v)<new Date()?C.red:C.muted}}>{fmtDate(v)}</span>:"—" },
+                  { key:"fournisseur", label:"Fournisseur", render:v=><span style={{fontSize:12,color:C.muted}}>{v||"—"}</span> },
+                  { key:"quantite", label:"Statut", render:(v,r)=>(
+                    <Badge color={v===0?"red":v<=r.seuil_alerte?"amber":"green"}>
+                      {v===0?"Rupture":v<=r.seuil_alerte?"Alerte":"OK"}
+                    </Badge>
+                  )},
+                ]} rows={stock} />
+            }
+          </Panel>
+        )
+      )}
+
+      {tab==="alertes" && (
+        <Panel title={`⚠️ Produits sous le seuil (${alertes.length})`} accent={alertes.length>0?"rgba(225,29,72,.3)":undefined}>
+          {alertes.length===0
+            ? <Empty icon="✅" title="Aucune alerte" subtitle="Tous les stocks sont au-dessus du seuil" />
+            : alertes.map(s=>(
+              <div key={s.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:22 }}>💊</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{s.nom}</div>
+                  <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Stock : <strong style={{color:s.quantite===0?C.red:C.amber}}>{s.quantite}</strong> / Seuil : {s.seuil_alerte} {s.unite}</div>
+                  <ProgressBar value={s.quantite} max={s.seuil_alerte*2} color={s.quantite===0?C.red:C.amber} />
+                </div>
+                <Btn variant="amber" style={{padding:"7px 14px",fontSize:12}} onClick={()=>toast.success("Commande créée !")}>Commander</Btn>
+              </div>
+            ))
+          }
+        </Panel>
+      )}
+
+      {tab==="fournisseurs" && (
+        <Panel title="Fournisseurs et contacts" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Fournisseur</Btn>}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:14 }}>
+            {FOURNISSEURS.map(f=>(
+              <div key={f.id} style={{ background:C.hover, borderRadius:12, padding:16 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:6 }}>{f.nom}</div>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>📞 {f.contact}</div>
+                <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>📦 {f.produits}</div>
+                <Btn variant="outline" style={{width:"100%",padding:"7px",fontSize:12}} onClick={()=>toast.success("Commande envoyée !")}>Passer commande</Btn>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {tab==="commandes" && (
+        <Panel title="Historique des commandes et réceptions">
+          <Empty icon="📦" title="Commandes et réceptions" subtitle="L'historique des commandes fournisseurs apparaîtra ici" />
+        </Panel>
+      )}
+
+      {/* Modal: Ajouter produit */}
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📦 Ajouter un produit au stock">
+        <Inp label="Nom du produit *" required value={form.nom} onChange={f("nom")} placeholder="Amoxicilline 500mg" />
+        <Grid cols={2} gap={12}>
+          <Sel label="Catégorie" value={form.categorie} onChange={f("categorie")} options={CATS} />
+          <Sel label="Unité" value={form.unite} onChange={f("unite")} options={UNITES} />
+          <Inp label="Quantité *" required value={form.quantite} onChange={f("quantite")} type="number" placeholder="100" />
+          <Inp label="Seuil d'alerte" value={form.seuil_alerte} onChange={f("seuil_alerte")} type="number" placeholder="20" />
+          <Inp label="Prix unitaire (FCFA)" value={form.prix_unitaire} onChange={f("prix_unitaire")} type="number" placeholder="500" />
+          <Inp label="Date d'expiration" value={form.date_expiration} onChange={f("date_expiration")} type="date" />
+        </Grid>
+        <Inp label="Fournisseur" value={form.fournisseur} onChange={f("fournisseur")} placeholder="Pharma Ivoire SARL" />
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{ if(!form.nom||!form.quantite){toast.error("Nom et quantité requis");return;} addMut.mutate(form); }}>Ajouter au stock</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  6. PAGE FINANCE
+// ════════════════════════════════════════════════════════════════════
+function PageFacturation() {
+  const [tab, setTab] = useState("tableau-bord");
+  const { data: factData } = useQuery({ queryKey:["cl-factures"], queryFn:()=>cAPI.factures().then(r=>r.data.data||[]) });
+  const factures = factData||[];
+  const totalEncaisse = factures.filter(f=>f.statut==="payee").reduce((s,f)=>s+(+f.montant||0),0);
+  const totalAttente  = factures.filter(f=>f.statut==="en_attente").reduce((s,f)=>s+(+f.montant||0),0);
+
+  const FINANCE_TABS = [
+    { key:"tableau-bord", label:"Tableau de bord" },
+    { key:"factures", label:"Factures" },
+    { key:"budget", label:"Budget" },
+    { key:"assurances", label:"Remboursements" },
+    { key:"rapports", label:"Rapports" },
+  ];
+
+  // Données budget démo
+  const BUDGET_ITEMS = [
+    { categorie:"Salaires", budget:2500000, realise:2450000, couleur:C.blue },
+    { categorie:"Médicaments & Stock", budget:800000, realise:920000, couleur:C.amber },
+    { categorie:"Loyer & charges", budget:400000, realise:400000, couleur:C.teal },
+    { categorie:"Équipements", budget:300000, realise:120000, couleur:C.purple },
+    { categorie:"Marketing", budget:150000, realise:80000, couleur:C.green },
+  ];
+  const totalBudget = BUDGET_ITEMS.reduce((s,b)=>s+b.budget,0);
+  const totalRealise = BUDGET_ITEMS.reduce((s,b)=>s+b.realise,0);
+
+  return (
+    <div>
+      <PageHeader title="💰 Gestion Financière" subtitle="Budget · Facturation · États financiers · Remboursements" />
+
+      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
+        {FINANCE_TABS.map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)}
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab==="tableau-bord" && (
+        <>
+          <Grid cols={4} gap={14} style={{marginBottom:20}}>
+            <Card label="Encaissé ce mois" value={`${fmt(totalEncaisse)} F`} icon="✅" color={C.green} sub="Factures payées" />
+            <Card label="En attente" value={`${fmt(totalAttente)} F`} icon="⏳" color={C.amber} sub="À encaisser" />
+            <Card label="Total factures" value={factures.length} icon="📄" color={C.blue} />
+            <Card label="Taux recouvrement" value={factures.length>0?`${Math.round(factures.filter(f=>f.statut==="payee").length/factures.length*100)}%`:"—"} icon="📊" color={C.teal} />
+          </Grid>
+          <Grid cols={2} gap={20}>
+            <Panel title="📊 Budget vs Réalisé — Ce mois">
+              {BUDGET_ITEMS.map(b=>(
+                <div key={b.categorie} style={{marginBottom:16}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                    <span style={{color:C.muted}}>{b.categorie}</span>
+                    <span style={{color:b.realise>b.budget?C.red:C.green,fontWeight:700}}>{fmt(b.realise)} / {fmt(b.budget)} F</span>
+                  </div>
+                  <ProgressBar value={b.realise} max={b.budget} color={b.realise>b.budget?C.red:b.couleur} />
+                </div>
+              ))}
+              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginTop:4,display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:C.muted}}>Total</span>
+                <span style={{fontWeight:800,color:totalRealise>totalBudget?C.red:C.green}}>{fmt(totalRealise)} / {fmt(totalBudget)} F</span>
+              </div>
+            </Panel>
+            <Panel title="📋 Dernières factures">
+              {factures.length===0
+                ? <Empty icon="📄" title="Aucune facture" />
+                : factures.slice(0,6).map(f=>(
+                  <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:C.text}}>{f.patient_nom||"Patient"}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{fmtDate(f.created_at)}</div>
+                    </div>
+                    <span style={{fontWeight:800,color:C.text}}>{fmt(f.montant)} F</span>
+                    <Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[f.statut]||"gray"}>{f.statut}</Badge>
+                  </div>
+                ))
+              }
+            </Panel>
+          </Grid>
+        </>
+      )}
+
+      {tab==="factures" && (
+        <Panel title="Toutes les factures" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Facture</Btn>}>
+          {factures.length===0
+            ? <Empty icon="📄" title="Aucune facture" subtitle="Les factures générées depuis la caisse apparaîtront ici" />
+            : <Table columns={[
+                { key:"reference", label:"Référence", render:v=><span style={{fontFamily:"monospace",fontSize:12,color:C.teal}}>{v||"—"}</span> },
+                { key:"patient_nom", label:"Patient", render:v=><span style={{fontWeight:700}}>{v||"—"}</span> },
+                { key:"montant", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
+                { key:"statut", label:"Statut", render:v=><Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[v]||"gray"}>{v}</Badge> },
+                { key:"created_at", label:"Date", render:v=>fmtDate(v) },
+                { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:11}} onClick={()=>toast.success("Facture téléchargée !")}>PDF</Btn> },
+              ]} rows={factures} />
+          }
+        </Panel>
+      )}
+
+      {tab==="budget" && (
+        <Panel title="Budget mensuel et annuel">
+          <div style={{ background:"rgba(10,143,88,.06)", border:"1px solid rgba(10,143,88,.2)", borderRadius:12, padding:16, marginBottom:20 }}>
+            <Grid cols={3} gap={14}>
+              <div style={{textAlign:"center"}}><div style={{fontSize:12,color:C.dim,marginBottom:4}}>Budget mensuel</div><div style={{fontSize:22,fontWeight:900,color:C.text}}>{fmt(totalBudget)} F</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:12,color:C.dim,marginBottom:4}}>Réalisé</div><div style={{fontSize:22,fontWeight:900,color:totalRealise>totalBudget?C.red:C.green}}>{fmt(totalRealise)} F</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:12,color:C.dim,marginBottom:4}}>Solde</div><div style={{fontSize:22,fontWeight:900,color:totalBudget-totalRealise>=0?C.green:C.red}}>{fmt(Math.abs(totalBudget-totalRealise))} F</div></div>
+            </Grid>
+          </div>
+          {BUDGET_ITEMS.map(b=>(
+            <div key={b.categorie} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10 }}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:14,fontWeight:700,color:C.text}}>{b.categorie}</span>
+                <div style={{display:"flex",gap:8}}>
+                  <Badge color="gray">Budget: {fmt(b.budget)} F</Badge>
+                  <Badge color={b.realise>b.budget?"red":"green"}>Réel: {fmt(b.realise)} F</Badge>
+                </div>
+              </div>
+              <ProgressBar value={b.realise} max={b.budget*1.2} color={b.realise>b.budget?C.red:b.couleur} />
+            </div>
           ))}
         </Panel>
-        <Panel title="⚡ Accès rapide" accent="green">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {[["🩺","Consultation","consultation"],["💰","Caisse","caisse"],["📅","Planning","planning"],["🧾","Facturation","facturation"],["👤","Patients","emr"],["💊","Stock","stock"]].map(([icon,label,path]) => (
-              <button key={path} onClick={() => nav(path)} style={{ background: "#1A2535", border: "1px solid #1E2F42", borderRadius: 10, padding: "12px", cursor: "pointer", textAlign: "center" }}
-                onMouseOver={e => e.currentTarget.style.borderColor = "#0A8F58"} onMouseOut={e => e.currentTarget.style.borderColor = "#1E2F42"}>
-                <div style={{ fontSize: 22, marginBottom: 4 }}>{icon}</div>
-                <div style={{ fontSize: 12, color: "#F0F4F8", fontWeight: 600 }}>{label}</div>
+      )}
+
+      {tab==="assurances" && (
+        <Panel title="Demandes de remboursement assurance">
+          <Empty icon="🛡️" title="Remboursements assurance" subtitle="Gérez ici les demandes de remboursement tiers-payant — intégration module assurance" />
+        </Panel>
+      )}
+
+      {tab==="rapports" && (
+        <Panel title="Rapports financiers">
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14 }}>
+            {[["📊","Bilan mensuel","Résultats du mois en cours"],["📈","Compte de résultat","Pertes et profits annuels"],["📋","Déclaration impôts","Formulaires fiscaux"],["💹","Taux de recouvrement","Suivi des paiements"],["🏦","Trésorerie","Flux de trésorerie"],["📉","Analyse des coûts","Répartition des charges"]].map(([icon,titre,desc])=>(
+              <button key={titre} onClick={()=>toast.success(`Rapport "${titre}" en cours de génération…`)}
+                style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:12, padding:18, cursor:"pointer", textAlign:"left", fontFamily:"inherit", transition:"border-color .15s" }}
+                onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+                <div style={{fontSize:28,marginBottom:10}}>{icon}</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:4}}>{titre}</div>
+                <div style={{fontSize:11,color:C.dim}}>{desc}</div>
               </button>
             ))}
           </div>
         </Panel>
-      </Grid>
-    </div>
-  );
-}
-
-// ── PLANNING ──────────────────────────────────────────────────────
-function PagePlanning() {
-  const qc = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ patient_nom: "", medecin_nom: "", date_rdv: today(), heure_rdv: "09:00", motif: "", assurance: "" });
-  const { data } = useQuery({ queryKey: ["cl-rdvs-all"], queryFn: () => cliniqueAPI.rdvs({}).then(r => r.data.data || []) });
-  const { data: medsData } = useQuery({ queryKey: ["cl-medecins"], queryFn: () => cliniqueAPI.medecins().then(r => r.data.data || []) });
-  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addRdv(d), onSuccess: () => { toast.success("RDV créé !"); qc.invalidateQueries(["cl-rdvs-all"]); setShowAdd(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deleteRdv(id), onSuccess: () => { toast.success("RDV annulé"); qc.invalidateQueries(["cl-rdvs-all"]); } });
-  const updMut = useMutation({ mutationFn: ({ id, statut }) => cliniqueAPI.updateRdv(id, { statut }), onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-rdvs-all"]); } });
-  const rdvs = data || []; const meds = medsData || [];
-  return (
-    <div>
-      <PageHeader title="📅 Planning & Rendez-vous" subtitle={`${rdvs.length} rendez-vous`} actions={<Btn onClick={() => setShowAdd(true)}>+ Nouveau RDV</Btn>} />
-      <Panel>
-        <Table emptyMessage="Aucun rendez-vous" columns={[
-          { key: "heure_rdv", label: "Heure", render: v => <span style={{ fontFamily: "monospace", color: "#0A8F58" }}>{v?.slice(0,5)}</span> },
-          { key: "date_rdv", label: "Date" },
-          { key: "patient_nom", label: "Patient", render: (v,r) => <><div style={{ fontWeight: 700 }}>{v || r.patient_id}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{r.motif}</div></> },
-          { key: "medecin_nom", label: "Médecin" },
-          { key: "assurance", label: "Assurance", render: v => v || "—" },
-          { key: "statut", label: "Statut", render: v => <Badge color={stBadge(v)}>{v}</Badge> },
-          { key: "id", label: "Actions", render: (id, row) => (
-            <div style={{ display: "flex", gap: 6 }}>
-              {row.statut === "en_attente" && <Btn variant="teal" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "confirme" })}>✓ Confirmer</Btn>}
-              {row.statut === "confirme" && <Btn variant="ghost" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "en_cours" })}>▶ Démarrer</Btn>}
-              {row.statut === "en_cours" && <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "termine" })}>✓ Terminer</Btn>}
-              <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Annuler ce RDV ?") && delMut.mutate(id)}>✕</Btn>
-            </div>
-          )},
-        ]} rows={rdvs} />
-      </Panel>
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Nouveau rendez-vous">
-        <Grid cols={2} gap={12}>
-          <Input label="Patient *" required value={form.patient_nom} onChange={e => setForm(p => ({ ...p, patient_nom: e.target.value }))} placeholder="Konan Jean" />
-          <Select label="Médecin" value={form.medecin_nom} onChange={e => setForm(p => ({ ...p, medecin_nom: e.target.value }))} options={[{ value: "", label: "— Sélectionner —" }, ...meds.map(m => ({ value: `${m.prenom} ${m.nom}`, label: `Dr. ${m.prenom} ${m.nom} — ${m.specialite}` }))]} />
-        </Grid>
-        <Grid cols={2} gap={12}>
-          <Input label="Date *" required type="date" value={form.date_rdv} onChange={e => setForm(p => ({ ...p, date_rdv: e.target.value }))} />
-          <Select label="Heure" value={form.heure_rdv} onChange={e => setForm(p => ({ ...p, heure_rdv: e.target.value }))} options={["08:00","08:30","09:00","09:30","10:00","10:30","11:00","14:00","14:30","15:00","15:30","16:00"]} />
-        </Grid>
-        <Input label="Motif" value={form.motif} onChange={e => setForm(p => ({ ...p, motif: e.target.value }))} placeholder="Ex: Suivi HTA" />
-        <Select label="Assurance" value={form.assurance} onChange={e => setForm(p => ({ ...p, assurance: e.target.value }))} options={[{ value: "", label: "Aucune" }, "NSIA Assurances", "Allianz CI", "AXA CI", "CNAM (CMU)"]} />
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn>
-          <Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => { if (!form.patient_nom) { toast.error("Patient requis"); return; } addMut.mutate(form); }}>Créer le RDV</Btn>
-        </div>
-      </Modal>
-    </div>
-  );
-}
-
-// ── MÉDECINS ──────────────────────────────────────────────────────
-function PageMedecins() {
-  const qc = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ prenom: "", nom: "", specialite: "Cardiologie", tarif: 20000, experience_ans: 5, numero_ordre: "", horaires_debut: "08:00", horaires_fin: "17:00" });
-  const { data, isLoading } = useQuery({ queryKey: ["cl-medecins"], queryFn: () => cliniqueAPI.medecins().then(r => r.data.data || []) });
-  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addMedecin(d), onSuccess: () => { toast.success("Médecin ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deleteMedecin(id), onSuccess: () => { toast.success("Médecin retiré"); qc.invalidateQueries(["cl-medecins"]); } });
-  const updMut = useMutation({ mutationFn: ({ id, statut }) => cliniqueAPI.updateMedecin(id, { statut }), onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-medecins"]); } });
-  const meds = data || [];
-  const specs = ["Cardiologie","Pédiatrie","Gynécologie","Dermatologie","Neurologie","Médecine générale","Chirurgie","Ophtalmologie","ORL"];
-  return (
-    <div>
-      <PageHeader title="👨‍⚕️ Médecins & RH" subtitle={`${meds.length} médecins`} actions={<Btn onClick={() => setShowAdd(true)}>+ Ajouter</Btn>} />
-      {isLoading ? <Loader /> : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-          {meds.length === 0 && <div style={{ gridColumn: "1/-1" }}><Empty icon="👨‍⚕️" title="Aucun médecin" subtitle="Ajoutez votre premier médecin" /></div>}
-          {meds.map(m => (
-            <Panel key={m.id}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                <Avatar text={`${m.prenom[0]}${m.nom[0]}`} size={44} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: "#F0F4F8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Dr. {m.prenom} {m.nom}</div>
-                  <div style={{ fontSize: 12, color: "#8BA0B5" }}>{m.specialite}</div>
-                </div>
-                <Badge color={stBadge(m.statut)}>{m.statut}</Badge>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 12, marginBottom: 12 }}>
-                {[["Expérience", `${m.experience_ans} ans`], ["Tarif", `${fmt(m.tarif)} F`], ["Horaires", `${m.horaires_debut?.slice(0,5)}–${m.horaires_fin?.slice(0,5)}`]].map(([k, v]) => (
-                  <div key={k}><span style={{ color: "#4E657A" }}>{k} : </span><span style={{ fontWeight: 600 }}>{v}</span></div>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Btn variant="outline" style={{ flex: 1, padding: "7px", fontSize: 12 }} onClick={() => updMut.mutate({ id: m.id, statut: m.statut === "Congé" ? "Disponible" : "Congé" })}>{m.statut === "Congé" ? "✓ Réactiver" : "☀ Congé"}</Btn>
-                <Btn variant="outline" style={{ padding: "7px 12px", fontSize: 12, color: "#E11D48" }} onClick={() => window.confirm(`Retirer Dr. ${m.nom} ?`) && delMut.mutate(m.id)}>✕</Btn>
-              </div>
-            </Panel>
-          ))}
-        </div>
       )}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Ajouter un médecin">
-        <Grid cols={2} gap={12}><Input label="Prénom *" required value={form.prenom} onChange={e => setForm(p => ({ ...p, prenom: e.target.value }))} /><Input label="Nom *" required value={form.nom} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} /></Grid>
-        <Select label="Spécialité *" required value={form.specialite} onChange={e => setForm(p => ({ ...p, specialite: e.target.value }))} options={specs} />
-        <Grid cols={2} gap={12}><Input label="Tarif (FCFA)" type="number" value={form.tarif} onChange={e => setForm(p => ({ ...p, tarif: +e.target.value }))} /><Input label="Expérience (ans)" type="number" value={form.experience_ans} onChange={e => setForm(p => ({ ...p, experience_ans: +e.target.value }))} /></Grid>
-        <Grid cols={2} gap={12}><Input label="Heure début" type="time" value={form.horaires_debut} onChange={e => setForm(p => ({ ...p, horaires_debut: e.target.value }))} /><Input label="Heure fin" type="time" value={form.horaires_fin} onChange={e => setForm(p => ({ ...p, horaires_fin: e.target.value }))} /></Grid>
-        <Input label="N° Ordre médical" value={form.numero_ordre} onChange={e => setForm(p => ({ ...p, numero_ordre: e.target.value }))} placeholder="OM-2020-XXXXX" />
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => { if (!form.prenom || !form.nom) { toast.error("Prénom et nom requis"); return; } addMut.mutate(form); }}>Ajouter</Btn></div>
-      </Modal>
     </div>
   );
 }
-
-// ── EMR ───────────────────────────────────────────────────────────
-function PageEMR() {
-  const qc = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ prenom: "", nom: "", date_naissance: "", sexe: "M", groupe_sanguin: "O+", telephone: "", allergies: "" });
-  const { data, isLoading } = useQuery({ queryKey: ["cl-patients"], queryFn: () => cliniqueAPI.patients().then(r => r.data.data || []) });
-  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addPatient(d), onSuccess: () => { toast.success("Dossier créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deletePatient(id), onSuccess: () => { toast.success("Dossier archivé"); qc.invalidateQueries(["cl-patients"]); } });
-  const patients = (data || []).filter(p => !search || (p.user_nom || "").toLowerCase().includes(search.toLowerCase()) || (p.code_secret || "").includes(search.toUpperCase()));
-  return (
-    <div>
-      <PageHeader title="👤 Dossiers Patients — EMR" subtitle={`${(data||[]).length} patients`} actions={<Btn onClick={() => setShowAdd(true)}>+ Nouveau dossier</Btn>} />
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Nom ou code secret (MC-XX-XXXX)…" style={{ width: "100%", background: "#141E2B", border: "1.5px solid #1E2F42", borderRadius: 10, padding: "10px 14px", color: "#F0F4F8", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
-      {isLoading ? <Loader /> : (
-        <Panel>{patients.length === 0 ? <Empty icon="👤" title="Aucun patient" /> : patients.map(p => (
-          <ListItem key={p.id}
-            left={<Avatar text={(p.user_nom || "PA").slice(0, 2)} />}
-            center={<><div style={{ fontSize: 13, fontWeight: 700, color: "#F0F4F8" }}>{p.user_nom || "—"}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>🩸 {p.groupe_sanguin} · ⚠️ {p.allergies?.join(", ") || "Aucune allergie"}</div></>}
-            right={<>
-              <span style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 800, color: "#0A8F58", background: "rgba(10,143,88,.12)", padding: "4px 12px", borderRadius: 8, letterSpacing: 2 }}>{p.code_secret}</span>
-              <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => { navigator.clipboard.writeText(p.code_secret); toast.success("Code copié !"); }}>📋</Btn>
-              <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Archiver ce dossier ?") && delMut.mutate(p.id)}>✕</Btn>
-            </>}
-          />
-        ))}</Panel>
-      )}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Nouveau dossier patient">
-        <Grid cols={2} gap={12}><Input label="Prénom *" required value={form.prenom} onChange={e => setForm(p => ({ ...p, prenom: e.target.value }))} /><Input label="Nom *" required value={form.nom} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} /></Grid>
-        <Grid cols={2} gap={12}><Input label="Date naissance" type="date" value={form.date_naissance} onChange={e => setForm(p => ({ ...p, date_naissance: e.target.value }))} /><Select label="Sexe" value={form.sexe} onChange={e => setForm(p => ({ ...p, sexe: e.target.value }))} options={[{ value: "M", label: "Masculin" }, { value: "F", label: "Féminin" }]} /></Grid>
-        <Grid cols={2} gap={12}><Select label="Groupe sanguin" value={form.groupe_sanguin} onChange={e => setForm(p => ({ ...p, groupe_sanguin: e.target.value }))} options={["O+","O-","A+","A-","B+","B-","AB+","AB-"]} /><Input label="Téléphone" value={form.telephone} onChange={e => setForm(p => ({ ...p, telephone: e.target.value }))} placeholder="+225 07 00 00 00 00" /></Grid>
-        <Input label="Allergies (virgule pour séparer)" value={form.allergies} onChange={e => setForm(p => ({ ...p, allergies: e.target.value }))} placeholder="Pénicilline, Aspirine…" />
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => { if (!form.prenom || !form.nom) { toast.error("Prénom et nom requis"); return; } addMut.mutate({ ...form, allergies: form.allergies ? form.allergies.split(",").map(a => a.trim()) : [] }); }}>Créer le dossier</Btn></div>
-      </Modal>
-    </div>
-  );
-}
-
-// ── STOCK ─────────────────────────────────────────────────────────
-function PageStock() {
-  const qc = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ nom: "", categorie: "Antibiotique", fournisseur: "", quantite: 100, seuil_alerte: 50, prix_unitaire: 500, numero_lot: "", date_expiration: "" });
-  const { data, isLoading } = useQuery({ queryKey: ["cl-stock"], queryFn: () => cliniqueAPI.stock().then(r => r.data.data || []) });
-  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addStock(d), onSuccess: () => { toast.success("Article ajouté !"); qc.invalidateQueries(["cl-stock"]); setShowAdd(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deleteStock(id), onSuccess: () => { toast.success("Supprimé"); qc.invalidateQueries(["cl-stock"]); } });
-  const updMut = useMutation({ mutationFn: ({ id, quantite }) => cliniqueAPI.updateStock(id, { quantite }), onSuccess: () => { toast.success("Stock mis à jour"); qc.invalidateQueries(["cl-stock"]); } });
-  const stock = (data || []).filter(s => !search || s.nom.toLowerCase().includes(search.toLowerCase()));
-  const cats = ["Antibiotique","Antidouleur","Anti-inflammatoire","Vitamines","Perfusion","Antiseptique","Consommable","Autre"];
-  return (
-    <div>
-      <PageHeader title="💊 Gestion du Stock" subtitle={`${(data||[]).length} références · ${stock.filter(s => s.quantite < s.seuil_alerte).length} en alerte`} actions={<Btn onClick={() => setShowAdd(true)}>+ Ajouter article</Btn>} />
-      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
-        <Card label="Références" value={(data||[]).length} icon="📦" />
-        <Card label="Valeur totale" value={`${fmt((data||[]).reduce((s,a) => s+(+a.quantite)*(+a.prix_unitaire),0)/1000)}k F`} icon="💰" color="#0D9488" />
-        <Card label="Alertes" value={stock.filter(s => s.quantite < s.seuil_alerte).length} icon="⚠️" color="#E11D48" />
-        <Card label="Valeur alertes" value={`${fmt(stock.filter(s => s.quantite < s.seuil_alerte).reduce((s,a) => s+(+a.seuil_alerte)*(+a.prix_unitaire),0)/1000)}k F`} icon="📋" color="#D97706" />
-      </Grid>
-      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher…" style={{ width: "100%", background: "#141E2B", border: "1.5px solid #1E2F42", borderRadius: 10, padding: "10px 14px", color: "#F0F4F8", fontSize: 13, outline: "none", boxSizing: "border-box", marginBottom: 16 }} />
-      {isLoading ? <Loader /> : (
-        <Panel>{stock.length === 0 ? <Empty icon="💊" title="Aucun article en stock" /> : stock.map(s => {
-          const pct = Math.min(100, Math.round((s.quantite / (s.seuil_alerte || 1)) * 100));
-          const col = pct < 30 ? "#E11D48" : pct < 70 ? "#D97706" : "#0A8F58";
-          return (
-            <ListItem key={s.id}
-              left={<span style={{ fontSize: 24 }}>💊</span>}
-              center={<><div style={{ fontSize: 13, fontWeight: 700, color: "#F0F4F8" }}>{s.nom}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{s.categorie} · {s.fournisseur || "—"} · PU : {fmt(s.prix_unitaire)} F</div><ProgressBar value={s.quantite} max={Math.max(s.seuil_alerte * 2, s.quantite)} color={col} /></>}
-              right={<>
-                <div style={{ textAlign: "center", minWidth: 70 }}><div style={{ fontSize: 18, fontWeight: 800, color: col }}>{s.quantite}</div><div style={{ fontSize: 10, color: "#4E657A" }}>/ min {s.seuil_alerte}</div></div>
-                <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => { const q = window.prompt(`Quantité pour "${s.nom}" (actuel: ${s.quantite}):`, s.quantite); if (q && !isNaN(+q)) updMut.mutate({ id: s.id, quantite: +q }); }}>✏️</Btn>
-                {s.quantite < s.seuil_alerte && <Btn variant="amber" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => toast.success(`Commande envoyée à ${s.fournisseur || "fournisseur"} !`)}>Commander</Btn>}
-                <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm(`Supprimer "${s.nom}" ?`) && delMut.mutate(s.id)}>✕</Btn>
-              </>}
-            />
-          );
-        })}</Panel>
-      )}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Ajouter un article">
-        <Input label="Nom *" required value={form.nom} onChange={e => setForm(p => ({ ...p, nom: e.target.value }))} placeholder="Ex: Amoxicilline 500mg" />
-        <Grid cols={2} gap={12}><Select label="Catégorie" value={form.categorie} onChange={e => setForm(p => ({ ...p, categorie: e.target.value }))} options={cats} /><Input label="Fournisseur" value={form.fournisseur} onChange={e => setForm(p => ({ ...p, fournisseur: e.target.value }))} placeholder="LABOREX CI" /></Grid>
-        <Grid cols={2} gap={12}><Input label="Quantité initiale *" required type="number" value={form.quantite} onChange={e => setForm(p => ({ ...p, quantite: +e.target.value }))} /><Input label="Seuil alerte *" required type="number" value={form.seuil_alerte} onChange={e => setForm(p => ({ ...p, seuil_alerte: +e.target.value }))} /></Grid>
-        <Grid cols={2} gap={12}><Input label="Prix unitaire (FCFA)" type="number" value={form.prix_unitaire} onChange={e => setForm(p => ({ ...p, prix_unitaire: +e.target.value }))} /><Input label="Date expiration" type="month" value={form.date_expiration} onChange={e => setForm(p => ({ ...p, date_expiration: e.target.value }))} /></Grid>
-        <Input label="N° de lot" value={form.numero_lot} onChange={e => setForm(p => ({ ...p, numero_lot: e.target.value }))} placeholder="LOT-2025-XXX" />
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => { if (!form.nom) { toast.error("Nom obligatoire"); return; } addMut.mutate(form); }}>Ajouter</Btn></div>
-      </Modal>
-    </div>
-  );
-}
-
-// ── FACTURATION ───────────────────────────────────────────────────
-function PageFacturation() {
-  const qc = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ patient_nom: "", montant_total: 25000, mode_paiement: "Espèces" });
-  const { data, isLoading } = useQuery({ queryKey: ["cl-factures"], queryFn: () => cliniqueAPI.factures().then(r => r.data.data || []) });
-  const addMut = useMutation({ mutationFn: d => cliniqueAPI.addFacture(d), onSuccess: () => { toast.success("Facture créée !"); qc.invalidateQueries(["cl-factures"]); setShowAdd(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const updMut = useMutation({ mutationFn: ({ id, statut }) => cliniqueAPI.updateFacture(id, { statut }), onSuccess: () => { toast.success("Mis à jour"); qc.invalidateQueries(["cl-factures"]); } });
-  const delMut = useMutation({ mutationFn: id => cliniqueAPI.deleteFacture(id), onSuccess: () => { toast.success("Supprimée"); qc.invalidateQueries(["cl-factures"]); } });
-  const factures = data || [];
-  return (
-    <div>
-      <PageHeader title="🧾 Facturation" subtitle="CA · Tiers-payant · Créances" actions={<Btn onClick={() => setShowAdd(true)}>+ Nouvelle facture</Btn>} />
-      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
-        <Card label="CA total" value={`${fmt(factures.reduce((s,f) => s+(+f.montant_total||0),0))} F`} icon="💰" color="#0A8F58" />
-        <Card label="Factures payées" value={factures.filter(f => f.statut === "payee").length} icon="✅" color="#0D9488" />
-        <Card label="En attente" value={factures.filter(f => f.statut === "en_attente").length} icon="⏳" color="#D97706" />
-        <Card label="Montant en attente" value={`${fmt(factures.filter(f => f.statut === "en_attente").reduce((s,f) => s+(+f.montant_total||0),0))} F`} icon="📋" color="#D97706" />
-      </Grid>
-      {isLoading ? <Loader /> : (
-        <Panel><Table emptyMessage="Aucune facture" columns={[
-          { key: "reference", label: "Réf.", render: v => <span style={{ fontFamily: "monospace", fontSize: 12, color: "#0A8F58" }}>{v || "—"}</span> },
-          { key: "patient_nom", label: "Patient", render: (v, r) => <><div style={{ fontWeight: 700 }}>{v || r.patient_id}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{r.mode_paiement}</div></> },
-          { key: "montant_total", label: "Total", render: v => <span style={{ fontWeight: 700, color: "#0A8F58" }}>{fmt(v)} F</span> },
-          { key: "montant_assur", label: "Ass.", render: v => <span style={{ color: "#0D9488" }}>{fmt(v)} F</span> },
-          { key: "ticket_moder", label: "Patient", render: v => <span style={{ color: "#D97706" }}>{fmt(v)} F</span> },
-          { key: "statut", label: "Statut", render: v => <Badge color={v === "payee" ? "green" : v === "annulee" ? "red" : "amber"}>{v === "payee" ? "Payée" : v === "annulee" ? "Annulée" : "En attente"}</Badge> },
-          { key: "id", label: "Actions", render: (id, row) => (
-            <div style={{ display: "flex", gap: 6 }}>
-              {row.statut === "en_attente" && <Btn variant="teal" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "payee" })}>✓ Réglée</Btn>}
-              <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => toast.success("PDF en génération…")}>📄</Btn>
-              <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Supprimer ?") && delMut.mutate(id)}>✕</Btn>
-            </div>
-          )},
-        ]} rows={factures} /></Panel>
-      )}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Nouvelle facture">
-        <Input label="Patient *" required value={form.patient_nom} onChange={e => setForm(p => ({ ...p, patient_nom: e.target.value }))} placeholder="Nom du patient" />
-        <Grid cols={2} gap={12}><Input label="Montant total (FCFA) *" required type="number" value={form.montant_total} onChange={e => setForm(p => ({ ...p, montant_total: +e.target.value }))} /><Select label="Mode de paiement" value={form.mode_paiement} onChange={e => setForm(p => ({ ...p, mode_paiement: e.target.value }))} options={["Espèces","Wave","Orange Money","Tiers-payant NSIA","Tiers-payant Allianz","Tiers-payant AXA","Chèque"]} /></Grid>
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => { if (!form.patient_nom || !form.montant_total) { toast.error("Patient et montant requis"); return; } const isTiers = form.mode_paiement.startsWith("Tiers"); addMut.mutate({ ...form, montant_assur: isTiers ? Math.round(form.montant_total*.8) : 0, ticket_moder: isTiers ? Math.round(form.montant_total*.2) : form.montant_total }); }}>Créer</Btn></div>
-      </Modal>
-    </div>
-  );
-}
-
-// ── CONSULTATION ──────────────────────────────────────────────────
-function PageConsultation() {
-  const qc = useQueryClient();
-  const [showAdd, setShowAdd] = useState(false);
-  const [codeSearch, setCodeSearch] = useState("");
-  const [codeResult, setCodeResult] = useState(null);
-  const [prescs, setPrescs] = useState([]);
-  const [ordo, setOrdo] = useState([]);
-  const [form, setForm] = useState({ patient_id: "", medecin_id: "", motif: "", date_consult: today(), ta: "", fc: "", spo2: "", temperature: "", poids: "", taille: "", examen_clinique: "", diagnostic: "", code_cim10: "", note_finale: "", statut: "finalisee" });
-  const { data: cons } = useQuery({ queryKey: ["cl-cons"], queryFn: () => consultationAPI.liste().then(r => r.data.data || []) });
-  const { data: pats } = useQuery({ queryKey: ["cl-patients"], queryFn: () => cliniqueAPI.patients().then(r => r.data.data || []) });
-  const { data: meds } = useQuery({ queryKey: ["cl-medecins"], queryFn: () => cliniqueAPI.medecins().then(r => r.data.data || []) });
-  const creerMut = useMutation({ mutationFn: d => consultationAPI.creer(d), onSuccess: () => { toast.success("Consultation signée !"); qc.invalidateQueries(["cl-cons"]); setShowAdd(false); setPrescs([]); setOrdo([]); setForm({ patient_id:"",medecin_id:"",motif:"",date_consult:today(),ta:"",fc:"",spo2:"",temperature:"",poids:"",taille:"",examen_clinique:"",diagnostic:"",code_cim10:"",note_finale:"",statut:"finalisee" }); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const searchCode = async () => { if (!codeSearch.trim()) return; try { const { data } = await consultationAPI.parCode(codeSearch.trim().toUpperCase()); setCodeResult(data); } catch { toast.error("Code non reconnu."); setCodeResult(null); } };
-  const addPresc = (type) => setPrescs(p => [...p, { id: Date.now(), type, label: "" }]);
-  const addMed = () => setOrdo(o => [...o, { id: Date.now(), med: "", posologie: "", duree: "30 jours" }]);
-  return (
-    <div>
-      <PageHeader title="🩺 Consultation médicale" subtitle="Diagnostic · Prescriptions · Ordonnance · Code patient" actions={<Btn onClick={() => setShowAdd(true)}>+ Nouvelle consultation</Btn>} />
-      <Panel title="🔑 Accès par code secret patient" accent="green" style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-          <input value={codeSearch} onChange={e => setCodeSearch(e.target.value.toUpperCase())} onKeyDown={e => e.key === "Enter" && searchCode()} placeholder="Ex: MC-KJ-4782" style={{ flex: 1, background: "#1A2535", border: "1.5px solid #1E2F42", borderRadius: 9, padding: "10px 14px", color: "#F0F4F8", fontSize: 15, fontFamily: "monospace", letterSpacing: 2, outline: "none" }} />
-          <Btn onClick={searchCode}>Accéder →</Btn>
-        </div>
-        {codeResult && (
-          <div style={{ background: "rgba(10,143,88,.07)", border: "1px solid rgba(10,143,88,.25)", borderRadius: 10, padding: 14 }}>
-            <div style={{ fontWeight: 800, fontSize: 15, color: "#F0F4F8", marginBottom: 6 }}>{codeResult.patient.prenom} {codeResult.patient.nom} <span style={{ marginLeft: 8, background: "#0A8F58", color: "#fff", fontSize: 11, padding: "2px 10px", borderRadius: 12 }}>✓ Autorisé</span></div>
-            <div style={{ fontSize: 12, color: "#8BA0B5", marginBottom: 10 }}>{codeResult.consultations.length} consultation(s)</div>
-            {codeResult.consultations.slice(0, 2).map(c => (
-              <div key={c.id} style={{ background: "#1A2535", borderRadius: 8, padding: 10, marginBottom: 6, borderLeft: "3px solid #0A8F58" }}>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{c.date_consult} — {c.medecin_nom}</div>
-                <div style={{ color: "#8BA0B5", fontSize: 12 }}>📋 {c.diagnostic?.slice(0, 80)}</div>
-                {c.ordonnance?.length > 0 && <div style={{ color: "#0A8F58", fontSize: 12 }}>💊 {c.ordonnance.map(o => o.medicament).join(" · ")}</div>}
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
-      <Grid cols={2} gap={20}>
-        <Panel title="🔑 Codes secrets des patients">
-          {(pats||[]).length === 0 ? <Empty icon="👤" title="Aucun patient" /> : (pats||[]).map(p => (
-            <ListItem key={p.id} left={<Avatar text={(p.user_nom||"PA").slice(0,2)} size={34} />}
-              center={<div style={{ fontSize: 13, fontWeight: 600, color: "#F0F4F8" }}>{p.user_nom || "—"}</div>}
-              right={<><span style={{ fontFamily: "monospace", fontSize: 13, fontWeight: 800, color: "#0A8F58", background: "rgba(10,143,88,.12)", padding: "3px 10px", borderRadius: 8, letterSpacing: 2 }}>{p.code_secret}</span><Btn variant="outline" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => { navigator.clipboard.writeText(p.code_secret); toast.success("Copié !"); }}>📋</Btn></>}
-            />
-          ))}
-        </Panel>
-        <Panel title={`Consultations récentes (${(cons||[]).length})`}>
-          {(cons||[]).length === 0 ? <Empty icon="🩺" title="Aucune consultation" /> : (cons||[]).slice(0,8).map(c => (
-            <div key={c.id} style={{ padding: "10px 0", borderBottom: "1px solid #0E1620" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{c.patient_nom || c.patient_id}</span>
-                <Badge color={c.statut === "finalisee" ? "green" : "amber"}>{c.statut === "finalisee" ? "Finalisée" : "Brouillon"}</Badge>
-              </div>
-              <div style={{ fontSize: 11, color: "#8BA0B5" }}>{c.date_consult} · {c.medecin_nom || "—"}</div>
-              <div style={{ fontSize: 11, color: "#4E657A" }}>📋 {c.diagnostic?.slice(0, 60)}…</div>
-            </div>
-          ))}
-        </Panel>
-      </Grid>
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="🩺 Nouvelle consultation" width={680}>
-        <Grid cols={2} gap={12}>
-          <Select label="Patient *" required value={form.patient_id} onChange={e => setForm(p => ({ ...p, patient_id: e.target.value }))} options={[{ value: "", label: "— Sélectionner —" }, ...(pats||[]).map(p => ({ value: p.id, label: `${p.user_nom} · ${p.code_secret}` }))]} />
-          <Select label="Médecin *" required value={form.medecin_id} onChange={e => setForm(p => ({ ...p, medecin_id: e.target.value }))} options={[{ value: "", label: "— Sélectionner —" }, ...(meds||[]).map(m => ({ value: m.id, label: `Dr. ${m.prenom} ${m.nom} — ${m.specialite}` }))]} />
-        </Grid>
-        <Input label="Motif *" required value={form.motif} onChange={e => setForm(p => ({ ...p, motif: e.target.value }))} placeholder="Ex: Suivi HTA" />
-        <SectionLabel color="#0D9488" borderColor="#0D9488">📊 Constantes vitales</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
-          {[["ta","TA (mmHg)","120/80"],["fc","FC (bpm)","72"],["spo2","SpO2","98%"],["temperature","Temp.","37.0°C"],["poids","Poids (kg)","70"],["taille","Taille (cm)","170"]].map(([k,l,ph]) => (
-            <div key={k}><label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#4E657A", marginBottom: 4 }}>{l}</label><input value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} placeholder={ph} style={{ width: "100%", background: "#1A2535", border: "1px solid #1E2F42", borderRadius: 8, padding: "8px", color: "#F0F4F8", fontSize: 12, fontFamily: "monospace", outline: "none", boxSizing: "border-box" }} /></div>
-          ))}
-        </div>
-        <Textarea label="Examen clinique" value={form.examen_clinique} onChange={e => setForm(p => ({ ...p, examen_clinique: e.target.value }))} placeholder="Auscultation, état général…" />
-        <SectionLabel color="#D97706" borderColor="#D97706">📋 Diagnostic *</SectionLabel>
-        <Grid cols={3} gap={10}><div style={{ gridColumn: "1/3" }}><Textarea rows={2} value={form.diagnostic} onChange={e => setForm(p => ({ ...p, diagnostic: e.target.value }))} placeholder="Ex: Hypertension artérielle…" /></div><Input label="CIM-10" value={form.code_cim10} onChange={e => setForm(p => ({ ...p, code_cim10: e.target.value }))} placeholder="I10" style={{ fontFamily: "monospace" }} /></Grid>
-        <SectionLabel color="#0D9488" borderColor="#0D9488">📎 Prescriptions</SectionLabel>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-          {[["bio","🧪 Biologique"],["radio","🔬 Imagerie"],["fonc","📋 Fonctionnel"],["autre","📌 Autre"]].map(([t,l]) => <Btn key={t} variant="outline" style={{ padding: "6px 10px", fontSize: 11 }} onClick={() => addPresc(t)}>{l}</Btn>)}
-        </div>
-        {prescs.map((p, i) => (
-          <div key={p.id} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center" }}>
-            <span>{p.type === "bio" ? "🧪" : p.type === "radio" ? "🔬" : "📋"}</span>
-            <input value={p.label} onChange={e => setPrescs(ps => ps.map((x,j) => j===i ? {...x,label:e.target.value} : x))} placeholder="Description…" style={{ flex: 1, background: "#1A2535", border: "1px solid #1E2F42", borderRadius: 8, padding: "8px", color: "#F0F4F8", fontSize: 12, outline: "none" }} />
-            <button onClick={() => setPrescs(ps => ps.filter((_,j) => j!==i))} style={{ background: "none", border: "none", color: "#E11D48", cursor: "pointer", fontSize: 16 }}>✕</button>
-          </div>
-        ))}
-        <SectionLabel color="#0A8F58" borderColor="#0A8F58">💊 Ordonnance</SectionLabel>
-        {ordo.map((o, i) => (
-          <div key={o.id} style={{ background: "#1A2535", borderRadius: 8, padding: 10, marginBottom: 8, borderLeft: "3px solid #0A8F58" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr auto", gap: 8 }}>
-              <input value={o.med} onChange={e => setOrdo(os => os.map((x,j) => j===i ? {...x,med:e.target.value} : x))} placeholder="Médicament" style={{ background: "#141E2B", border: "1px solid #1E2F42", borderRadius: 6, padding: "7px", color: "#F0F4F8", fontSize: 12, outline: "none" }} />
-              <input value={o.posologie} onChange={e => setOrdo(os => os.map((x,j) => j===i ? {...x,posologie:e.target.value} : x))} placeholder="Posologie" style={{ background: "#141E2B", border: "1px solid #1E2F42", borderRadius: 6, padding: "7px", color: "#F0F4F8", fontSize: 12, outline: "none" }} />
-              <select value={o.duree} onChange={e => setOrdo(os => os.map((x,j) => j===i ? {...x,duree:e.target.value} : x))} style={{ background: "#141E2B", border: "1px solid #1E2F42", borderRadius: 6, padding: "7px", color: "#F0F4F8", fontSize: 12, outline: "none" }}>
-                {["5 jours","7 jours","10 jours","14 jours","30 jours","2 mois","3 mois","6 mois","1 an","À vie"].map(d => <option key={d}>{d}</option>)}
-              </select>
-              <button onClick={() => setOrdo(os => os.filter((_,j) => j!==i))} style={{ background: "none", border: "none", color: "#E11D48", cursor: "pointer", fontSize: 16 }}>✕</button>
-            </div>
-          </div>
-        ))}
-        <Btn variant="outline" style={{ width: "100%", marginBottom: 14 }} onClick={addMed}>+ Ajouter un médicament</Btn>
-        <Textarea label="Note finale" value={form.note_finale} onChange={e => setForm(p => ({ ...p, note_finale: e.target.value }))} rows={2} placeholder="Recommandations, prochain RDV…" />
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn>
-          <Btn style={{ flex: 2 }} loading={creerMut.isPending} onClick={() => { if (!form.patient_id) { toast.error("Sélectionnez un patient"); return; } if (!form.motif) { toast.error("Motif obligatoire"); return; } if (!form.diagnostic) { toast.error("Diagnostic obligatoire"); return; } creerMut.mutate({ ...form, prescriptions: prescs.filter(p => p.label), ordonnance: ordo.filter(o => o.med && o.posologie) }); }}>✓ Finaliser et signer</Btn>
-        </div>
-      </Modal>
-    </div>
-  );
-}
-
-// ── CAISSE ────────────────────────────────────────────────────────
-function PageCaisse() {
-  const qc = useQueryClient();
-  const [mOuv, setMOuv] = useState(false);
-  const [mEnc, setMEnc] = useState(false);
-  const [mDec, setMDec] = useState(false);
-  const [mClt, setMClt] = useState(false);
-  const [fOuv, setFOuv] = useState({ nom: "Caisse principale", solde_ouverture: 50000, operateur: "" });
-  const [fEnc, setFEnc] = useState({ label: "", montant: "", mode: "Espèces", reference: "" });
-  const [fDec, setFDec] = useState({ label: "", montant: "", motif: "" });
-  const { data, isLoading } = useQuery({ queryKey: ["caisse"], queryFn: () => caisseAPI.active().then(r => r.data), refetchInterval: 30000 });
-  const mOuvrir = useMutation({ mutationFn: () => caisseAPI.ouvrir(fOuv), onSuccess: r => { toast.success(r.data.message); qc.invalidateQueries(["caisse"]); setMOuv(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const mEncaisser = useMutation({ mutationFn: () => caisseAPI.encaisser(fEnc), onSuccess: r => { toast.success(r.data.message); qc.invalidateQueries(["caisse"]); setMEnc(false); setFEnc({ label:"",montant:"",mode:"Espèces",reference:"" }); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const mDecaisser = useMutation({ mutationFn: () => caisseAPI.decaisser(fDec), onSuccess: r => { toast.success(r.data.message); qc.invalidateQueries(["caisse"]); setMDec(false); setFDec({ label:"",montant:"",motif:"" }); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  const mCloturer = useMutation({ mutationFn: () => caisseAPI.cloturer(), onSuccess: r => { toast.success(r.data.message); qc.invalidateQueries(["caisse"]); setMClt(false); }, onError: e => toast.error(e.response?.data?.message || "Erreur") });
-  if (isLoading) return <Loader />;
-  const caisse = data?.data; const hist = data?.historique || []; const statut = data?.statut || "fermee";
-  const txs = caisse?.transactions || [];
-  const enc = txs.filter(t => t.type === "encaissement").reduce((s,t) => s + +t.montant, 0);
-  const dec = txs.filter(t => t.type === "decaissement").reduce((s,t) => s + +t.montant, 0);
-  const solde = (+caisse?.solde_ouverture || 0) + enc - dec;
-  return (
-    <div>
-      <PageHeader title="💰 Gestion de Caisse" subtitle="Encaissements · Décaissements · Clôture · Historique"
-        actions={statut === "ouverte" ? <Btn variant="danger" onClick={() => setMClt(true)}>🔒 Clôturer</Btn> : <Btn onClick={() => setMOuv(true)}>🔓 Ouvrir la caisse</Btn>} />
-      <div style={{ background: statut === "ouverte" ? "rgba(10,143,88,.08)" : "rgba(225,29,72,.06)", border: `1.5px solid ${statut === "ouverte" ? "rgba(10,143,88,.3)" : "rgba(225,29,72,.25)"}`, borderRadius: 14, padding: "20px 24px", marginBottom: 20, display: "flex", alignItems: "center", gap: 16 }}>
-        <span style={{ fontSize: 44 }}>{statut === "ouverte" ? "🟢" : "🔴"}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#F0F4F8" }}>{statut === "ouverte" ? `Caisse ouverte${caisse?.nom ? " — " + caisse.nom : ""}` : "Caisse fermée"}</div>
-          {statut === "ouverte" && <div style={{ fontSize: 12, color: "#8BA0B5", marginTop: 3 }}>Ouverte le <strong>{caisse.date_ouverture}</strong> · Opérateur : <strong>{caisse.operateur}</strong> · Fonds de départ : <strong>{fmt(caisse.solde_ouverture)} FCFA</strong></div>}
-          {statut !== "ouverte" && <div style={{ fontSize: 12, color: "#8BA0B5", marginTop: 3 }}>Ouvrez une caisse pour commencer à enregistrer les transactions</div>}
-        </div>
-        {statut === "ouverte" && <div style={{ textAlign: "right" }}><div style={{ fontSize: 34, fontWeight: 900, color: "#0A8F58" }}>{fmt(solde)}</div><div style={{ fontSize: 11, color: "#4E657A", textTransform: "uppercase" }}>FCFA · Solde courant</div></div>}
-      </div>
-      {statut === "ouverte" && (<>
-        <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
-          <Card label="Fonds ouverture" value={`${fmt(caisse.solde_ouverture)} F`} color="#F0F4F8" />
-          <Card label="Encaissé" value={`+${fmt(enc)} F`} color="#0A8F58" />
-          <Card label="Décaissé" value={`-${fmt(dec)} F`} color="#E11D48" />
-          <Card label="Solde courant" value={`${fmt(solde)} F`} color="#0A8F58" />
-        </Grid>
-        <Grid cols={5} gap={20}>
-          <div style={{ gridColumn: "1/3" }}>
-            <Panel title="⚡ Actions rapides">
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <button onClick={() => setMEnc(true)} style={{ background: "#0A8F58", border: "none", borderRadius: 12, padding: 20, cursor: "pointer", textAlign: "center" }}>
-                  <div style={{ fontSize: 30, marginBottom: 6 }}>💵</div><div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Encaisser</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.7)" }}>Paiement reçu</div>
-                </button>
-                <button onClick={() => setMDec(true)} style={{ background: "transparent", border: "1.5px solid rgba(225,29,72,.4)", borderRadius: 12, padding: 20, cursor: "pointer", textAlign: "center" }}>
-                  <div style={{ fontSize: 30, marginBottom: 6 }}>💸</div><div style={{ fontSize: 14, fontWeight: 700, color: "#E11D48" }}>Décaisser</div><div style={{ fontSize: 11, color: "#4E657A" }}>Sortie de fonds</div>
-                </button>
-              </div>
-            </Panel>
-          </div>
-          <div style={{ gridColumn: "3/6" }}>
-            <Panel title={`📋 Journal du jour (${txs.length} op.)`}>
-              {txs.length === 0 ? <Empty icon="💳" title="Aucune transaction" subtitle="Utilisez les boutons pour commencer" /> :
-                [...txs].reverse().map(t => (
-                  <ListItem key={t.id}
-                    left={<span style={{ fontSize: 20 }}>{t.type === "encaissement" ? "💵" : "💸"}</span>}
-                    center={<><div style={{ fontSize: 13, fontWeight: 600, color: "#F0F4F8" }}>{t.label}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{t.heure?.slice(0,5)} · {t.mode} · {t.caissier}</div></>}
-                    right={<span style={{ fontSize: 15, fontWeight: 800, color: t.type === "encaissement" ? "#0A8F58" : "#E11D48" }}>{t.type === "encaissement" ? "+" : "-"}{fmt(t.montant)} F</span>}
-                  />
-                ))}
-              {txs.length > 0 && <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, marginTop: 6, borderTop: "2px solid #1E2F42" }}><span style={{ fontWeight: 700 }}>Solde estimé</span><span style={{ fontSize: 18, fontWeight: 800, color: "#0A8F58" }}>{fmt(solde)} FCFA</span></div>}
-            </Panel>
-          </div>
-        </Grid>
-      </>)}
-      {hist.length > 0 && <Panel title={`🗓️ Historique (${hist.length})`} style={{ marginTop: 20 }}><Table columns={[{ key: "date_ouverture", label: "Date", render: v => <span style={{ fontFamily: "monospace", fontSize: 12 }}>{v}</span> },{ key: "nom", label: "Nom", render: v => v || "Caisse principale" },{ key: "solde_ouverture", label: "Ouverture", render: v => `${fmt(v)} F` },{ key: "encaissements", label: "Encaissé", render: v => <span style={{ color: "#0A8F58", fontWeight: 700 }}>+{fmt(v)} F</span> },{ key: "decaissements", label: "Décaissé", render: v => <span style={{ color: "#E11D48", fontWeight: 700 }}>-{fmt(v)} F</span> },{ key: "solde_cloture", label: "Solde final", render: v => <span style={{ fontWeight: 800, color: "#0A8F58" }}>{fmt(v)} F</span> }]} rows={hist} /></Panel>}
-      <Modal open={mOuv} onClose={() => setMOuv(false)} title="🔓 Ouvrir la caisse">
-        <Input label="Nom de la caisse" value={fOuv.nom} onChange={e => setFOuv(p => ({ ...p, nom: e.target.value }))} />
-        <Input label="Solde d'ouverture (FCFA) *" required type="number" value={fOuv.solde_ouverture} onChange={e => setFOuv(p => ({ ...p, solde_ouverture: +e.target.value }))} />
-        <Input label="Opérateur / Caissier" value={fOuv.operateur} onChange={e => setFOuv(p => ({ ...p, operateur: e.target.value }))} placeholder="Nom du caissier" />
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setMOuv(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={mOuvrir.isPending} onClick={() => mOuvrir.mutate()}>Ouvrir la caisse</Btn></div>
-      </Modal>
-      <Modal open={mEnc} onClose={() => setMEnc(false)} title="➕ Encaisser">
-        <Input label="Libellé *" required value={fEnc.label} onChange={e => setFEnc(p => ({ ...p, label: e.target.value }))} placeholder="Ex: Consultation Dr. Kouamé" />
-        <Input label="Montant (FCFA) *" required type="number" value={fEnc.montant} onChange={e => setFEnc(p => ({ ...p, montant: e.target.value }))} placeholder="25000" />
-        <Grid cols={2} gap={12}><Select label="Mode" value={fEnc.mode} onChange={e => setFEnc(p => ({ ...p, mode: e.target.value }))} options={["Espèces","Wave","Orange Money","MTN MoMo","Carte bancaire","Chèque","Virement"]} /><Input label="Réf. facture" value={fEnc.reference} onChange={e => setFEnc(p => ({ ...p, reference: e.target.value }))} placeholder="#FAC-0856" /></Grid>
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setMEnc(false)}>Annuler</Btn><Btn style={{ flex: 2 }} loading={mEncaisser.isPending} onClick={() => { if (!fEnc.label || !fEnc.montant) { toast.error("Libellé et montant requis"); return; } mEncaisser.mutate(); }}>Encaisser</Btn></div>
-      </Modal>
-      <Modal open={mDec} onClose={() => setMDec(false)} title="➖ Décaisser">
-        <Input label="Libellé *" required value={fDec.label} onChange={e => setFDec(p => ({ ...p, label: e.target.value }))} placeholder="Ex: Achat consommables" />
-        <Input label="Montant (FCFA) *" required type="number" value={fDec.montant} onChange={e => setFDec(p => ({ ...p, montant: e.target.value }))} />
-        <Input label="Motif / Approbation" value={fDec.motif} onChange={e => setFDec(p => ({ ...p, motif: e.target.value }))} placeholder="Approuvé par…" />
-        <div style={{ background: "rgba(225,29,72,.07)", borderRadius: 8, padding: 10, fontSize: 12, color: "#8BA0B5", marginBottom: 14 }}>⚠️ Tout décaissement est tracé avec horodatage.</div>
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setMDec(false)}>Annuler</Btn><Btn variant="danger" style={{ flex: 2 }} loading={mDecaisser.isPending} onClick={() => { if (!fDec.label || !fDec.montant) { toast.error("Libellé et montant requis"); return; } mDecaisser.mutate(); }}>Valider</Btn></div>
-      </Modal>
-      <Modal open={mClt} onClose={() => setMClt(false)} title="🔒 Clôturer la caisse">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-          {[["Solde ouverture", fmt(caisse?.solde_ouverture||0)+" F","#F0F4F8","#1A2535"],["Encaissé","+"+fmt(enc)+" F","#0A8F58","rgba(10,143,88,.1)"],["Décaissé","-"+fmt(dec)+" F","#E11D48","rgba(225,29,72,.08)"],["Solde final",fmt(solde)+" F","#2563EB","rgba(37,99,235,.08)"]].map(([l,v,col,bg]) => (
-            <div key={l} style={{ background: bg, borderRadius: 10, padding: 14, textAlign: "center" }}><div style={{ fontSize: 11, color: "#4E657A", marginBottom: 5 }}>{l}</div><div style={{ fontSize: 20, fontWeight: 800, color: col }}>{v}</div></div>
-          ))}
-        </div>
-        <div style={{ background: "rgba(225,29,72,.07)", borderRadius: 8, padding: 10, fontSize: 12, color: "#8BA0B5", marginBottom: 14 }}>⚠️ La clôture est irréversible. Le journal sera archivé.</div>
-        <div style={{ display: "flex", gap: 10 }}><Btn variant="outline" style={{ flex: 1 }} onClick={() => setMClt(false)}>Annuler</Btn><Btn variant="danger" style={{ flex: 2 }} loading={mCloturer.isPending} onClick={() => mCloturer.mutate()}>Clôturer et archiver</Btn></div>
-      </Modal>
-    </div>
-  );
-}
-
-// ── STATS ─────────────────────────────────────────────────────────
-function PageStats() {
-  return (
-    <div>
-      <PageHeader title="📈 Statistiques" subtitle="Performance — Tableau de bord analytique" />
-      <Grid cols={2} gap={20}>
-        <Panel title="RDV par semaine" accent="green">
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 150, paddingTop: 20 }}>
-            {[{ h: 45, l: "S1", v: 18 },{ h: 65, l: "S2", v: 26 },{ h: 80, l: "S3", v: 32 },{ h: 100, l: "S4", v: 40 }].map(b => (
-              <div key={b.l} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#0A8F58" }}>{b.v}</div>
-                <div style={{ width: "100%", height: `${b.h}%`, background: "linear-gradient(to top, #0A8F58, #0D9488)", borderRadius: "4px 4px 0 0" }} />
-                <div style={{ fontSize: 11, color: "#4E657A" }}>{b.l}</div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-        <Panel title="Indicateurs clés" accent="teal">
-          {[{ l: "Taux d'occupation", v: "82%", p: 82, c: "#0A8F58" },{ l: "Taux tiers-payant", v: "67%", p: 67, c: "#0D9488" },{ l: "Dossiers ass. validés", v: "86%", p: 86, c: "#0A8F58" },{ l: "Taux no-show", v: "14%", p: 14, c: "#D97706" }].map(k => (
-            <div key={k.l} style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5, fontSize: 13 }}>
-                <span style={{ color: "#8BA0B5" }}>{k.l}</span><span style={{ fontWeight: 700, color: k.c }}>{k.v}</span>
-              </div>
-              <ProgressBar value={k.p} color={k.c} />
-            </div>
-          ))}
-        </Panel>
-      </Grid>
-    </div>
-  );
-}
-
 
 // ════════════════════════════════════════════════════════════════════
-//  PAGE ASSURANCES v2
+//  7. PAGE QUALITÉ & DOCUMENTS
+// ════════════════════════════════════════════════════════════════════
+function PageQualite() {
+  const [tab, setTab] = useState("qualite");
+
+  const QUAL_TABS = [
+    { key:"qualite", label:"Contrôle qualité" },
+    { key:"incidents", label:"Incidents" },
+    { key:"politiques", label:"Politiques" },
+    { key:"urgences", label:"Urgences" },
+    { key:"satisfaction", label:"Satisfaction" },
+  ];
+
+  const INCIDENTS_DEMO = [
+    { id:1, type:"Chute patient", date:"2026-05-01", gravite:"Modérée", statut:"résolu", responsable:"Dr. Koné" },
+    { id:2, type:"Erreur médicament", date:"2026-04-28", gravite:"Grave", statut:"en_cours", responsable:"Infirmerie" },
+    { id:3, type:"Panne équipement", date:"2026-04-20", gravite:"Mineure", statut:"résolu", responsable:"Technique" },
+  ];
+
+  const POLITIQUES_DEMO = [
+    { id:1, titre:"Manuel de politique interne", categorie:"Gouvernance", version:"v3.2", date:"2026-01-01" },
+    { id:2, titre:"Procédures d'urgence médicale", categorie:"Urgences", version:"v2.0", date:"2025-12-01" },
+    { id:3, titre:"Politique de confidentialité des données", categorie:"RGPD", version:"v1.5", date:"2025-11-15" },
+    { id:4, titre:"Normes d'hygiène et stérilisation", categorie:"Hygiène", version:"v4.1", date:"2026-02-01" },
+    { id:5, titre:"Protocole de recrutement", categorie:"RH", version:"v2.3", date:"2025-10-01" },
+  ];
+
+  const SATISFACTION_DEMO = [
+    { critere:"Accueil et orientation", note:4.5, reponses:124 },
+    { critere:"Qualité des soins", note:4.7, reponses:118 },
+    { critere:"Temps d'attente", note:3.8, reponses:130 },
+    { critere:"Propreté des locaux", note:4.6, reponses:126 },
+    { critere:"Communication médecin", note:4.4, reponses:115 },
+    { critere:"Facilité de prise de RDV", note:4.2, reponses:119 },
+  ];
+
+  return (
+    <div>
+      <PageHeader title="📋 Qualité & Documentation" subtitle="Contrôle qualité · Incidents · Politiques · Satisfaction patients" />
+
+      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
+        {QUAL_TABS.map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)}
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab==="qualite" && (
+        <>
+          <Grid cols={4} gap={14} style={{marginBottom:20}}>
+            <Card label="Score qualité global" value="92%" icon="⭐" color={C.green} sub="Excellent" />
+            <Card label="Incidents ce mois" value={INCIDENTS_DEMO.length} icon="⚠️" color={C.amber} />
+            <Card label="Audits réalisés" value={3} icon="✅" color={C.teal} sub="Ce trimestre" />
+            <Card label="Protocoles actifs" value={POLITIQUES_DEMO.length} icon="📋" color={C.blue} />
+          </Grid>
+          <Grid cols={2} gap={20}>
+            <Panel title="📊 Indicateurs de performance">
+              {[{l:"Taux de satisfaction patients",v:91,c:C.green},{l:"Taux de ponctualité RDV",v:78,c:C.teal},{l:"Conformité hygiène",v:95,c:C.green},{l:"Respect protocoles",v:88,c:C.blue}].map(k=>(
+                <div key={k.l} style={{marginBottom:16}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                    <span style={{color:C.muted}}>{k.l}</span>
+                    <span style={{fontWeight:700,color:k.c}}>{k.v}%</span>
+                  </div>
+                  <ProgressBar value={k.v} max={100} color={k.c} />
+                </div>
+              ))}
+            </Panel>
+            <Panel title="🔄 Amélioration continue" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Action</Btn>}>
+              {[{icon:"✅",l:"Réduction temps d'attente",s:"En cours",c:C.amber},{icon:"✅",l:"Formation hygiène mains",s:"Complété",c:C.green},{icon:"🔄",l:"Audit qualité Q2 2026",s:"Planifié",c:C.blue},{icon:"📋",l:"Révision protocoles urgence",s:"En cours",c:C.amber}].map((a,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{fontSize:18}}>{a.icon}</span>
+                  <div style={{flex:1,fontSize:13,color:C.text}}>{a.l}</div>
+                  <Badge color={{Complété:"green","En cours":"amber",Planifié:"blue"}[a.s]||"gray"}>{a.s}</Badge>
+                </div>
+              ))}
+            </Panel>
+          </Grid>
+        </>
+      )}
+
+      {tab==="incidents" && (
+        <Panel title="Rapports d'incidents" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Incident</Btn>}>
+          <Table columns={[
+            { key:"type", label:"Type d'incident", render:v=><span style={{fontWeight:700}}>{v}</span> },
+            { key:"date", label:"Date", render:v=>fmtDate(v) },
+            { key:"gravite", label:"Gravité", render:v=><Badge color={{Grave:"red",Modérée:"amber",Mineure:"gray"}[v]||"gray"}>{v}</Badge> },
+            { key:"responsable", label:"Responsable" },
+            { key:"statut", label:"Statut", render:v=><Badge color={{résolu:"green",en_cours:"amber"}[v]||"gray"}>{v}</Badge> },
+            { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:11}}>Voir</Btn> },
+          ]} rows={INCIDENTS_DEMO} />
+        </Panel>
+      )}
+
+      {tab==="politiques" && (
+        <Panel title="Politiques et procédures" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Document</Btn>}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))", gap:14 }}>
+            {POLITIQUES_DEMO.map(p=>(
+              <div key={p.id} style={{ background:C.hover, borderRadius:12, padding:16, cursor:"pointer", transition:"border-color .15s" }}
+                onClick={()=>toast.success(`Ouverture : ${p.titre}`)}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <Badge color="blue">{p.categorie}</Badge>
+                  <span style={{fontSize:11,color:C.dim}}>{p.version}</span>
+                </div>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{p.titre}</div>
+                <div style={{fontSize:11,color:C.dim}}>Mis à jour : {fmtDate(p.date)}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {tab==="urgences" && (
+        <Panel title="Procédures d'urgence et contacts">
+          <div style={{ background:"rgba(225,29,72,.08)", border:"1px solid rgba(225,29,72,.2)", borderRadius:12, padding:16, marginBottom:20 }}>
+            <div style={{fontSize:14,fontWeight:700,color:C.red,marginBottom:12}}>🚨 Contacts d'urgence</div>
+            <Grid cols={2} gap={12}>
+              {[["SAMU","15"],["Pompiers","18"],["Police","17"],["Croix-Rouge","+225 27 00 00 00"],["Hôpital CHU","+225 27 11 22 33"],["Directeur médical","+225 07 00 00 00"]].map(([k,v])=>(
+                <div key={k} style={{background:C.input,borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:13,color:C.text}}>{k}</span>
+                  <span style={{fontSize:14,fontWeight:800,color:C.red}}>{v}</span>
+                </div>
+              ))}
+            </Grid>
+          </div>
+          <Grid cols={2} gap={14}>
+            {[["🏃","Plan d'évacuation","Voies de sortie et points de rassemblement"],["💊","Urgence médicale","Protocole RCP et défibrillateur"],["🔥","Incendie","Extincteurs et procédures d'évacuation"],["⚡","Panne électrique","Groupe électrogène et procédures"]].map(([icon,titre,desc])=>(
+              <div key={titre} style={{background:C.hover,borderRadius:12,padding:16,cursor:"pointer"}} onClick={()=>toast.success(`Procédure : ${titre}`)}>
+                <div style={{fontSize:28,marginBottom:8}}>{icon}</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{titre}</div>
+                <div style={{fontSize:12,color:C.dim}}>{desc}</div>
+              </div>
+            ))}
+          </Grid>
+        </Panel>
+      )}
+
+      {tab==="satisfaction" && (
+        <>
+          <Grid cols={3} gap={14} style={{marginBottom:20}}>
+            <Card label="Note globale" value="4.4 / 5" icon="⭐" color={C.amber} sub="Excellent" />
+            <Card label="Réponses collectées" value={SATISFACTION_DEMO.reduce((s,r)=>s+r.reponses,0)} icon="📊" color={C.blue} />
+            <Card label="Taux de recommandation" value="89%" icon="👍" color={C.green} />
+          </Grid>
+          <Panel title="Satisfaction par critère">
+            {SATISFACTION_DEMO.map(s=>(
+              <div key={s.critere} style={{marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                  <span style={{color:C.text,fontWeight:500}}>{s.critere}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:11,color:C.dim}}>{s.reponses} rép.</span>
+                    <span style={{fontWeight:800,color:s.note>=4.5?C.green:s.note>=4?C.teal:s.note>=3?C.amber:C.red}}>{s.note}/5</span>
+                  </div>
+                </div>
+                <ProgressBar value={s.note} max={5} color={s.note>=4.5?C.green:s.note>=4?C.teal:s.note>=3?C.amber:C.red} />
+              </div>
+            ))}
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  8. PAGE ASSURANCES (existante, améliorée)
 // ════════════════════════════════════════════════════════════════════
 function PageAssurance() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ patient_nom: "", compagnie: "NSIA Assurances", numero_police: "", taux_couverture: 80, montant_plafond: 500000 });
-  const { data, isLoading } = useQuery({ queryKey: ["cl-dossiers"], queryFn: () => cliniqueAPI.dossiers().then(r => r.data.data || []) });
-  const addMut = useMutation({
-    mutationFn: d => cliniqueAPI.addDossier(d),
-    onSuccess: () => { toast.success("Dossier soumis à l'assureur !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); },
-    onError: e => toast.error(e.response?.data?.message || "Erreur"),
-  });
-  const updMut = useMutation({
-    mutationFn: ({ id, statut }) => cliniqueAPI.updateDossier(id, { statut }),
-    onSuccess: () => { toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); },
-  });
-  const delMut = useMutation({
-    mutationFn: id => cliniqueAPI.deleteDossier(id),
-    onSuccess: () => { toast.success("Dossier supprimé"); qc.invalidateQueries(["cl-dossiers"]); },
-  });
+  const [form, setForm] = useState({ patient_nom:"", compagnie:"NSIA Assurances", numero_police:"", taux_couverture:80, montant_plafond:500000 });
+  const { data, isLoading } = useQuery({ queryKey:["cl-dossiers"], queryFn:()=>cAPI.dossiers().then(r=>r.data.data||[]) });
+  const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateDossier(id,{statut}), onSuccess:()=>{ toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); } });
+  const addMut = useMutation({ mutationFn:d=>cAPI.addDossier(d), onSuccess:()=>{ toast.success("Dossier soumis !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); } });
+  const delMut = useMutation({ mutationFn:id=>cAPI.deleteDossier(id), onSuccess:()=>{ toast.success("Supprimé"); qc.invalidateQueries(["cl-dossiers"]); } });
 
-  const dossiers = data || [];
-  const compagnies = ["NSIA Assurances", "Allianz CI", "AXA CI", "CNAM (CMU)", "SANLAM", "Saham Assurances", "Atlantique Assurances"];
-  const statutColor = { soumis: "blue", en_attente: "amber", valide: "green", rejete: "red" };
+  const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const dossiers = data||[];
+  const COMPAGNIES = ["NSIA Assurances","Allianz CI","AXA CI","CNAM (CMU)","SANLAM","Saham Assurances","Atlantique Assurances"];
+  const scol = { soumis:"blue", en_attente:"amber", valide:"green", rejete:"red" };
+  const fmt_money = v => <span style={{fontWeight:700,color:C.green}}>{fmt(v)} F</span>;
 
   return (
     <div>
-      <PageHeader title="🛡️ Assurances v2 — Tiers-Payant" subtitle="Gestion des dossiers de remboursement et conventions"
-        actions={<Btn onClick={() => setShowAdd(true)}>+ Nouveau dossier</Btn>} />
-
-      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
+      <PageHeader title="🛡️ Assurances Tiers-Payant" subtitle="Dossiers remboursement · Conventions assurance"
+        actions={<Btn onClick={()=>setShowAdd(true)}>+ Nouveau dossier</Btn>} />
+      <Grid cols={4} gap={14} style={{marginBottom:20}}>
         <Card label="Total dossiers" value={dossiers.length} icon="📁" />
-        <Card label="Validés" value={dossiers.filter(d => d.statut === "valide").length} icon="✅" color="#0A8F58" />
-        <Card label="En attente" value={dossiers.filter(d => d.statut === "en_attente" || d.statut === "soumis").length} icon="⏳" color="#D97706" />
-        <Card label="Rejetés" value={dossiers.filter(d => d.statut === "rejete").length} icon="❌" color="#E11D48" />
+        <Card label="Validés" value={dossiers.filter(d=>d.statut==="valide").length} icon="✅" color={C.green} />
+        <Card label="En attente" value={dossiers.filter(d=>["en_attente","soumis"].includes(d.statut)).length} icon="⏳" color={C.amber} />
+        <Card label="À récupérer" value={`${fmt(dossiers.filter(d=>d.statut==="valide").reduce((s,d)=>s+(+d.montant_assur||0),0))} F`} icon="💰" color={C.green} />
       </Grid>
-
-      <Grid cols={3} gap={14} style={{ marginBottom: 20 }}>
-        {compagnies.map(c => {
-          const count = dossiers.filter(d => d.compagnie === c).length;
-          const valides = dossiers.filter(d => d.compagnie === c && d.statut === "valide").length;
-          return (
-            <Panel key={c}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                <span style={{ fontSize: 28 }}>🛡️</span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#F0F4F8" }}>{c}</div>
-                  <div style={{ fontSize: 11, color: "#8BA0B5" }}>{count} dossier(s) · {valides} validé(s)</div>
-                </div>
-              </div>
-              <ProgressBar value={valides} max={Math.max(count, 1)} color="#0A8F58" />
-              <div style={{ fontSize: 11, color: "#4E657A", marginTop: 6 }}>
-                Taux validation : {count > 0 ? Math.round(valides/count*100) : 0}%
-              </div>
-            </Panel>
-          );
-        })}
-      </Grid>
-
       {isLoading ? <Loader /> : (
-        <Panel title={`📁 Dossiers de remboursement (${dossiers.length})`}>
-          <Table emptyMessage="Aucun dossier soumis" columns={[
-            { key: "reference", label: "Référence", render: v => <span style={{ fontFamily: "monospace", fontSize: 12, color: "#0A8F58" }}>{v || "—"}</span> },
-            { key: "patient_nom", label: "Patient", render: (v, r) => <><div style={{ fontWeight: 700 }}>{v || r.patient_id || "—"}</div><div style={{ fontSize: 11, color: "#8BA0B5" }}>{r.numero_police}</div></> },
-            { key: "compagnie", label: "Compagnie" },
-            { key: "diagnostic", label: "Diagnostic", render: v => <span style={{ fontSize: 12, color: "#8BA0B5" }}>{v?.slice(0, 40) || "—"}</span> },
-            { key: "montant_total", label: "Total", render: v => <span style={{ fontWeight: 700 }}>{Number(v||0).toLocaleString()} F</span> },
-            { key: "montant_assur", label: "Part ass.", render: v => <span style={{ color: "#0A8F58" }}>{Number(v||0).toLocaleString()} F</span> },
-            { key: "ticket_moder", label: "Ticket mod.", render: v => <span style={{ color: "#D97706" }}>{Number(v||0).toLocaleString()} F</span> },
-            { key: "statut", label: "Statut", render: v => <Badge color={statutColor[v] || "gray"}>{v}</Badge> },
-            { key: "id", label: "Actions", render: (id, row) => (
-              <div style={{ display: "flex", gap: 6 }}>
-                {row.statut === "soumis" && <Btn variant="teal" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "en_attente" })}>→ Soumettre</Btn>}
-                {row.statut === "en_attente" && <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#0A8F58" }} onClick={() => updMut.mutate({ id, statut: "valide" })}>✓ Valider</Btn>}
-                <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Supprimer ce dossier ?") && delMut.mutate(id)}>✕</Btn>
+        <Panel>
+          <Table emptyMsg="Aucun dossier assurance" columns={[
+            { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||r.patient_id||"—"}</div><div style={{fontSize:11,color:C.muted}}>{r.numero_police}</div></> },
+            { key:"compagnie", label:"Compagnie" },
+            { key:"montant_total", label:"Total", render:v=>fmt_money(v) },
+            { key:"montant_assur", label:"Part ass.", render:v=>fmt_money(v) },
+            { key:"ticket_moder", label:"Ticket mod.", render:v=><span style={{fontWeight:700,color:C.amber}}>{fmt(v)} F</span> },
+            { key:"statut", label:"Statut", render:v=><Badge color={scol[v]||"gray"}>{v}</Badge> },
+            { key:"id", label:"Actions", render:(id,row)=>(
+              <div style={{display:"flex",gap:5}}>
+                {row.statut==="soumis"&&<Btn variant="outline" style={{padding:"4px 9px",fontSize:11,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_attente"})}>→</Btn>}
+                {row.statut==="en_attente"&&<Btn variant="outline" style={{padding:"4px 9px",fontSize:11,color:C.green}} onClick={()=>updMut.mutate({id,statut:"valide"})}>✓</Btn>}
+                <Btn variant="outline" style={{padding:"4px 9px",fontSize:11,color:C.red}} onClick={()=>window.confirm("Supprimer ?")&&delMut.mutate(id)}>✕</Btn>
               </div>
             )},
           ]} rows={dossiers} />
         </Panel>
       )}
-
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="🛡️ Nouveau dossier assurance">
-        <Input label="Patient *" required value={form.patient_nom} onChange={e => setForm(p => ({ ...p, patient_nom: e.target.value }))} placeholder="Nom du patient" />
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🛡️ Nouveau dossier assurance">
+        <Inp label="Patient *" required value={form.patient_nom} onChange={f("patient_nom")} placeholder="Nom du patient" />
         <Grid cols={2} gap={12}>
-          <Select label="Compagnie d'assurance *" required value={form.compagnie} onChange={e => setForm(p => ({ ...p, compagnie: e.target.value }))} options={compagnies} />
-          <Input label="N° Police / Matricule *" required value={form.numero_police} onChange={e => setForm(p => ({ ...p, numero_police: e.target.value }))} placeholder="POL-2024-XXXXX" />
+          <Sel label="Compagnie *" required value={form.compagnie} onChange={f("compagnie")} options={COMPAGNIES} />
+          <Inp label="N° Police *" required value={form.numero_police} onChange={f("numero_police")} placeholder="POL-2024-XXXXX" />
+          <Inp label="Taux couverture (%)" type="number" min="0" max="100" value={form.taux_couverture} onChange={f("taux_couverture")} />
+          <Inp label="Montant actes (FCFA)" type="number" required value={form.montant_plafond} onChange={f("montant_plafond")} />
         </Grid>
-        <Grid cols={2} gap={12}>
-          <Input label="Taux de couverture (%)" type="number" min="0" max="100" value={form.taux_couverture} onChange={e => setForm(p => ({ ...p, taux_couverture: +e.target.value }))} />
-          <Input label="Montant total actes (FCFA) *" required type="number" value={form.montant_plafond} onChange={e => setForm(p => ({ ...p, montant_plafond: +e.target.value }))} />
-        </Grid>
-        <div style={{ background: "rgba(10,143,88,.07)", border: "1px solid rgba(10,143,88,.2)", borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 13 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ color: "#8BA0B5" }}>Part assureur ({form.taux_couverture}%)</span>
-            <span style={{ color: "#0A8F58", fontWeight: 700 }}>{Math.round(form.montant_plafond * form.taux_couverture / 100).toLocaleString()} FCFA</span>
+        <div style={{background:"rgba(10,143,88,.07)",border:"1px solid rgba(10,143,88,.2)",borderRadius:8,padding:12,marginBottom:14,fontSize:13}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+            <span style={{color:C.muted}}>Part assureur ({form.taux_couverture}%)</span>
+            <span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(form.montant_plafond*form.taux_couverture/100))} FCFA</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <span style={{ color: "#8BA0B5" }}>Ticket modérateur ({100 - form.taux_couverture}%)</span>
-            <span style={{ color: "#D97706", fontWeight: 700 }}>{Math.round(form.montant_plafond * (100 - form.taux_couverture) / 100).toLocaleString()} FCFA</span>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <span style={{color:C.muted}}>Ticket modérateur ({100-form.taux_couverture}%)</span>
+            <span style={{color:C.amber,fontWeight:700}}>{fmt(Math.round(form.montant_plafond*(100-form.taux_couverture)/100))} FCFA</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Btn variant="outline" style={{ flex: 1 }} onClick={() => setShowAdd(false)}>Annuler</Btn>
-          <Btn style={{ flex: 2 }} loading={addMut.isPending} onClick={() => {
-            if (!form.patient_nom || !form.numero_police || !form.montant_plafond) { toast.error("Patient, n° police et montant requis"); return; }
-            addMut.mutate({ ...form, montant_total: form.montant_plafond, montant_assur: Math.round(form.montant_plafond * form.taux_couverture / 100), ticket_moder: Math.round(form.montant_plafond * (100 - form.taux_couverture) / 100), compagnie: form.compagnie, diagnostic: "Actes médicaux" });
-          }}>Soumettre le dossier</Btn>
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
+            if(!form.patient_nom||!form.numero_police){toast.error("Patient et N° police requis");return;}
+            addMut.mutate({...form,montant_total:form.montant_plafond,montant_assur:Math.round(form.montant_plafond*form.taux_couverture/100),ticket_moder:Math.round(form.montant_plafond*(100-form.taux_couverture)/100),diagnostic:"Actes médicaux"});
+          }}>Soumettre</Btn>
         </div>
       </Modal>
     </div>
@@ -661,345 +1363,174 @@ function PageAssurance() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  PAGE DOSSIERS ASSURANCE
+//  9. PAGE STATISTIQUES
 // ════════════════════════════════════════════════════════════════════
-function PageDossiersAss() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ["cl-dossiers"], queryFn: () => cliniqueAPI.dossiers().then(r => r.data.data || []) });
-  const updMut = useMutation({
-    mutationFn: ({ id, statut, motif_rejet }) => cliniqueAPI.updateDossier(id, { statut, motif_rejet }),
-    onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-dossiers"]); },
-  });
-  const delMut = useMutation({
-    mutationFn: id => cliniqueAPI.deleteDossier(id),
-    onSuccess: () => { toast.success("Dossier supprimé"); qc.invalidateQueries(["cl-dossiers"]); },
-  });
-
-  const dossiers = data || [];
-  const enAttente = dossiers.filter(d => d.statut === "soumis" || d.statut === "en_attente");
-  const valides = dossiers.filter(d => d.statut === "valide");
-  const rejetes = dossiers.filter(d => d.statut === "rejete");
-  const totalARecup = valides.reduce((s, d) => s + (+d.montant_assur || 0), 0);
+function PageStats() {
+  const MOIS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+  const PATIENTS = [45,62,58,71,83,76,91,88,95,102,87,110];
+  const REVENUS  = [820000,1150000,980000,1320000,1490000,1380000,1670000,1580000,1820000,1950000,1740000,2100000];
+  const MAX_P = Math.max(...PATIENTS); const MAX_R = Math.max(...REVENUS);
 
   return (
     <div>
-      <PageHeader title="📁 Dossiers Assurance" subtitle="Suivi des remboursements tiers-payant" />
-
-      <Grid cols={4} gap={14} style={{ marginBottom: 20 }}>
-        <Card label="En attente" value={enAttente.length} icon="⏳" color="#D97706" sub="À traiter" />
-        <Card label="Validés" value={valides.length} icon="✅" color="#0A8F58" sub="Remboursements OK" />
-        <Card label="Rejetés" value={rejetes.length} icon="❌" color="#E11D48" sub="À contester" />
-        <Card label="À récupérer" value={`${(totalARecup/1000).toFixed(0)}k F`} icon="💰" color="#0A8F58" sub="Part assureur validée" />
+      <PageHeader title="📊 Statistiques & Rapports" subtitle="Analyses · Performance · Tendances" />
+      <Grid cols={4} gap={14} style={{marginBottom:24}}>
+        <Card label="Patients ce mois" value={PATIENTS[4]} icon="👤" color={C.blue} sub="+12% vs mois dernier" />
+        <Card label="Revenus ce mois" value={`${fmt(REVENUS[4])} F`} icon="💰" color={C.green} sub="+8% vs mois dernier" />
+        <Card label="Taux satisfaction" value="91%" icon="⭐" color={C.amber} sub="Enquête mensuelle" />
+        <Card label="RDV honorés" value="94%" icon="📅" color={C.teal} sub="Taux de présence" />
       </Grid>
-
-      {enAttente.length > 0 && (
-        <Panel title={`⏳ En attente de traitement (${enAttente.length})`} accent="amber" style={{ marginBottom: 16 }}>
-          <Table emptyMessage="Aucun dossier en attente" columns={[
-            { key: "reference", label: "Réf.", render: v => <span style={{ fontFamily: "monospace", color: "#D97706" }}>{v}</span> },
-            { key: "patient_nom", label: "Patient", render: (v, r) => v || r.patient_id || "—" },
-            { key: "compagnie", label: "Compagnie" },
-            { key: "montant_total", label: "Montant", render: v => `${Number(v||0).toLocaleString()} F` },
-            { key: "montant_assur", label: "Part ass.", render: v => <span style={{ color: "#0A8F58", fontWeight: 700 }}>{Number(v||0).toLocaleString()} F</span> },
-            { key: "statut", label: "Statut", render: v => <Badge color="amber">{v}</Badge> },
-            { key: "id", label: "Actions", render: (id) => (
-              <div style={{ display: "flex", gap: 6 }}>
-                <Btn variant="teal" style={{ padding: "5px 10px", fontSize: 11 }} onClick={() => updMut.mutate({ id, statut: "valide" })}>✓ Valider</Btn>
-                <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => { const m = window.prompt("Motif du rejet :"); if (m !== null) updMut.mutate({ id, statut: "rejete", motif_rejet: m }); }}>✕ Rejeter</Btn>
-              </div>
-            )},
-          ]} rows={enAttente} />
-        </Panel>
-      )}
-
-      {isLoading ? <Loader /> : (
-        <Panel title={`📋 Historique complet (${dossiers.length})`}>
-          <Table emptyMessage="Aucun dossier" columns={[
-            { key: "reference", label: "Réf.", render: v => <span style={{ fontFamily: "monospace", fontSize: 12, color: "#0A8F58" }}>{v || "—"}</span> },
-            { key: "patient_nom", label: "Patient", render: (v, r) => v || r.patient_id || "—" },
-            { key: "compagnie", label: "Compagnie" },
-            { key: "montant_total", label: "Total", render: v => `${Number(v||0).toLocaleString()} F` },
-            { key: "montant_assur", label: "Part ass.", render: v => <span style={{ color: "#0A8F58" }}>{Number(v||0).toLocaleString()} F</span> },
-            { key: "ticket_moder", label: "Ticket", render: v => <span style={{ color: "#D97706" }}>{Number(v||0).toLocaleString()} F</span> },
-            { key: "statut", label: "Statut", render: v => <Badge color={{ soumis:"blue", en_attente:"amber", valide:"green", rejete:"red" }[v] || "gray"}>{v}</Badge> },
-            { key: "motif_rejet", label: "Motif rejet", render: v => v ? <span style={{ color: "#E11D48", fontSize: 11 }}>{v}</span> : "—" },
-            { key: "id", label: "", render: (id) => <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11, color: "#E11D48" }} onClick={() => window.confirm("Supprimer ?") && delMut.mutate(id)}>✕</Btn> },
-          ]} rows={dossiers} />
-        </Panel>
-      )}
-    </div>
-  );
-}
-
-// ── ROUTER ────────────────────────────────────────────────────────
-
-// ══════════════════════════════════════════════════════════════════
-// PAGE SPÉCIALITÉS CLINIQUE
-// ══════════════════════════════════════════════════════════════════
-const SPECIALITES_PRESET = [
-  'Médecine générale','Pédiatrie','Gynécologie-Obstétrique','Cardiologie',
-  'Dermatologie','Ophtalmologie','Orthopédie','Neurologie','Urologie',
-  'Gastro-entérologie','ORL','Endocrinologie','Pneumologie','Oncologie',
-  'Psychiatrie','Rhumatologie','Néphrologie','Chirurgie générale',
-  'Radiologie','Laboratoire d\'analyses','Dentisterie','Kinésithérapie',
-  'Diabétologie','Infectiologie','Médecine du travail',
-];
-
-function PageSpecialites() {
-  const qc = useQueryClient();
-  const [showForm, setShowForm]   = useState(false);
-  const [editing,  setEditing]    = useState(null);
-  const [form, setForm]           = useState({ nom:'', description:'', tarif_consultation:'' });
-  const [search, setSearch]       = useState('');
-
-  const { data:specData, isLoading } = useQuery({
-    queryKey: ['cl-specs'],
-    queryFn:  () => api.get('/cliniques/specialites').then(r => r.data.data || []),
-  });
-  const specs = specData || [];
-
-  const saveMut = useMutation({
-    mutationFn: (d) => editing
-      ? api.put(`/cliniques/specialites/${editing.id}`, d).then(r => r.data)
-      : api.post('/cliniques/specialites', d).then(r => r.data),
-    onSuccess: (r) => {
-      if (!r.success) { toast.error(r.message); return; }
-      qc.invalidateQueries(['cl-specs']);
-      toast.success(editing ? 'Spécialité modifiée !' : 'Spécialité ajoutée !');
-      resetForm();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const delMut = useMutation({
-    mutationFn: (id) => api.delete(`/cliniques/specialites/${id}`).then(r => r.data),
-    onSuccess: () => { qc.invalidateQueries(['cl-specs']); toast.success('Spécialité retirée.'); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const resetForm = () => {
-    setForm({ nom:'', description:'', tarif_consultation:'' });
-    setEditing(null);
-    setShowForm(false);
-  };
-
-  const openEdit = (s) => {
-    setEditing(s);
-    setForm({ nom:s.nom, description:s.description||'', tarif_consultation:s.tarif_consultation||'' });
-    setShowForm(true);
-  };
-
-  const handleSave = () => {
-    if (!form.nom) { toast.error('Nom de la spécialité requis'); return; }
-    saveMut.mutate({
-      nom:              form.nom,
-      description:      form.description || null,
-      tarif_consultation: form.tarif_consultation ? Number(form.tarif_consultation) : null,
-    });
-  };
-
-  const filtered = specs.filter(s =>
-    s.nom.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // Spécialités preset non encore ajoutées
-  const notAdded = SPECIALITES_PRESET.filter(n =>
-    !specs.some(s => s.nom.toLowerCase() === n.toLowerCase())
-  );
-
-  const C = {
-    bg:'#060C12',card:'#0E1620',input:'#141E2B',hover:'#1A2535',
-    border:'#1E2F42',text:'#F0F4F8',muted:'#8BA0B5',dim:'#4E657A',
-    green:'#0A8F58',teal:'#0D9488',amber:'#D97706',red:'#E11D48',
-  };
-
-  return (
-    <div>
-      <PageHeader
-        title="🩺 Spécialités médicales"
-        subtitle={`${specs.filter(s=>s.disponible).length} spécialité(s) active(s)`}
-        actions={
-          <Btn onClick={() => setShowForm(true)} style={{ background:C.green, color:'#fff', border:'none', padding:'9px 20px', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer' }}>
-            + Ajouter une spécialité
-          </Btn>
-        }
-      />
-
-      {/* Bannière info */}
-      <div style={{ background:'rgba(10,143,88,.07)', border:'1px solid rgba(10,143,88,.18)', borderRadius:12, padding:'14px 20px', marginBottom:24, display:'flex', alignItems:'flex-start', gap:14 }}>
-        <span style={{ fontSize:22 }}>💡</span>
-        <div style={{ fontSize:13, color:C.muted, lineHeight:1.7 }}>
-          <strong style={{ color:C.text }}>Pourquoi renseigner vos spécialités ?</strong><br/>
-          Vos spécialités sont affichées publiquement sur <strong style={{ color:'#4ade80' }}>mediconnect4africa.cloud</strong>. 
-          Les patients recherchent une clinique selon leurs besoins médicaux (cardiologie, pédiatrie, gynécologie…) 
-          avant de prendre rendez-vous. Plus votre liste est complète, plus vous attirez de patients ciblés.
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:24 }}>
-        {[
-          { l:'Spécialités actives', v:specs.filter(s=>s.disponible!==false).length, icon:'🩺', c:'#0A8F58' },
-          { l:'Avec tarif renseigné',v:specs.filter(s=>s.tarif_consultation).length, icon:'💰', c:'#D97706' },
-          { l:'Consultable en ligne', v:specs.filter(s=>s.disponible!==false).length, icon:'🌐', c:'#0D9488' },
-          { l:'Méd. associés (total)',v:specs.reduce((a,s)=>a+(s.medecins_count||0),0), icon:'👨‍⚕️', c:'#7C3AED' },
-        ].map(st => (
-          <div key={st.l} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:14, padding:16 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-              <span style={{ fontSize:22 }}>{st.icon}</span>
-              <span style={{ fontSize:11, color:C.dim, textTransform:'uppercase', letterSpacing:.5 }}>{st.l}</span>
-            </div>
-            <div style={{ fontSize:28, fontWeight:800, color:st.c }}>{st.v}</div>
+      <Grid cols={2} gap={20}>
+        <Panel title="📈 Patients par mois">
+          <div style={{display:"flex",alignItems:"flex-end",gap:5,height:140,paddingTop:10}}>
+            {MOIS.map((m,i)=>{
+              const h = Math.round((PATIENTS[i]/MAX_P)*100);
+              return (
+                <div key={m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div style={{fontSize:9,color:C.green,fontWeight:700}}>{PATIENTS[i]}</div>
+                  <div style={{width:"100%",height:`${h}%`,background:i===4?`linear-gradient(to top,${C.green},${C.teal})`:`rgba(10,143,88,.3)`,borderRadius:"3px 3px 0 0"}} />
+                  <div style={{fontSize:8,color:C.dim}}>{m}</div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
-
-      {/* Recherche */}
-      <Input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="🔍 Rechercher une spécialité…"
-        style={{ marginBottom:16, maxWidth:400 }}
-      />
-
-      {/* Liste spécialités actives */}
-      {isLoading ? <Loader /> : filtered.length === 0 ? (
-        <Empty icon="🩺" title="Aucune spécialité" subtitle="Ajoutez vos spécialités pour être visible sur la plateforme" />
-      ) : (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:14, marginBottom:32 }}>
-          {filtered.map(s => (
-            <div key={s.id} style={{ background:C.card, border:`1px solid ${s.disponible!==false ? 'rgba(10,143,88,.2)' : C.border}`, borderRadius:14, padding:18, position:'relative', transition:'border-color .2s' }}>
-              {s.disponible===false && (
-                <div style={{ position:'absolute', top:12, right:12 }}>
-                  <span style={{ fontSize:10, background:'rgba(225,29,72,.15)', color:'#FDA4AF', borderRadius:20, padding:'2px 10px', fontWeight:700 }}>DÉSACTIVÉE</span>
+        </Panel>
+        <Panel title="💰 Revenus par mois (kFCFA)">
+          <div style={{display:"flex",alignItems:"flex-end",gap:5,height:140,paddingTop:10}}>
+            {MOIS.map((m,i)=>{
+              const h = Math.round((REVENUS[i]/MAX_R)*100);
+              return (
+                <div key={m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <div style={{fontSize:9,color:C.amber,fontWeight:700}}>{Math.round(REVENUS[i]/1000)}</div>
+                  <div style={{width:"100%",height:`${h}%`,background:i===4?`linear-gradient(to top,${C.amber},${C.green})`:`rgba(217,119,6,.3)`,borderRadius:"3px 3px 0 0"}} />
+                  <div style={{fontSize:8,color:C.dim}}>{m}</div>
                 </div>
-              )}
-              <div style={{ display:'flex', alignItems:'flex-start', gap:14 }}>
-                <div style={{ width:44, height:44, borderRadius:12, background:'rgba(10,143,88,.12)', border:'1px solid rgba(10,143,88,.25)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🩺</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:15, fontWeight:700, color:C.text, marginBottom:4 }}>{s.nom}</div>
-                  {s.description && <div style={{ fontSize:12, color:C.muted, lineHeight:1.6, marginBottom:6 }}>{s.description}</div>}
-                  <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-                    {s.tarif_consultation && (
-                      <span style={{ fontSize:12, background:'rgba(217,119,6,.12)', color:'#FCD34D', borderRadius:20, padding:'2px 10px', fontWeight:600 }}>
-                        💰 {Number(s.tarif_consultation).toLocaleString('fr-CI')} FCFA
-                      </span>
-                    )}
-                    {s.nb_medecins > 0 && (
-                      <span style={{ fontSize:12, background:'rgba(124,58,237,.12)', color:'#C4B5FD', borderRadius:20, padding:'2px 10px', fontWeight:600 }}>
-                        👨‍⚕️ {s.nb_medecins} médecin(s)
-                      </span>
-                    )}
-                  </div>
-                </div>
+              );
+            })}
+          </div>
+        </Panel>
+        <Panel title="🩺 Répartition par spécialité">
+          {[{l:"Médecine générale",v:42,c:C.green},{l:"Pédiatrie",v:18,c:C.blue},{l:"Gynécologie",v:15,c:C.purple},{l:"Cardiologie",v:12,c:C.red},{l:"Autres",v:13,c:C.muted}].map(k=>(
+            <div key={k.l} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:13}}>
+                <span style={{color:C.muted}}>{k.l}</span>
+                <span style={{fontWeight:700,color:k.c}}>{k.v}%</span>
               </div>
-              <div style={{ display:'flex', gap:8, marginTop:14, borderTop:`1px solid ${C.border}`, paddingTop:12 }}>
-                <button onClick={() => openEdit(s)} style={{ flex:1, background:'rgba(255,255,255,.05)', border:`1px solid ${C.border}`, color:C.muted, borderRadius:8, padding:'7px 0', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                  ✏️ Modifier
-                </button>
-                <button onClick={() => { if(window.confirm('Désactiver cette spécialité ?')) delMut.mutate(s.id); }} style={{ flex:1, background:'rgba(225,29,72,.08)', border:'1px solid rgba(225,29,72,.2)', color:'#FDA4AF', borderRadius:8, padding:'7px 0', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                  🗑️ Retirer
-                </button>
-              </div>
+              <ProgressBar value={k.v} max={100} color={k.c} />
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Suggestions rapides */}
-      {notAdded.length > 0 && (
-        <div style={{ marginTop:8 }}>
-          <div style={{ fontSize:12, color:C.dim, fontWeight:700, textTransform:'uppercase', letterSpacing:.5, marginBottom:12 }}>
-            ⚡ Ajout rapide — spécialités courantes
-          </div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-            {notAdded.slice(0, 15).map(nom => (
-              <button
-                key={nom}
-                onClick={() => saveMut.mutate({ nom, description:null, tarif_consultation:null })}
-                disabled={saveMut.isPending}
-                style={{ background:'rgba(10,143,88,.08)', border:'1px solid rgba(10,143,88,.2)', color:'rgba(74,222,128,.85)', borderRadius:20, padding:'7px 16px', fontSize:12, fontWeight:500, cursor:'pointer', transition:'all .2s' }}
-              >
-                + {nom}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Modal ajout/édition */}
-      {showForm && (
-        <Modal onClose={resetForm} title={editing ? '✏️ Modifier la spécialité' : '+ Nouvelle spécialité'}>
-          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            {!editing ? (
-              <div>
-                <label style={{ fontSize:11, color:C.dim, textTransform:'uppercase', letterSpacing:.5, marginBottom:6, display:'block' }}>Spécialité *</label>
-                <select
-                  value={form.nom}
-                  onChange={e => setForm(p => ({...p, nom:e.target.value}))}
-                  style={{ width:'100%', background:C.input, border:`1px solid ${C.border}`, color:form.nom?C.text:C.dim, borderRadius:8, padding:'10px 12px', fontSize:14 }}
-                >
-                  <option value="">-- Choisir ou saisir --</option>
-                  {SPECIALITES_PRESET.filter(n => !specs.some(s=>s.nom===n)).map(n => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-                <input
-                  value={form.nom}
-                  onChange={e => setForm(p => ({...p, nom:e.target.value}))}
-                  placeholder="Ou saisissez un nom personnalisé"
-                  style={{ width:'100%', background:C.input, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:'10px 12px', fontSize:14, marginTop:8, boxSizing:'border-box' }}
-                />
+        </Panel>
+        <Panel title="📊 Indicateurs clés">
+          {[{l:"Taux occupation médecins",v:78,c:C.teal},{l:"RDV annulés",v:6,c:C.red},{l:"Patients fidélisés",v:67,c:C.green},{l:"Nouveaux patients",v:33,c:C.blue},{l:"Paiement assurance",v:42,c:C.purple}].map(k=>(
+            <div key={k.l} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:13}}>
+                <span style={{color:C.muted}}>{k.l}</span>
+                <span style={{fontWeight:700,color:k.c}}>{k.v}%</span>
               </div>
-            ) : (
-              <Input label="Nom" value={form.nom} onChange={e => setForm(p=>({...p,nom:e.target.value}))} />
-            )}
-            <Textarea
-              label="Description (optionnel)"
-              value={form.description}
-              onChange={e => setForm(p => ({...p, description:e.target.value}))}
-              placeholder="Détail des actes pratiqués, équipements disponibles…"
-              rows={3}
-            />
-            <Input
-              label="Tarif consultation (FCFA, optionnel)"
-              type="number"
-              value={form.tarif_consultation}
-              onChange={e => setForm(p => ({...p, tarif_consultation:e.target.value}))}
-              placeholder="ex: 15000"
-            />
-            <div style={{ display:'flex', gap:10, marginTop:8 }}>
-              <Btn variant="outline" onClick={resetForm} style={{ flex:1 }}>Annuler</Btn>
-              <Btn
-                onClick={handleSave}
-                loading={saveMut.isPending}
-                style={{ flex:2, background:C.green, color:'#fff', border:'none', borderRadius:10, padding:'11px 0', fontWeight:700, cursor:'pointer', fontSize:14 }}
-              >
-                {editing ? 'Enregistrer les modifications' : 'Ajouter la spécialité'}
-              </Btn>
+              <ProgressBar value={k.v} max={100} color={k.c} />
             </div>
-          </div>
-        </Modal>
-      )}
+          ))}
+        </Panel>
+      </Grid>
     </div>
   );
 }
 
-export default function DashboardClinique() {
+// ════════════════════════════════════════════════════════════════════
+//  PAGE CONSULTATION (simplifiée ici, complète dans le vrai fichier)
+// ════════════════════════════════════════════════════════════════════
+function PageConsultation() {
+  const [code, setCode] = useState("");
+  const [patient, setPatient] = useState(null);
+  return (
+    <div>
+      <PageHeader title="🩺 Consultation" subtitle="Accès par code patient ou recherche" />
+      <Panel style={{maxWidth:500,margin:"0 auto"}}>
+        <div style={{marginBottom:18}}>
+          <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Code secret patient</label>
+          <div style={{display:"flex",gap:10}}>
+            <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MC-AB-1234"
+              style={{flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"11px 14px",color:C.text,fontSize:16,outline:"none",fontFamily:"monospace",letterSpacing:2}}
+              onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
+            <Btn onClick={()=>{ if(code.length<3){toast.error("Code invalide");return;} setPatient({nom:"Koné Adjoua",code,note:"Diabétique — allergie pénicilline"}); toast.success("Patient trouvé !"); }}>Accéder</Btn>
+          </div>
+        </div>
+        {patient && (
+          <div style={{background:`rgba(10,143,88,.08)`,border:`1px solid rgba(10,143,88,.2)`,borderRadius:12,padding:16}}>
+            <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{patient.nom}</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Code : {patient.code}</div>
+            <div style={{fontSize:13,color:C.amber}}>{patient.note}</div>
+            <Btn style={{marginTop:14,width:"100%"}} onClick={()=>toast.success("Consultation démarrée !")}>Démarrer la consultation</Btn>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  PAGE CAISSE (simplifiée)
+// ════════════════════════════════════════════════════════════════════
+function PageCaisse() {
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({ queryKey:["cl-caisse"], queryFn:()=>cAPI.caisse().then(r=>r.data.data||{}), retry:1 });
+  const session = data||{};
+  return (
+    <div>
+      <PageHeader title="💰 Caisse" subtitle="Sessions d'encaissement et décaissements"
+        actions={!open&&<Btn onClick={()=>{setOpen(true);toast.success("Caisse ouverte !");}}>Ouvrir la caisse</Btn>} />
+      {!open
+        ? <Panel style={{maxWidth:400,margin:"0 auto",textAlign:"center",padding:48}}>
+            <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+            <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}}>Caisse fermée</div>
+            <div style={{fontSize:13,color:C.muted,marginBottom:24}}>Ouvrez la caisse pour commencer les encaissements</div>
+            <Btn style={{width:"100%"}} onClick={()=>{setOpen(true);toast.success("Caisse ouverte !");}}>Ouvrir la caisse</Btn>
+          </Panel>
+        : <>
+            <Grid cols={3} gap={14} style={{marginBottom:20}}>
+              <Card label="Encaissements" value={`${fmt(session.total_encaisse||0)} F`} icon="✅" color={C.green} />
+              <Card label="Décaissements" value={`${fmt(session.total_decaisse||0)} F`} icon="📤" color={C.amber} />
+              <Card label="Solde caisse" value={`${fmt((session.total_encaisse||0)-(session.total_decaisse||0))} F`} icon="💰" color={C.teal} />
+            </Grid>
+            <Grid cols={2} gap={20}>
+              <Panel title="📥 Encaissement">
+                <Inp label="Montant (FCFA)" type="number" placeholder="5000" style={{marginBottom:10}} />
+                <Sel label="Mode de paiement" options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} style={{marginBottom:10}} />
+                <Inp label="Référence / Patient" placeholder="Nom du patient ou référence" style={{marginBottom:14}} />
+                <Btn style={{width:"100%"}} onClick={()=>toast.success("Encaissement enregistré !")}>Encaisser</Btn>
+              </Panel>
+              <Panel title="📤 Décaissement">
+                <Inp label="Montant (FCFA)" type="number" placeholder="2000" style={{marginBottom:10}} />
+                <Inp label="Motif" placeholder="Achat fournitures, remboursement…" style={{marginBottom:14}} />
+                <Btn variant="amber" style={{width:"100%"}} onClick={()=>toast.success("Décaissement enregistré !")}>Décaisser</Btn>
+                <Btn variant="danger" style={{width:"100%",marginTop:10}} onClick={()=>{setOpen(false);toast.success("Caisse clôturée !");}}>Clôturer la caisse</Btn>
+              </Panel>
+            </Grid>
+          </>
+      }
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ROUTER PRINCIPAL
+// ════════════════════════════════════════════════════════════════════
+export default function Dashboard() {
   return (
     <Routes>
-      <Route index element={<DashboardHome />} />
+      <Route index               element={<PageHome />} />
       <Route path="planning"     element={<PagePlanning />} />
-      <Route path="emr"          element={<PageEMR />} />
-      <Route path="medecins"     element={<PageMedecins />} />
-      <Route path="stock"        element={<PageStock />} />
-      <Route path="facturation"  element={<PageFacturation />} />
+      <Route path="dossiers"     element={<PageDossiers />} />
       <Route path="consultation" element={<PageConsultation />} />
       <Route path="caisse"       element={<PageCaisse />} />
-      <Route path="stats"        element={<PageStats />} />
+      <Route path="facturation"  element={<PageFacturation />} />
+      <Route path="medecins"     element={<PageMedecins />} />
+      <Route path="stock"        element={<PageStock />} />
       <Route path="assurance"    element={<PageAssurance />} />
-      <Route path="dossiers-ass" element={<PageDossiersAss />} />
-      <Route path="specialites"  element={<PageSpecialites />} />
-      <Route path="*" element={<div style={{ textAlign: "center", padding: 60, color: "#4E657A" }}><div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div><div>Section en développement</div></div>} />
+      <Route path="dossiers-ass" element={<PageAssurance />} />
+      <Route path="qualite"      element={<PageQualite />} />
+      <Route path="stats"        element={<PageStats />} />
+      <Route path="*"            element={<PageHome />} />
     </Routes>
   );
 }
