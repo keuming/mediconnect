@@ -13,6 +13,7 @@ const DEMOS = [
   { role: 'assureur',            label: 'Assureur',          icon: '🛡️', email: 'assureur@demo.ci' },
   { role: 'imagerie',            label: 'Imagerie',          icon: '🩻', email: 'imagerie@demo.ci' },
   { role: 'laboratoire',         label: 'Laboratoire',       icon: '🧪', email: 'laboratoire@demo.ci' },
+  { role: 'ministere',           label: 'Ministère Santé',   icon: '🏛️', email: 'ministere@sante.ci',  pwd: 'MinistereCI2024' },
 ];
 
 export default function Login() {
@@ -51,8 +52,8 @@ export default function Login() {
     }
   };
 
-  const quickLogin = async (email) => {
-    const res = await login(email, 'demo1234');
+  const quickLogin = async (email, pwd) => {
+    const res = await login(email, pwd || 'demo1234');
     if (res.success) {
       toast.success('Accès démo !');
       redirectAfterLogin(res.user);
@@ -125,7 +126,7 @@ export default function Login() {
           <p style={{ fontSize: 11, fontWeight: 700, color: '#4E657A', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Accès démo rapide</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(80px,1fr))', gap: 8 }}>
             {DEMOS.map(d => (
-              <button key={d.role} onClick={() => quickLogin(d.email)} disabled={loading}
+              <button key={d.role} onClick={() => quickLogin(d.email, d.pwd)} disabled={loading}
                 style={{ background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 10, padding: '10px 8px', cursor: 'pointer', textAlign: 'center', transition: 'border-color .15s' }}
                 onMouseOver={e => e.currentTarget.style.borderColor='#0A8F58'}
                 onMouseOut={e => e.currentTarget.style.borderColor='#1E2F42'}
