@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const BACKEND = 'https://mediconnect-fed6.vercel.app';
+export const BACKEND = 'https://mediconnect-backend-v2.vercel.app';
 
-// ── Token JWT ────────────────────────────────────────────────────
+// ── Token JWT ─────────────────────────────────────────────────────
 export const getToken = async () => {
   try {
     const raw = await AsyncStorage.getItem('mediconnect-auth');
@@ -12,7 +12,7 @@ export const getToken = async () => {
   } catch { return null; }
 };
 
-// ── Appel API avec auth ───────────────────────────────────────────
+// ── Appel API avec auth ──────────────────────────────────────────
 export const apiCall = async (path, opts = {}) => {
   const token = await getToken();
   const url = `${BACKEND}/api${path}`;
@@ -35,7 +35,6 @@ export const apiCall = async (path, opts = {}) => {
 export const publicFetch = async (path) => {
   const res = await fetch(`${BACKEND}/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store',
   });
   return res.json();
 };
@@ -44,106 +43,73 @@ export const publicFetch = async (path) => {
 // API PATIENT
 // ══════════════════════════════════════════════════════════════════
 export const PatientAPI = {
-  // Dossier
-  monDossier:      () => apiCall('/patients/me'),
-  miseAJourDossier:(id, d) => apiCall(`/patients/${id}`, { method: 'PUT', body: JSON.stringify(d) }),
-
-  // RDV
-  mesRdvs:         () => apiCall('/rendez-vous'),
-  prendreRdv:      (d) => apiCall('/rendez-vous', { method: 'POST', body: JSON.stringify(d) }),
-  annulerRdv:      (id) => apiCall(`/rendez-vous/${id}`, { method: 'PUT', body: JSON.stringify({ statut: 'annule' }) }),
-
-  // Ordonnances
-  mesOrdonnances:  () => apiCall('/ordonnances'),
-
-  // Consultations
-  mesConsultations:() => apiCall('/consultations'),
-
-  // Factures
-  mesFactures:     () => apiCall('/factures/patient'),
-
-  // Commandes médicaments
-  mesCommandes:    () => apiCall('/commandes'),
-  passerCommande:  (d) => apiCall('/commandes', { method: 'POST', body: JSON.stringify(d) }),
-  annulerCommande: (id) => apiCall(`/commandes/${id}`, { method: 'PUT', body: JSON.stringify({ statut: 'annulee' }) }),
-
-  // Bulletins
-  mesBulletins:    () => apiCall('/bulletins'),
-
-  // Public — cliniques & médecins
-  cliniques:       () => publicFetch('/public/cliniques'),
-  medecinsClinique:(cid) => publicFetch(`/public/medecins?clinique_id=${cid}`),
-  medecinsMC:      () => publicFetch('/public/medecins?independant=true'),
-
-  // Pharmacies de garde (liste des pharmacies)
-  pharmaciesGarde: () => publicFetch('/public/cliniques'), // adapter quand la route dédiée existe
-
-  // Assureurs (liste des compagnies)
-  assureurs:       () => apiCall('/assurances'),
+  monProfil:        ()  => apiCall('/utilisateurs/me'),
+  monDossier:       ()  => apiCall('/patients/me'),
+  miseAJourDossier: (id,d) => apiCall(`/patients/${id}`, { method:'PUT', body:JSON.stringify(d) }),
+  mesRdvs:          ()  => apiCall('/rendez-vous'),
+  prendreRdv:       (d) => apiCall('/rendez-vous', { method:'POST', body:JSON.stringify(d) }),
+  annulerRdv:       (id)=> apiCall(`/rendez-vous/${id}`, { method:'PUT', body:JSON.stringify({ statut:'annule' }) }),
+  mesOrdonnances:   ()  => apiCall('/ordonnances'),
+  mesConsultations: ()  => apiCall('/consultations'),
+  mesFactures:      ()  => apiCall('/factures/patient'),
+  mesCommandes:     ()  => apiCall('/commandes'),
+  passerCommande:   (d) => apiCall('/commandes', { method:'POST', body:JSON.stringify(d) }),
+  annulerCommande:  (id)=> apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'annulee' }) }),
+  mesBulletins:     ()  => apiCall('/bulletins'),
+  cliniques:        ()  => publicFetch('/public/cliniques'),
+  medecinsClinique: (cid)=> publicFetch(`/public/medecins?clinique_id=${cid}`),
+  medecinsMC:       ()  => publicFetch('/public/medecins?independant=true'),
+  specialites:      ()  => publicFetch('/public/specialites'),
+  // MediConnect Card
+  monCompteCard:    ()  => apiCall('/card/mon-compte'),
+  lierCarte:        (d) => apiCall('/card/lier-carte', { method:'POST', body:JSON.stringify(d) }),
+  rechargerCarte:   (d) => apiCall('/card/recharger', { method:'POST', body:JSON.stringify(d) }),
+  transactionsCard: ()  => apiCall('/card/transactions'),
+  contactsUrgence:  ()  => apiCall('/card/contacts-urgence'),
+  ajouterContact:   (d) => apiCall('/card/contacts-urgence', { method:'POST', body:JSON.stringify(d) }),
+  supprimerContact: (id)=> apiCall(`/card/contacts-urgence/${id}`, { method:'DELETE' }),
+  scanQR:           (num)=> publicFetch(`/card/public/scan/${num}`),
 };
 
 // ══════════════════════════════════════════════════════════════════
 // API LIVREUR
 // ══════════════════════════════════════════════════════════════════
 export const LivreurAPI = {
-  // Commandes disponibles + assignées
-  commandes:       () => apiCall('/livreurs/commandes'),
-  // Accepter une commande
-  accepter:        (id, livreur_id) => apiCall(`/commandes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut: 'en_cours', livreur_id }),
-  }),
-  // Confirmer livraison effectuée
-  livrer:          (id) => apiCall(`/commandes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut: 'livre' }),
-  }),
-  // Historique toutes commandes livrées
-  historique:      () => apiCall('/commandes?statut=livre'),
-  // Gains du mois (calculé côté front depuis l'historique)
+  monProfil:   ()  => apiCall('/utilisateurs/me'),
+  commandes:   ()  => apiCall('/livreurs/commandes'),
+  accepter:    (id,livreur_id) => apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'en_cours', livreur_id }) }),
+  livrer:      (id)=> apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'livre' }) }),
+  historique:  ()  => apiCall('/commandes?statut=livre'),
 };
 
 // ══════════════════════════════════════════════════════════════════
 // API PHARMACIE
 // ══════════════════════════════════════════════════════════════════
 export const PharmacieAPI = {
-  // Toutes les commandes
-  commandes:       (statut) => apiCall(`/pharmacie/commandes${statut ? '?statut=' + statut : ''}`),
-  // Valider devis patient (confirmer la commande)
-  validerCommande: (id) => apiCall(`/commandes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut: 'confirmee' }),
-  }),
-  // Débiter patient (marquer comme payée → livraison)
-  debiterPatient:  (id) => apiCall(`/commandes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut: 'en_cours' }),
-  }),
-  // Annuler commande
-  annuler:         (id, motif) => apiCall(`/commandes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut: 'annulee', notes: motif }),
-  }),
-  // Ordonnances reçues
-  ordonnances:     () => apiCall('/ordonnances'),
-  servirOrdonnance:(id) => apiCall(`/ordonnances/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify({ statut: 'terminee' }),
-  }),
-  // Stock
-  stock:           () => apiCall('/pharmacie/stock'),
-  // Stats
-  stats:           async () => {
-    const cmds = await apiCall('/pharmacie/commandes');
-    const data = cmds.data || [];
-    return {
-      en_attente: data.filter(c => c.statut === 'en_attente').length,
-      confirmees: data.filter(c => c.statut === 'confirmee').length,
-      en_cours:   data.filter(c => c.statut === 'en_cours').length,
-      livrees:    data.filter(c => c.statut === 'livre').length,
-      ca_jour:    data
-        .filter(c => c.statut === 'livre' && c.updated_at?.startsWith(new Date().toISOString().split('T')[0]))
-        .reduce((s, c) => s + (Number(c.frais_livraison) || 0), 0),
-    };
-  },
+  monProfil:       ()  => apiCall('/utilisateurs/me'),
+  commandes:       (statut) => apiCall(`/pharmacie/commandes${statut ? '?statut='+statut : ''}`),
+  validerCommande: (id)=> apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'confirmee' }) }),
+  debiterPatient:  (id)=> apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'en_cours' }) }),
+  annuler:         (id,motif)=> apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'annulee', notes:motif }) }),
+  ordonnances:     ()  => apiCall('/ordonnances'),
+  servirOrdonnance:(id)=> apiCall(`/ordonnances/${id}`, { method:'PUT', body:JSON.stringify({ statut:'terminee' }) }),
+  stock:           ()  => apiCall('/stock'),
+};
+
+// ══════════════════════════════════════════════════════════════════
+// API MÉDECIN CONSEIL / RÉSIDENT
+// ══════════════════════════════════════════════════════════════════
+export const MedecinAPI = {
+  monProfil:        ()  => apiCall('/utilisateurs/me'),
+  stats:            ()  => apiCall('/planning/stats'),
+  mesRdvs:          (date)=> apiCall(`/planning/rdvs${date ? '?date='+date : ''}`),
+  disponibilites:   (mois,annee)=> apiCall(`/planning/disponibilites?mois=${mois}&annee=${annee}`),
+  ajouterDispo:     (d) => apiCall('/planning/disponibilites', { method:'POST', body:JSON.stringify(d) }),
+  supprimerDispo:   (id)=> apiCall(`/planning/disponibilites/${id}`, { method:'DELETE' }),
+  mesPatients:      ()  => apiCall('/planning/mes-patients'),
+  mesConsultations: ()  => apiCall('/consultations'),
+  ajouterConsult:   (d) => apiCall('/consultations/depuis-rdv', { method:'POST', body:JSON.stringify(d) }),
+  mesOrdonnances:   ()  => apiCall('/ordonnances'),
+  ajouterOrdonnance:(d) => apiCall('/ordonnances', { method:'POST', body:JSON.stringify(d) }),
+  mesCliniques:     ()  => apiCall('/planning/mes-cliniques'),
 };

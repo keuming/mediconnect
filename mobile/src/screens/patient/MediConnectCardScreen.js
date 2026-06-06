@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const API = 'https://mediconnect-backend-v2.vercel.app/api';
+import { BACKEND } from '../../config/api';
+const API = `${BACKEND}/api`;
 
 // Couleurs
 const C = {
@@ -56,8 +57,10 @@ const Card = ({ children, style }) => (
 // ══════════════════════════════════════════════════════════════════
 // COMPOSANT PRINCIPAL
 // ══════════════════════════════════════════════════════════════════
-export default function MediConnectCardScreen({ navigation, route }) {
-  const token = route?.params?.token;
+import { useAuthStore } from '../../store/authStore';
+
+export default function MediConnectCardScreen({ navigation }) {
+  const { token } = useAuthStore();
   const [compte, setCompte] = useState(null);
   const [loading, setLoading] = useState(true);
   const [onglet, setOnglet] = useState('carte'); // carte, contacts, recharger, transactions

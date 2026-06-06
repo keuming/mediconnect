@@ -1,20 +1,23 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView,
-  Platform, Image,
+  Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/authStore';
 import { C } from '../../components/UI';
 
 const DEMOS = [
-  { role: 'patient',   email: 'patient@demo.ci',    icon: '👤', label: 'Patient',   color: C.green },
-  { role: 'pharmacie', email: 'pharmacie@demo.ci',  icon: '💊', label: 'Pharmacie', color: C.teal },
-  { role: 'livreur',   email: 'livreur@demo.ci',    icon: '🛵', label: 'Livreur',   color: C.amber },
+  { role:'patient',             email:'patient@demo.ci',        pwd:'demo1234',      icon:'👤', label:'Patient',         color:C.green },
+  { role:'medecin_independant', email:'medecin.indep@demo.ci',  pwd:'demo1234',      icon:'⭐', label:'Méd. Conseil',    color:C.purple },
+  { role:'medecin',             email:'clinique@demo.ci',       pwd:'demo1234',      icon:'🩺', label:'Méd. Résident',   color:C.teal },
+  { role:'pharmacie',           email:'pharmacie@demo.ci',      pwd:'demo1234',      icon:'💊', label:'Pharmacie',       color:C.teal },
+  { role:'livreur',             email:'livreur@demo.ci',        pwd:'demo1234',      icon:'🛵', label:'Livreur',         color:C.amber },
+  { role:'optique',             email:'optique@demo.ci',        pwd:'demo1234',      icon:'🔭', label:'Optique',         color:'#6366F1' },
+  { role:'ministere',           email:'ministere@sante.ci',     pwd:'MinistereCI2024',icon:'🏛️',label:'Ministère',       color:C.green },
 ];
 
-export default function LoginScreen() {
+export default function LoginScreen({ navigation }) {
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [showPwd,  setShowPwd]  = useState(false);
@@ -23,148 +26,88 @@ export default function LoginScreen() {
   const handleLogin = async (e = email, p = password) => {
     if (!e || !p) { Alert.alert('Champs requis', 'Entrez votre email et mot de passe.'); return; }
     const res = await doLogin(e, p);
-    if (!res.success) Alert.alert('Connexion échouée', res.message);
+    if (!res.success) Alert.alert('Connexion échouée', res.message || 'Email ou mot de passe incorrect');
   };
 
   return (
-    <SafeAreaView style={s.safe}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={s.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
           {/* Logo */}
-          <View style={s.header}>
-            <View style={s.logoBox}>
-              <Text style={s.logoPlus}>+</Text>
+          <View style={{ alignItems: 'center', marginVertical: 32 }}>
+            <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: `${C.green}20`, borderWidth: 2, borderColor: C.green, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 32 }}>+</Text>
             </View>
-            <Text style={s.logoText}>
+            <Text style={{ fontSize: 26, fontWeight: '900', color: C.text }}>
               <Text style={{ color: C.greenL }}>Medi</Text>Connect
             </Text>
-            <Text style={s.logoSub}>AFRICA</Text>
-            <Text style={s.tagline}>La santé numérique pour l'Afrique</Text>
-          </View>
-
-          {/* Bannière info */}
-          <View style={s.infoBanner}>
-            <Text style={s.infoIcon}>📱</Text>
-            <Text style={s.infoText}>
-              Application mobile en accès anticipé. Toutes les fonctionnalités sont disponibles sur{' '}
-              <Text style={{ color: C.greenL, fontWeight: '700' }}>mediconnect4africa.cloud</Text>
-            </Text>
+            <Text style={{ color: C.green, fontSize: 11, fontWeight: '800', letterSpacing: 4, marginTop: 2 }}>AFRICA</Text>
+            <Text style={{ color: C.dim, fontSize: 12, marginTop: 6 }}>La santé numérique pour l'Afrique</Text>
           </View>
 
           {/* Formulaire */}
-          <View style={s.form}>
-            <Text style={s.formTitle}>Connexion</Text>
+          <View style={{ backgroundColor: C.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: C.border, marginBottom: 16 }}>
+            <Text style={{ color: C.text, fontWeight: '800', fontSize: 15, marginBottom: 16 }}>Connexion</Text>
 
-            <Text style={s.label}>Adresse email</Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Email</Text>
             <TextInput
-              style={s.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="votre@email.com"
-              placeholderTextColor={C.dim}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
+              value={email} onChangeText={setEmail} placeholder="votre@email.com"
+              placeholderTextColor={C.dim} keyboardType="email-address" autoCapitalize="none"
+              style={{ backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border, marginBottom: 14 }}
             />
 
-            <Text style={s.label}>Mot de passe</Text>
-            <View style={s.pwdRow}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Mot de passe</Text>
+            <View style={{ position: 'relative', marginBottom: 20 }}>
               <TextInput
-                style={[s.input, { flex: 1, marginBottom: 0 }]}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={C.dim}
-                secureTextEntry={!showPwd}
+                value={password} onChangeText={setPassword} placeholder="••••••••"
+                placeholderTextColor={C.dim} secureTextEntry={!showPwd}
+                style={{ backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border, paddingRight: 46 }}
               />
-              <TouchableOpacity
-                style={s.eyeBtn}
-                onPress={() => setShowPwd(!showPwd)}
-              >
-                <Text style={{ fontSize: 20 }}>{showPwd ? '🙈' : '👁️'}</Text>
+              <TouchableOpacity onPress={() => setShowPwd(!showPwd)}
+                style={{ position: 'absolute', right: 12, top: 12 }}>
+                <Text style={{ fontSize: 18, color: C.dim }}>{showPwd ? '🙈' : '👁️'}</Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={[s.btnPrimary, (loading) && { opacity: 0.6 }]}
-              onPress={() => handleLogin()}
-              disabled={loading}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity onPress={() => handleLogin()} disabled={loading}
+              style={{ backgroundColor: loading ? '#1E2F42' : C.green, borderRadius: C.r, padding: 15, alignItems: 'center' }}>
               {loading
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={s.btnText}>Se connecter →</Text>
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Se connecter</Text>
               }
             </TouchableOpacity>
           </View>
 
-          {/* Démos rapides */}
-          <View style={s.demoSection}>
-            <View style={s.demoSep}>
-              <View style={s.sepLine} />
-              <Text style={s.sepText}>Accès démo</Text>
-              <View style={s.sepLine} />
-            </View>
-            <View style={s.demoGrid}>
-              {DEMOS.map(d => (
-                <TouchableOpacity
-                  key={d.role}
-                  style={s.demoBtn}
-                  onPress={() => handleLogin(d.email, 'demo1234')}
-                  activeOpacity={0.75}
-                >
-                  <View style={[s.demoIconBox, { backgroundColor: d.color + '20', borderColor: d.color + '40' }]}>
-                    <Text style={{ fontSize: 24 }}>{d.icon}</Text>
-                  </View>
-                  <Text style={s.demoLabel}>{d.label}</Text>
-                  <Text style={s.demoPass}>demo1234</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          {/* Créer un compte */}
+          <TouchableOpacity onPress={() => navigation?.navigate?.('Register')}
+            style={{ backgroundColor: 'transparent', borderRadius: C.r, padding: 14, alignItems: 'center', borderWidth: 1.5, borderColor: C.border, marginBottom: 24 }}>
+            <Text style={{ color: C.muted, fontSize: 14, fontWeight: '600' }}>
+              Pas de compte ? <Text style={{ color: C.greenL }}>Créer un compte</Text>
+            </Text>
+          </TouchableOpacity>
 
-          <Text style={s.footer}>MediConnect Africa · v3.0 · UEMOA + CEMAC</Text>
+          {/* Comptes démo */}
+          <Text style={{ color: C.dim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center', marginBottom: 12 }}>
+            Accès démo rapide
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {DEMOS.map(d => (
+              <TouchableOpacity key={d.role} onPress={() => handleLogin(d.email, d.pwd)} disabled={loading}
+                style={{
+                  backgroundColor: `${d.color}18`,
+                  borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+                  borderWidth: 1, borderColor: `${d.color}40`,
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  minWidth: '28%',
+                }}>
+                <Text style={{ fontSize: 16 }}>{d.icon}</Text>
+                <Text style={{ color: d.color, fontSize: 11, fontWeight: '700' }}>{d.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
-
-const s = StyleSheet.create({
-  safe:       { flex: 1, backgroundColor: C.bg },
-  scroll:     { padding: 24, paddingBottom: 40 },
-  header:     { alignItems: 'center', marginBottom: 24, marginTop: 12 },
-  logoBox:    { width: 60, height: 60, borderRadius: 18, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginBottom: 12, shadowColor: C.green, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 12 },
-  logoPlus:   { color: '#fff', fontSize: 32, fontWeight: '800', lineHeight: 38 },
-  logoText:   { fontSize: 28, fontWeight: '800', color: C.text, letterSpacing: -0.5 },
-  logoSub:    { fontSize: 10, fontWeight: '700', letterSpacing: 4, color: C.dim, marginTop: 2 },
-  tagline:    { fontSize: 12, color: C.muted, marginTop: 6, textAlign: 'center' },
-  infoBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: 'rgba(10,143,88,.1)', borderRadius: C.r, padding: 14, marginBottom: 22, borderWidth: 1, borderColor: 'rgba(10,143,88,.2)' },
-  infoIcon:   { fontSize: 18 },
-  infoText:   { flex: 1, fontSize: 12, color: C.muted, lineHeight: 18 },
-  form:       { backgroundColor: C.card, borderRadius: C.rL, padding: 20, borderWidth: 1, borderColor: C.border, marginBottom: 24 },
-  formTitle:  { fontSize: 20, fontWeight: '800', color: C.text, marginBottom: 20 },
-  label:      { fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
-  input:      { backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border, marginBottom: 14 },
-  pwdRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 18 },
-  eyeBtn:     { padding: 8 },
-  btnPrimary: { backgroundColor: C.green, borderRadius: C.r, paddingVertical: 14, alignItems: 'center', shadowColor: C.green, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8 },
-  btnText:    { color: '#fff', fontWeight: '800', fontSize: 15 },
-  demoSection:{ marginBottom: 24 },
-  demoSep:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  sepLine:    { flex: 1, height: 1, backgroundColor: C.border },
-  sepText:    { fontSize: 11, color: C.dim, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-  demoGrid:   { flexDirection: 'row', gap: 10 },
-  demoBtn:    { flex: 1, alignItems: 'center', backgroundColor: C.card, borderRadius: C.r, padding: 14, borderWidth: 1, borderColor: C.border },
-  demoIconBox:{ width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 8, borderWidth: 1 },
-  demoLabel:  { fontSize: 12, fontWeight: '700', color: C.text, marginBottom: 4 },
-  demoPass:   { fontSize: 10, color: C.dim },
-  footer:     { textAlign: 'center', fontSize: 11, color: C.dim },
-});
