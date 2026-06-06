@@ -20,6 +20,7 @@ const NAV = {
     { path:'/patient/medecins-prives', icon:'⭐', label:'Médecins privés' },
     { path:'/patient/recherche',       icon:'🔍', label:'Trouver un médecin' },
     { path:'/patient/feedback',        icon:'💬', label:'Feedback' },
+    { path:'/patient/card',            icon:'💳', label:'MediConnect Card', badge:'NEW' },
   ],
     clinique: [
     { path:'/clinique',              icon:'📊', label:'Dashboard' },
@@ -66,6 +67,7 @@ const NAV = {
     { path:'/admin/statistiques',            icon:'📊', label:'Statistiques' },
     { path:'/admin/configuration',           icon:'⚙️', label:'Configuration' },
     { path:'/admin/ministere',               icon:'🏛️', label:'Ministère Santé',      badge:'NEW' },
+    { path:'/admin/mediconnect-card',         icon:'💳', label:'MediConnect Card',       badge:'NEW' },
   ],
   ministere: [
     { path:'/ministere',                    icon:'🏛️', label:'Vue d\'ensemble' },

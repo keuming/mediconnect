@@ -161,6 +161,18 @@ const initTables = async () => {
     "UPDATE utilisateurs SET is_active=true WHERE is_active IS NULL",
   ];
   for (const sql of alters) { await db(sql).catch(()=>{}); }
+  // Tables MediConnect Card
+  const cardTables = [
+    `CREATE TABLE IF NOT EXISTS mediconnect_cards (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), numero_carte VARCHAR(20) UNIQUE NOT NULL, qr_code_data TEXT, statut VARCHAR(20) DEFAULT 'non_liee', solde DECIMAL(12,2) DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS mediconnect_accounts (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID, numero_compte VARCHAR(20) UNIQUE NOT NULL, carte_id UUID, numero_carte VARCHAR(20), prenom VARCHAR(100) NOT NULL, nom VARCHAR(100) NOT NULL, telephone VARCHAR(30), email VARCHAR(200), adresse TEXT, ville VARCHAR(100), pays_code VARCHAR(5) DEFAULT 'CI', date_naissance DATE, photo_url TEXT, groupe_sanguin VARCHAR(10), allergies TEXT, statut VARCHAR(20) DEFAULT 'actif', niveau VARCHAR(20) DEFAULT 'standard', solde DECIMAL(12,2) DEFAULT 0, points_fidelite INTEGER DEFAULT 0, date_linkage TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS contacts_urgence (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), account_id UUID, ordre INTEGER DEFAULT 1, prenom VARCHAR(100) NOT NULL, nom VARCHAR(100) NOT NULL, telephone VARCHAR(30) NOT NULL, relation VARCHAR(50), telephone_2 VARCHAR(30), email VARCHAR(200), est_principal BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS recharges_card (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), account_id UUID, carte_id UUID, montant DECIMAL(12,2) NOT NULL, mode_paiement VARCHAR(50) DEFAULT 'Wave', reference_paiement VARCHAR(100), statut VARCHAR(20) DEFAULT 'success', solde_avant DECIMAL(12,2) DEFAULT 0, solde_apres DECIMAL(12,2) DEFAULT 0, notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS transactions_card (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), account_id UUID, carte_id UUID, type VARCHAR(30) NOT NULL, montant DECIMAL(12,2) NOT NULL, sens VARCHAR(10) DEFAULT 'debit', solde_avant DECIMAL(12,2) DEFAULT 0, solde_apres DECIMAL(12,2) DEFAULT 0, prestataire_id UUID, prestataire_nom VARCHAR(200), prestataire_type VARCHAR(50), description TEXT, reference VARCHAR(100), created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS scans_qr_card (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), carte_id UUID, account_id UUID, scanner_ip VARCHAR(50), scanner_info TEXT, localisation TEXT, created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `INSERT INTO mediconnect_cards (numero_carte, statut, solde) VALUES ('MC-CI-2024-000001','non_liee',0),('MC-CI-2024-000002','non_liee',0),('MC-CI-2024-000003','non_liee',0) ON CONFLICT DO NOTHING`,
+  ];
+  for (const sql of cardTables) { await db(sql).catch(e => console.error('[INIT CARD]', e.message)); }
+
   // Tables Cabinet Optique
   const optiqueTables = [
     `CREATE TABLE IF NOT EXISTS cabinets_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID, nom VARCHAR(200) NOT NULL, adresse TEXT, ville VARCHAR(100), telephone VARCHAR(30), email VARCHAR(200), numero_registre VARCHAR(100), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
@@ -234,6 +246,7 @@ app.use('/api/planning',  require('./routes/planning'));
 app.use('/api/ministere', require('./routes/ministere'));
 app.use('/api',           require('./routes/extra'));
 app.use('/api/optique',   require('./routes/optique'));
+app.use('/api/card',      require('./routes/card'));
 
 // ── HEALTH & ROOT ─────────────────────────────────────────────────
 // Route de migration forcée (admin seulement)

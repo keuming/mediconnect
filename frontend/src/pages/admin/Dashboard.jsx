@@ -1342,6 +1342,172 @@ function PagePaiements(){
 
 // ════════════════════════════════════════════════════════════════════
 // ROUTER ADMIN
+
+// ── PAGE ADMIN: MEDICONNECT CARD ──────────────────────────────────
+function PageMediConnectCard() {
+  const [onglet, setOnglet] = useState('stats');
+  const [genQty, setGenQty] = useState(10);
+  const [generating, setGenerating] = useState(false);
+
+  const { data: statsCard } = useQuery({ queryKey:['admin-card-stats'], queryFn:()=>api.get('/card/admin/stats') });
+  const { data: cartesData } = useQuery({ queryKey:['admin-cartes'], queryFn:()=>api.get('/card/admin/cartes') });
+  const { data: comptesData } = useQuery({ queryKey:['admin-card-comptes'], queryFn:()=>api.get('/card/admin/comptes') });
+  const s = statsCard?.data || {};
+  const cartes = cartesData?.data || [];
+  const comptes = comptesData?.data || [];
+  const qc = useQueryClient();
+  const fmt = n => Number(n||0).toLocaleString('fr-CI');
+
+  const genererCartes = async () => {
+    setGenerating(true);
+    try {
+      const d = await api.post('/card/admin/generer-cartes', { quantite: genQty });
+      if (d.success) { toast.success(d.message); qc.invalidateQueries(['admin-cartes']); qc.invalidateQueries(['admin-card-stats']); }
+      else toast.error(d.message);
+    } catch(e) { toast.error('Erreur'); }
+    setGenerating(false);
+  };
+
+  const TABS = [{key:'stats',label:'📊 Statistiques'},{key:'cartes',label:'💳 Cartes'},{key:'comptes',label:'👤 Comptes'}];
+
+  return (
+    <div>
+      <PageHeader title="💳 MediConnect Card" subtitle="Gestion des cartes prépayées et des comptes patients"
+        actions={<button onClick={genererCartes} disabled={generating} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:13}}>
+          {generating?'Génération...':'+  Générer des cartes'}
+        </button>}/>
+
+      {/* Stats globales */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          {icon:'💳',label:'Total cartes',value:s.total_cartes||0,color:C.blue},
+          {icon:'🔗',label:'Cartes liées',value:s.cartes_liees||0,color:C.green},
+          {icon:'📦',label:'Disponibles',value:s.cartes_disponibles||0,color:C.amber},
+          {icon:'💰',label:'Solde total',value:`${fmt(s.solde_total)} F`,color:'#4ade80'},
+          {icon:'📈',label:'Recharges/mois',value:`${fmt(s.recharges_ce_mois)} F`,color:C.teal},
+        ].map(st=>(
+          <div key={st.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}>
+            <div style={{fontSize:24,marginBottom:6}}>{st.icon}</div>
+            <div style={{fontSize:20,fontWeight:800,color:st.color}}>{st.value}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:2}}>{st.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Générer cartes */}
+      <Panel title="⚙️ Générer des cartes" style={{marginBottom:20}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Nombre de cartes à générer (max 1000)</div>
+            <input type="number" value={genQty} onChange={e=>setGenQty(+e.target.value)} min={1} max={1000}
+              style={{width:'100%',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',color:C.text,fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+          </div>
+          <button onClick={genererCartes} disabled={generating} style={{background:C.green,border:'none',borderRadius:8,padding:'10px 20px',color:'#fff',cursor:'pointer',fontWeight:700,marginTop:20}}>
+            {generating?'En cours...':'Générer'}
+          </button>
+        </div>
+      </Panel>
+
+      {/* Tabs */}
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        {TABS.map(t=>(<button key={t.key} onClick={()=>setOnglet(t.key)} style={{padding:'8px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:13,fontWeight:700,background:onglet===t.key?C.green:C.input,color:onglet===t.key?'#fff':C.muted}}>{t.label}</button>))}
+      </div>
+
+      {onglet==='cartes'&&(
+        <Panel title={`💳 ${cartes.length} cartes`}>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
+                {['N° Carte','Statut','Solde','Titulaire','N° Compte','Date création'].map(h=>(
+                  <th key={h} style={{padding:'10px 12px',color:C.muted,textAlign:'left',fontWeight:600,fontSize:11,textTransform:'uppercase'}}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {cartes.slice(0,100).map((c,i)=>(
+                  <tr key={c.id||i} style={{borderBottom:`1px solid ${C.border}20`}}>
+                    <td style={{padding:'10px 12px',color:'#4ade80',fontWeight:700,fontFamily:'monospace',fontSize:12}}>{c.numero_carte}</td>
+                    <td style={{padding:'10px 12px'}}>
+                      <span style={{background:c.statut==='liee'?`${C.green}20`:c.statut==='non_liee'?`${C.amber}20`:`${C.red}20`,color:c.statut==='liee'?C.green:c.statut==='non_liee'?C.amber:C.red,borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:700}}>{c.statut}</span>
+                    </td>
+                    <td style={{padding:'10px 12px',color:'#4ade80',fontWeight:700}}>{fmt(c.solde)} F</td>
+                    <td style={{padding:'10px 12px',color:C.text}}>{c.prenom?`${c.prenom} ${c.nom}`:'—'}</td>
+                    <td style={{padding:'10px 12px',color:C.muted,fontSize:11}}>{c.numero_compte||'—'}</td>
+                    <td style={{padding:'10px 12px',color:C.dim,fontSize:11}}>{new Date(c.created_at).toLocaleDateString('fr-FR')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
+      {onglet==='comptes'&&(
+        <Panel title={`👤 ${comptes.length} comptes actifs`}>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+              <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
+                {['Patient','N° Compte','N° Carte','Solde','Transactions','Total rechargé','Statut'].map(h=>(
+                  <th key={h} style={{padding:'10px 12px',color:C.muted,textAlign:'left',fontWeight:600,fontSize:11,textTransform:'uppercase'}}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {comptes.map((c,i)=>(
+                  <tr key={c.id||i} style={{borderBottom:`1px solid ${C.border}20`}}>
+                    <td style={{padding:'10px 12px',color:C.text,fontWeight:600}}>{c.prenom} {c.nom}</td>
+                    <td style={{padding:'10px 12px',color:C.muted,fontSize:11,fontFamily:'monospace'}}>{c.numero_compte}</td>
+                    <td style={{padding:'10px 12px',color:'#4ade80',fontSize:11,fontFamily:'monospace'}}>{c.numero_carte||'—'}</td>
+                    <td style={{padding:'10px 12px',color:'#4ade80',fontWeight:700}}>{fmt(c.solde)} F</td>
+                    <td style={{padding:'10px 12px',color:C.muted}}>{c.nb_transactions||0}</td>
+                    <td style={{padding:'10px 12px',color:C.teal}}>{fmt(c.total_recharge)} F</td>
+                    <td style={{padding:'10px 12px'}}>
+                      <span style={{background:c.statut==='actif'?`${C.green}20`:`${C.red}20`,color:c.statut==='actif'?C.green:C.red,borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:700}}>{c.statut}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
+      {onglet==='stats'&&(
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <Panel title="💳 Répartition des cartes">
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {[
+                {label:'Non liées',value:s.cartes_disponibles||0,color:C.amber,pct:s.total_cartes?Math.round((s.cartes_disponibles||0)/s.total_cartes*100):0},
+                {label:'Liées (actives)',value:s.cartes_liees||0,color:C.green,pct:s.total_cartes?Math.round((s.cartes_liees||0)/s.total_cartes*100):0},
+              ].map(r=>(
+                <div key={r.label}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                    <span style={{fontSize:13,color:C.muted}}>{r.label}</span>
+                    <span style={{fontSize:13,color:r.color,fontWeight:700}}>{r.value} ({r.pct}%)</span>
+                  </div>
+                  <div style={{height:8,background:C.border,borderRadius:4,overflow:'hidden'}}>
+                    <div style={{width:`${r.pct}%`,height:'100%',background:r.color,borderRadius:4}}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="💰 Finances MediConnect Card">
+            {[
+              ['Solde total en circulation',`${fmt(s.solde_total)} FCFA`,'#4ade80'],
+              ['Recharges ce mois',`${fmt(s.recharges_ce_mois)} FCFA`,C.teal],
+              ['Comptes actifs',`${comptes.filter(c=>c.statut==='actif').length}`,C.blue],
+            ].map(([l,v,color])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:`1px solid ${C.border}30`}}>
+                <span style={{color:C.muted,fontSize:13}}>{l}</span>
+                <span style={{color,fontWeight:700,fontSize:14}}>{v}</span>
+              </div>
+            ))}
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════
 export default function Dashboard(){
   return(
@@ -1359,6 +1525,7 @@ export default function Dashboard(){
       <Route path="livreurs"                element={<PageLivreurs/>}/>
       <Route path="assurances"              element={<PageAssurances/>}/>
       <Route path="statistiques"            element={<PageStatistiques/>}/>
+        <Route path="mediconnect-card"         element={<PageMediConnectCard/>}/>
       <Route path="configuration"           element={<PageConfiguration/>}/>
       <Route path="patients"                element={<PageCliniques/>}/>
       <Route path="*"                       element={<PageHome/>}/>

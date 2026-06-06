@@ -1410,6 +1410,263 @@ function PageCommandeMedicament(){
   );
 }
 
+
+// ── PAGE MEDICONNECT CARD ─────────────────────────────────────────
+function PageMediConnectCard() {
+  const [compte, setCompte] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [onglet, setOnglet] = useState('carte');
+  const [saving, setSaving] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [contacts, setContacts] = useState([]);
+  const [formContact, setFormContact] = useState({ prenom:'', nom:'', telephone:'', relation:'' });
+  const [montantRecharge, setMontantRecharge] = useState('');
+  const [modeRecharge, setModeRecharge] = useState('Wave');
+  const [formLink, setFormLink] = useState({ prenom:'', nom:'', telephone:'', email:'', adresse:'', ville:'', groupe_sanguin:'', allergies:'', numero_carte:'' });
+  const fmt = n => Number(n||0).toLocaleString('fr-CI');
+  const cardStyle = { background:C.input, border:`1px solid ${C.border}`, borderRadius:12, padding:16, marginBottom:12 };
+
+  React.useEffect(() => { chargerCompte(); }, []);
+
+  const chargerCompte = async () => {
+    setLoading(true);
+    try {
+      const d = await api.get('/card/mon-compte');
+      if (d.success && d.data) { setCompte(d.data); setContacts(d.data.contacts_urgence||[]); }
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const lierCarte = async () => {
+    if (!formLink.prenom||!formLink.nom||!formLink.numero_carte) { toast.error('Prénom, nom et numéro de carte requis'); return; }
+    setSaving(true);
+    try {
+      const d = await api.post('/card/lier-carte', {...formLink, contacts_urgence: contacts});
+      if (d.success) { toast.success(d.message||'Carte liée avec succès !'); chargerCompte(); }
+      else toast.error(d.message);
+    } catch(e) { toast.error('Erreur serveur'); }
+    setSaving(false);
+  };
+
+  const ajouterContact = async () => {
+    if (!formContact.prenom||!formContact.telephone) { toast.error('Prénom et téléphone requis'); return; }
+    if (contacts.length >= 10) { toast.error('Maximum 10 contacts'); return; }
+    if (compte) {
+      const d = await api.post('/card/contacts-urgence', formContact);
+      if (d.success) { setContacts(p=>[...p,d.data]); setFormContact({prenom:'',nom:'',telephone:'',relation:''}); setShowAddContact(false); toast.success('Contact ajouté'); }
+      else toast.error(d.message);
+    } else {
+      setContacts(p=>[...p,{...formContact,id:Date.now().toString()}]);
+      setFormContact({prenom:'',nom:'',telephone:'',relation:''}); setShowAddContact(false);
+    }
+  };
+
+  const supprimerContact = async (id) => {
+    if (compte && id && !String(id).match(/^\d+$/)) await api.delete(`/card/contacts-urgence/${id}`).catch(()=>{});
+    setContacts(p=>p.filter(c=>c.id!==id)); toast.success('Contact supprimé');
+  };
+
+  const recharger = async () => {
+    const montant = +montantRecharge;
+    if (!montant||montant<1000) { toast.error('Montant minimum : 1 000 FCFA'); return; }
+    setSaving(true);
+    try {
+      const d = await api.post('/card/recharger', { montant, mode_paiement: modeRecharge });
+      if (d.success) { toast.success(`Recharge de ${fmt(montant)} FCFA effectuée !`); setMontantRecharge(''); chargerCompte(); }
+      else toast.error(d.message);
+    } catch(e) { toast.error('Erreur serveur'); }
+    setSaving(false);
+  };
+
+  const Inp2 = ({label,val,onChange,ph}) => (
+    <div style={{marginBottom:12}}>
+      {label&&<div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:600}}>{label}</div>}
+      <input value={val} onChange={e=>onChange(e.target.value)} placeholder={ph}
+        style={{width:'100%',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',color:C.text,fontSize:13,outline:'none',boxSizing:'border-box'}} />
+    </div>
+  );
+
+  if (loading) return <div style={{textAlign:'center',padding:40,color:C.muted}}>Chargement...</div>;
+
+  const TABS=[{key:'carte',label:'💳 Ma Carte'},{key:'contacts',label:'🆘 Urgences'},{key:'recharger',label:'💰 Recharger'},{key:'transactions',label:'📋 Historique'}];
+
+  if (!compte) return (
+    <div>
+      <PageHeader title="💳 MediConnect Card" subtitle="Liez votre carte pour accéder aux réductions"/>
+      <div style={{...cardStyle,background:'linear-gradient(135deg,#071A12,#0A2E1A)',borderColor:C.green,padding:24,textAlign:'center',marginBottom:20}}>
+        <div style={{fontSize:48,marginBottom:8}}>💳</div>
+        <div style={{fontSize:18,fontWeight:800,color:'#fff',marginBottom:6}}>Lier ma MediConnect Card</div>
+        <div style={{fontSize:13,color:C.muted}}>Carte prépayée · Réductions prestataires · Contacts d'urgence QR Code</div>
+      </div>
+      <div style={cardStyle}>
+        <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:16}}>🪪 Informations personnelles</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Inp2 label="Prénom *" val={formLink.prenom} onChange={v=>setFormLink(p=>({...p,prenom:v}))} ph="Adjoua"/>
+          <Inp2 label="Nom *" val={formLink.nom} onChange={v=>setFormLink(p=>({...p,nom:v}))} ph="Koné"/>
+          <Inp2 label="Téléphone" val={formLink.telephone} onChange={v=>setFormLink(p=>({...p,telephone:v}))} ph="+225 07 00 00 00"/>
+          <Inp2 label="Email" val={formLink.email} onChange={v=>setFormLink(p=>({...p,email:v}))} ph="exemple@email.com"/>
+          <Inp2 label="Ville" val={formLink.ville} onChange={v=>setFormLink(p=>({...p,ville:v}))} ph="Abidjan"/>
+          <Inp2 label="Groupe sanguin" val={formLink.groupe_sanguin} onChange={v=>setFormLink(p=>({...p,groupe_sanguin:v}))} ph="A+, B-, O+..."/>
+        </div>
+        <Inp2 label="Allergies" val={formLink.allergies} onChange={v=>setFormLink(p=>({...p,allergies:v}))} ph="Pénicilline..."/>
+      </div>
+      <div style={cardStyle}>
+        <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:8}}>💳 Numéro de carte *</div>
+        <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Inscrit sur le recto de votre carte physique MediConnect</div>
+        <input value={formLink.numero_carte} onChange={e=>setFormLink(p=>({...p,numero_carte:e.target.value.toUpperCase()}))} placeholder="MC-CI-2024-000001"
+          style={{width:'100%',background:C.hover,border:`2px solid ${C.green}`,borderRadius:10,padding:'12px 16px',color:'#4ade80',fontSize:18,fontWeight:900,outline:'none',boxSizing:'border-box',letterSpacing:3,textAlign:'center'}}/>
+      </div>
+      <div style={cardStyle}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:800,color:C.text}}>🆘 Contacts d'urgence ({contacts.length}/10)</div>
+          {contacts.length<10&&<button onClick={()=>setShowAddContact(!showAddContact)} style={{background:`${C.green}20`,border:'none',borderRadius:8,padding:'6px 12px',color:'#4ade80',cursor:'pointer',fontWeight:700,fontSize:12}}>+ Ajouter</button>}
+        </div>
+        <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Accessibles via QR code de la carte en cas d'urgence médicale. Maximum 10 contacts.</div>
+        {showAddContact&&(
+          <div style={{background:C.hover,borderRadius:10,padding:12,marginBottom:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+              <Inp2 label="Prénom *" val={formContact.prenom} onChange={v=>setFormContact(p=>({...p,prenom:v}))} ph="Marie"/>
+              <Inp2 label="Nom" val={formContact.nom} onChange={v=>setFormContact(p=>({...p,nom:v}))} ph="Koné"/>
+              <Inp2 label="Téléphone *" val={formContact.telephone} onChange={v=>setFormContact(p=>({...p,telephone:v}))} ph="+225 07 00 00 00"/>
+              <Inp2 label="Relation" val={formContact.relation} onChange={v=>setFormContact(p=>({...p,relation:v}))} ph="Mère, Père..."/>
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setShowAddContact(false)} style={{flex:1,background:C.border,border:'none',borderRadius:8,padding:10,color:C.text,cursor:'pointer'}}>Annuler</button>
+              <button onClick={ajouterContact} style={{flex:2,background:C.green,border:'none',borderRadius:8,padding:10,color:'#fff',cursor:'pointer',fontWeight:700}}>Ajouter</button>
+            </div>
+          </div>
+        )}
+        {contacts.map((c,i)=>(
+          <div key={c.id||i} style={{display:'flex',alignItems:'center',gap:10,background:C.hover,borderRadius:10,padding:12,marginBottom:8}}>
+            <div style={{width:30,height:30,borderRadius:'50%',background:i===0?`${C.red}30`:C.border,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,color:i===0?C.red:C.muted,fontSize:12}}>{i+1}</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,color:C.text,fontSize:13}}>{c.prenom} {c.nom}</div>
+              <div style={{color:'#4ade80',fontSize:12}}>{c.telephone}</div>
+              {c.relation&&<div style={{color:C.dim,fontSize:11}}>{c.relation}</div>}
+            </div>
+            <button onClick={()=>supprimerContact(c.id||String(i))} style={{background:`${C.red}15`,border:'none',borderRadius:8,padding:'5px 8px',color:C.red,cursor:'pointer',fontSize:11}}>✕</button>
+          </div>
+        ))}
+        {!contacts.length&&<div style={{textAlign:'center',color:C.dim,padding:12,fontSize:13}}>Aucun contact ajouté</div>}
+      </div>
+      <button onClick={lierCarte} disabled={saving} style={{width:'100%',background:saving?'#1E2F42':C.green,border:'none',borderRadius:12,padding:16,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:32}}>
+        {saving?'Liaison en cours...':'💳 Lier ma MediConnect Card'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div>
+      <PageHeader title="💳 MediConnect Card" subtitle={`N° compte : ${compte.numero_compte}`}/>
+      <div style={{background:'linear-gradient(135deg,#071A12,#0A2E1A)',border:`1px solid ${C.green}`,borderRadius:20,padding:22,marginBottom:16}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+          <div><div style={{color:'#4ade80',fontSize:10,fontWeight:700,letterSpacing:3}}>MEDICONNECT CARD</div><div style={{color:C.dim,fontSize:9}}>UEMOA · CEMAC</div></div>
+          <div style={{fontSize:28}}>💳</div>
+        </div>
+        <div style={{color:'#4ade80',fontSize:18,fontWeight:900,letterSpacing:3,fontFamily:'monospace',marginBottom:4}}>{compte.numero_carte||'—'}</div>
+        <div style={{color:C.dim,fontSize:10,marginBottom:14}}>N° Compte : {compte.numero_compte}</div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
+          <div><div style={{color:C.dim,fontSize:10,marginBottom:2}}>TITULAIRE</div><div style={{color:C.text,fontSize:14,fontWeight:700}}>{compte.prenom?.toUpperCase()} {compte.nom?.toUpperCase()}</div></div>
+          <div style={{textAlign:'right'}}><div style={{color:C.dim,fontSize:10,marginBottom:2}}>SOLDE</div><div style={{color:'#4ade80',fontSize:22,fontWeight:900}}>{fmt(compte.solde)} F</div></div>
+        </div>
+      </div>
+      <div style={{display:'flex',gap:8,marginBottom:16,overflowX:'auto',paddingBottom:4}}>
+        {TABS.map(t=>(<button key={t.key} onClick={()=>setOnglet(t.key)} style={{padding:'7px 14px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:700,whiteSpace:'nowrap',background:onglet===t.key?C.green:C.input,color:onglet===t.key?'#fff':C.muted}}>{t.label}</button>))}
+      </div>
+      {onglet==='carte'&&(
+        <div>
+          <div style={cardStyle}>
+            <div style={{fontWeight:800,color:C.text,marginBottom:12}}>👤 Informations</div>
+            {[['Téléphone',compte.telephone],['Email',compte.email],['Ville',compte.ville],['Groupe sanguin',compte.groupe_sanguin],['Allergies',compte.allergies]].filter(([,v])=>v).map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:`1px solid ${C.border}30`}}>
+                <span style={{color:C.muted,fontSize:13}}>{l}</span><span style={{color:C.text,fontSize:13,fontWeight:600}}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={cardStyle}><div style={{color:'#4ade80',fontSize:20,fontWeight:900,textAlign:'center'}}>{fmt(compte.solde)} F</div><div style={{color:C.muted,fontSize:11,textAlign:'center'}}>Solde disponible</div></div>
+            <div style={cardStyle}><div style={{color:'#F59E0B',fontSize:20,fontWeight:900,textAlign:'center'}}>{compte.points_fidelite||0}</div><div style={{color:C.muted,fontSize:11,textAlign:'center'}}>Points fidélité</div></div>
+          </div>
+        </div>
+      )}
+      {onglet==='contacts'&&(
+        <div style={cardStyle}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+            <div style={{fontWeight:800,color:C.text}}>🆘 Contacts d'urgence ({contacts.length}/10)</div>
+            {contacts.length<10&&<button onClick={()=>setShowAddContact(!showAddContact)} style={{background:`${C.green}20`,border:'none',borderRadius:8,padding:'6px 12px',color:'#4ade80',cursor:'pointer',fontWeight:700,fontSize:12}}>+ Ajouter</button>}
+          </div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Accessibles via QR code en cas d'urgence médicale.</div>
+          {showAddContact&&(
+            <div style={{background:C.hover,borderRadius:10,padding:12,marginBottom:12}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                <Inp2 label="Prénom *" val={formContact.prenom} onChange={v=>setFormContact(p=>({...p,prenom:v}))} ph="Marie"/>
+                <Inp2 label="Nom" val={formContact.nom} onChange={v=>setFormContact(p=>({...p,nom:v}))} ph="Koné"/>
+                <Inp2 label="Téléphone *" val={formContact.telephone} onChange={v=>setFormContact(p=>({...p,telephone:v}))} ph="+225 07 00 00 00"/>
+                <Inp2 label="Relation" val={formContact.relation} onChange={v=>setFormContact(p=>({...p,relation:v}))} ph="Mère, Père..."/>
+              </div>
+              <div style={{display:'flex',gap:10}}>
+                <button onClick={()=>setShowAddContact(false)} style={{flex:1,background:C.border,border:'none',borderRadius:8,padding:10,color:C.text,cursor:'pointer'}}>Annuler</button>
+                <button onClick={ajouterContact} style={{flex:2,background:C.green,border:'none',borderRadius:8,padding:10,color:'#fff',cursor:'pointer',fontWeight:700}}>Ajouter</button>
+              </div>
+            </div>
+          )}
+          {contacts.map((c,i)=>(
+            <div key={c.id||i} style={{display:'flex',alignItems:'center',gap:10,background:C.hover,borderRadius:10,padding:12,marginBottom:8}}>
+              <div style={{width:30,height:30,borderRadius:'50%',background:i===0?`${C.red}30`:C.border,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,color:i===0?C.red:C.muted,fontSize:12}}>{i+1}</div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:C.text,fontSize:13}}>{c.prenom} {c.nom} {i===0&&<span style={{color:C.red,fontSize:10}}>(Principal)</span>}</div>
+                <div style={{color:'#4ade80',fontSize:12}}>{c.telephone}</div>
+                {c.relation&&<div style={{color:C.dim,fontSize:11}}>{c.relation}</div>}
+              </div>
+              <button onClick={()=>supprimerContact(c.id)} style={{background:`${C.red}15`,border:'none',borderRadius:8,padding:'5px 8px',color:C.red,cursor:'pointer',fontSize:11}}>✕</button>
+            </div>
+          ))}
+          {!contacts.length&&<div style={{textAlign:'center',color:C.dim,padding:12}}>Aucun contact d'urgence</div>}
+        </div>
+      )}
+      {onglet==='recharger'&&(
+        <div style={cardStyle}>
+          <div style={{fontWeight:800,color:C.text,marginBottom:4}}>💰 Recharger ma carte</div>
+          <div style={{color:C.muted,fontSize:12,marginBottom:16}}>Solde : <span style={{color:'#4ade80',fontWeight:700}}>{fmt(compte.solde)} FCFA</span></div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
+            {[1000,2000,5000,10000,20000,50000].map(m=>(
+              <button key={m} onClick={()=>setMontantRecharge(String(m))} style={{background:montantRecharge===String(m)?`${C.green}30`:C.hover,border:`1px solid ${montantRecharge===String(m)?C.green:C.border}`,borderRadius:10,padding:'8px 14px',color:montantRecharge===String(m)?'#4ade80':C.muted,cursor:'pointer',fontWeight:700,fontSize:13}}>{fmt(m)} F</button>
+            ))}
+          </div>
+          <input value={montantRecharge} onChange={e=>setMontantRecharge(e.target.value)} placeholder="Montant FCFA" type="number"
+            style={{width:'100%',background:C.hover,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 16px',color:'#4ade80',fontSize:22,fontWeight:900,textAlign:'center',outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+          <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+            {['Wave','Orange Money','MTN MoMo','Espèces'].map(m=>(
+              <button key={m} onClick={()=>setModeRecharge(m)} style={{flex:1,minWidth:70,padding:'8px 6px',borderRadius:10,border:`1px solid ${modeRecharge===m?C.green:C.border}`,background:modeRecharge===m?`${C.green}20`:C.hover,color:modeRecharge===m?'#4ade80':C.muted,cursor:'pointer',fontWeight:700,fontSize:11}}>{m}</button>
+            ))}
+          </div>
+          <button onClick={recharger} disabled={saving} style={{width:'100%',background:saving?'#1E2F42':C.green,border:'none',borderRadius:12,padding:14,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer'}}>
+            {saving?'Traitement...':montantRecharge?`💳 Recharger ${fmt(+montantRecharge)} FCFA`:'💳 Recharger'}
+          </button>
+        </div>
+      )}
+      {onglet==='transactions'&&(
+        <div style={cardStyle}>
+          <div style={{fontWeight:800,color:C.text,marginBottom:12}}>📋 Historique des transactions</div>
+          {(compte.transactions_recentes||[]).length===0&&<div style={{textAlign:'center',color:C.dim,padding:20}}>Aucune transaction</div>}
+          {(compte.transactions_recentes||[]).map((t,i)=>(
+            <div key={t.id||i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:`1px solid ${C.border}30`}}>
+              <div style={{flex:1}}>
+                <div style={{color:C.text,fontSize:13,fontWeight:600}}>{t.type==='recharge'?'⬆️':'⬇️'} {t.description||t.type}</div>
+                <div style={{color:C.dim,fontSize:11}}>{new Date(t.created_at).toLocaleDateString('fr-FR')}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{color:t.sens==='credit'?'#4ade80':C.amber,fontWeight:800,fontSize:14}}>{t.sens==='credit'?'+':'-'}{fmt(t.montant)} F</div>
+                <div style={{color:C.dim,fontSize:10}}>Solde: {fmt(t.solde_apres)} F</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  ROUTER
 // ════════════════════════════════════════════════════════════════════
@@ -1428,6 +1685,7 @@ export default function Dashboard(){
       <Route path="medecins-prives"   element={<PageMedecinsPrivesV2/>}/>
       <Route path="commandes"         element={<PageCommandeMedicament/>}/>
       <Route path="feedback"          element={<PageFeedback/>}/>
+        <Route path="card"              element={<PageMediConnectCard/>}/>
       <Route path="*"                 element={<PageHome/>}/>
     </Routes>
   );
