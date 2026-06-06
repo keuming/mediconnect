@@ -298,6 +298,11 @@ app.post('/api/admin/migrate', async (req, res) => {
     for (const sql of optTables) { await db(sql).catch(()=>{}); }
     results.push('✅ Tables Optique créées');
 
+    // Créer compte medecin résident démo
+    const hashM2 = await bcrypt.hash('demo1234', 10);
+    await db(`INSERT INTO utilisateurs (id,email,password,role,prenom,nom,is_active) VALUES (gen_random_uuid(),'medecin@demo.ci',$1,'medecin','Dr. Kofi','Asante',true) ON CONFLICT (email) DO UPDATE SET role='medecin'`, [hashM2]);
+    results.push('✅ Compte medecin@demo.ci (Médecin Résident)');
+
     res.json({ success: true, results, message: 'Migration complète' });
   } catch(e) { res.status(500).json({ success: false, message: e.message, results }); }
 });

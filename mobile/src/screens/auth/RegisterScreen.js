@@ -9,22 +9,139 @@ import { useAuthStore } from '../../store/authStore';
 import { C } from '../../components/UI';
 import { PAYS_LISTE, getVillesByPays } from '../../utils/geoAfrique';
 
+// ── Tous les profils disponibles ──────────────────────────────────
 const ROLES = [
-  { value:'patient',             label:'Patient',           icon:'👤', desc:'Prendre des RDV, gérer mes soins' },
-  { value:'medecin_independant', label:'Médecin Conseil',   icon:'⭐', desc:'Médecin de famille & suivi privé' },
-  { value:'medecin',             label:'Médecin Résident',  icon:'🩺', desc:'Médecin employé de clinique' },
-  { value:'pharmacie',           label:'Pharmacie',         icon:'💊', desc:'Ordonnances & livraisons' },
-  { value:'livreur',             label:'Livreur',           icon:'🛵', desc:'Missions de livraison' },
-  { value:'clinique',            label:'Clinique / Hôpital',icon:'🏥', desc:'Gestion planning & patients' },
-  { value:'assureur',            label:'Assureur',          icon:'🛡️', desc:'Dossiers tiers-payant' },
-  { value:'imagerie',            label:'Imagerie',          icon:'🩻', desc:'Radiologie, IRM, Scanner' },
-  { value:'laboratoire',         label:'Laboratoire',       icon:'🧪', desc:'Analyses biologiques' },
-  { value:'optique',             label:'Cabinet Optique',   icon:'🔭', desc:'Ventes & stock optique' },
+  {
+    value: 'patient',
+    label: 'Patient',
+    icon:  '👤',
+    color: C.green,
+    desc:  'Prendre des RDV, gérer mes ordonnances & soins',
+    badge: null,
+  },
+  {
+    value: 'medecin_independant',
+    label: 'Médecin Conseil',
+    icon:  '⭐',
+    color: '#7C3AED',
+    desc:  'Médecin de famille · Suivi privé · Consultations indépendantes',
+    badge: 'MC',
+  },
+  {
+    value: 'medecin',
+    label: 'Médecin Résident',
+    icon:  '🩺',
+    color: C.teal,
+    desc:  'Médecin employé d'une clinique ou d'un hôpital',
+    badge: 'MR',
+  },
+  {
+    value: 'pharmacie',
+    label: 'Pharmacie',
+    icon:  '💊',
+    color: C.teal,
+    desc:  'Gestion ordonnances, commandes & livraisons',
+    badge: null,
+  },
+  {
+    value: 'livreur',
+    label: 'Livreur',
+    icon:  '🛵',
+    color: C.amber,
+    desc:  'Gérer mes missions de livraison de médicaments',
+    badge: null,
+  },
+  {
+    value: 'clinique',
+    label: 'Clinique / Hôpital',
+    icon:  '🏥',
+    color: C.blue,
+    desc:  'Gérer planning, dossiers médicaux, facturation',
+    badge: null,
+  },
+  {
+    value: 'assureur',
+    label: 'Assureur',
+    icon:  '🛡️',
+    color: C.amber,
+    desc:  'Traiter les dossiers de remboursement tiers-payant',
+    badge: null,
+  },
+  {
+    value: 'imagerie',
+    label: 'Imagerie Médicale',
+    icon:  '🩻',
+    color: '#8B5CF6',
+    desc:  'Radiologie, IRM, Scanner, Échographie',
+    badge: null,
+  },
+  {
+    value: 'laboratoire',
+    label: 'Laboratoire',
+    icon:  '🧪',
+    color: C.teal,
+    desc:  'Analyses biologiques & résultats médicaux',
+    badge: null,
+  },
+  {
+    value: 'optique',
+    label: 'Cabinet Optique',
+    icon:  '🔭',
+    color: '#6366F1',
+    desc:  'Gestion stock montures, verres, ventes & ordonnances',
+    badge: null,
+  },
 ];
 
-const Inp = ({ label, value, onChange, placeholder, keyboardType, secure }) => (
+// ── Champs spécifiques par rôle ──────────────────────────────────
+const EXTRA_FIELDS = {
+  medecin_independant: [
+    { key:'specialite',    label:'Spécialité *',          placeholder:'Médecine générale, Cardiologie...', required: true },
+    { key:'numero_ordre',  label:'N° Ordre des médecins', placeholder:'OM-CI-2024-00001...' },
+    { key:'tarif',         label:'Tarif consultation (FCFA)', placeholder:'Ex: 5000', keyboard:'numeric' },
+  ],
+  medecin: [
+    { key:'specialite',    label:'Spécialité *',          placeholder:'Médecine générale, Chirurgie...', required: true },
+    { key:'nom_clinique',  label:'Nom clinique employeur',placeholder:'Polyclinique Sainte Marie...' },
+    { key:'numero_ordre',  label:'N° Ordre des médecins', placeholder:'OM-CI-2024-00001...' },
+  ],
+  pharmacie: [
+    { key:'nom_pharmacie', label:'Nom de la pharmacie *', placeholder:'Pharmacie Centrale...', required: true },
+    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+    { key:'num_autorisation', label:'N° Autorisation',    placeholder:'MSHP-2024-...' },
+  ],
+  clinique: [
+    { key:'nom_clinique',  label:'Nom de la clinique *',  placeholder:'Polyclinique du Sud...', required: true },
+    { key:'type_clinique', label:'Type d'établissement', placeholder:'Clinique, Hôpital, Cabinet...' },
+    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+  ],
+  assureur: [
+    { key:'nom_assureur',  label:'Nom de la compagnie *', placeholder:'NSIA Assurances CI...', required: true },
+    { key:'num_agrement',  label:'N° Agrément',           placeholder:'CIMA-2024-...' },
+  ],
+  imagerie: [
+    { key:'nom_etab',      label:'Nom de l'établissement *', placeholder:'Centre d'Imagerie...', required: true },
+    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+  ],
+  laboratoire: [
+    { key:'nom_etab',      label:'Nom du laboratoire *',  placeholder:'Laboratoire MediLab...', required: true },
+    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+  ],
+  optique: [
+    { key:'nom_optique',   label:'Nom du cabinet *',      placeholder:'Vision Plus Optique...', required: true },
+    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+  ],
+  livreur: [
+    { key:'num_permis',    label:'N° Permis de conduire', placeholder:'CI-2024-...' },
+    { key:'type_vehicule', label:'Type de véhicule',      placeholder:'Moto, Voiture, Vélo...' },
+  ],
+};
+
+const Inp = ({ label, value, onChange, placeholder, keyboardType, secure, required }) => (
   <View style={{ marginBottom: 14 }}>
-    <Text style={{ fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{label}</Text>
+    <Text style={{ fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+      {label}{required && <Text style={{ color: C.red }}> *</Text>}
+    </Text>
     <TextInput
       value={value || ''}
       onChangeText={onChange}
@@ -37,13 +154,10 @@ const Inp = ({ label, value, onChange, placeholder, keyboardType, secure }) => (
   </View>
 );
 
-// Sélecteur modal (pour pays et villes avec beaucoup d'options)
 const ModalSelector = ({ label, value, options, onSelect, placeholder }) => {
   const [visible, setVisible] = useState(false);
-  const [search, setSearch] = useState('');
-  const filtered = options.filter(o =>
-    (o.label || o).toLowerCase().includes(search.toLowerCase())
-  );
+  const [search,  setSearch]  = useState('');
+  const filtered = options.filter(o => (o.label || o).toLowerCase().includes(search.toLowerCase()));
   const displayLabel = options.find(o => (o.value || o) === value)?.label || value || placeholder;
 
   return (
@@ -63,13 +177,9 @@ const ModalSelector = ({ label, value, options, onSelect, placeholder }) => {
             <Text style={{ color: C.text, fontSize: 16, fontWeight: '800', flex: 1 }}>{label}</Text>
           </View>
           <View style={{ padding: 12 }}>
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Rechercher..."
+            <TextInput value={search} onChangeText={setSearch} placeholder="Rechercher..."
               placeholderTextColor={C.dim}
-              style={{ backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 10, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border }}
-            />
+              style={{ backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 10, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border }} />
           </View>
           <FlatList
             data={filtered}
@@ -93,171 +203,205 @@ const ModalSelector = ({ label, value, options, onSelect, placeholder }) => {
 
 export default function RegisterScreen({ navigation }) {
   const { doRegister, loading } = useAuthStore();
-  const [step, setStep]   = useState(1);
-  const [role, setRole]   = useState('');
-  const [pays, setPays]   = useState('CI');
+  const [step,  setStep]  = useState(1);
+  const [role,  setRole]  = useState('');
+  const [pays,  setPays]  = useState('CI');
   const [ville, setVille] = useState('');
-  const [form, setForm]   = useState({ prenom:'', nom:'', email:'', password:'', telephone:'' });
+  const [form,  setForm]  = useState({ prenom:'', nom:'', email:'', password:'', confirm:'', telephone:'' });
   const [extra, setExtra] = useState({});
   const f = k => v => setForm(p => ({...p, [k]: v}));
   const e = k => v => setExtra(p => ({...p, [k]: v}));
 
+  const roleInfo    = ROLES.find(r => r.value === role);
+  const extraFields = EXTRA_FIELDS[role] || [];
   const paysOptions = PAYS_LISTE.map(p => ({ value: p.code, label: p.nom }));
   const villesOptions = getVillesByPays(pays);
 
   const handleRegister = async () => {
     if (!form.prenom || !form.nom || !form.email || !form.password) {
-      Alert.alert('Champs requis', 'Remplissez tous les champs obligatoires');
-      return;
+      Alert.alert('Champs requis', 'Remplissez prénom, nom, email et mot de passe'); return;
     }
     if (form.password.length < 6) {
-      Alert.alert('Mot de passe', 'Le mot de passe doit faire au moins 6 caractères');
-      return;
+      Alert.alert('Mot de passe', 'Minimum 6 caractères'); return;
+    }
+    if (form.password !== form.confirm) {
+      Alert.alert('Mots de passe', 'Les mots de passe ne correspondent pas'); return;
     }
     if (!ville) {
-      Alert.alert('Ville requise', 'Veuillez sélectionner votre ville');
-      return;
+      Alert.alert('Ville requise', 'Sélectionnez votre ville'); return;
     }
-    const payload = { ...form, ...extra, role, pays_code: pays, ville };
+    // Vérifier champs requis spécifiques
+    for (const field of extraFields) {
+      if (field.required && !extra[field.key]) {
+        Alert.alert('Champ requis', field.label.replace(' *', '')); return;
+      }
+    }
+    const { confirm, ...formData } = form;
+    const payload = { ...formData, ...extra, role, pays_code: pays, ville };
     const res = await doRegister(payload);
-    if (!res.success) Alert.alert('Erreur', res.message);
+    if (!res.success) Alert.alert('Erreur inscription', res.message);
   };
 
+  // ── ÉTAPE 1 : Choix du profil ────────────────────────────────
+  if (step === 1) return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.border, gap: 12 }}>
+        <TouchableOpacity onPress={() => navigation?.goBack?.()}>
+          <Text style={{ color: C.muted, fontSize: 22 }}>←</Text>
+        </TouchableOpacity>
+        <View>
+          <Text style={{ color: C.text, fontSize: 17, fontWeight: '900' }}>Créer un compte</Text>
+          <Text style={{ color: C.dim, fontSize: 11, marginTop: 1 }}>Étape 1/2 — Choisissez votre profil</Text>
+        </View>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
+        <Text style={{ color: C.muted, fontSize: 13, marginBottom: 16, lineHeight: 20 }}>
+          Sélectionnez le profil qui correspond à votre situation. Ce choix détermine vos accès et fonctionnalités.
+        </Text>
+        {ROLES.map(r => (
+          <TouchableOpacity key={r.value} onPress={() => setRole(r.value)}
+            style={{
+              backgroundColor: role === r.value ? `${r.color}18` : C.card,
+              borderRadius: 14, padding: 16, marginBottom: 10,
+              borderWidth: 1.5, borderColor: role === r.value ? r.color : C.border,
+              flexDirection: 'row', alignItems: 'center', gap: 14,
+            }}>
+            <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: `${r.color}20`, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 24 }}>{r.icon}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                <Text style={{ color: role === r.value ? r.color : C.text, fontWeight: '800', fontSize: 15 }}>{r.label}</Text>
+                {r.badge && (
+                  <View style={{ backgroundColor: `${r.color}25`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: r.color, fontSize: 10, fontWeight: '800' }}>{r.badge}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={{ color: C.dim, fontSize: 12, lineHeight: 17 }}>{r.desc}</Text>
+            </View>
+            <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: role === r.value ? r.color : C.border, backgroundColor: role === r.value ? r.color : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+              {role === r.value && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>✓</Text>}
+            </View>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity onPress={() => { if (!role) { Alert.alert('Requis', 'Sélectionnez votre profil'); return; } setStep(2); }}
+          style={{ backgroundColor: role ? (roleInfo?.color || C.green) : '#1E2F42', borderRadius: C.r, padding: 16, alignItems: 'center', marginTop: 8 }}>
+          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>
+            {role ? `Continuer avec ${roleInfo?.label} →` : 'Continuer →'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation?.navigate?.('Login')} style={{ marginTop: 14, alignItems: 'center' }}>
+          <Text style={{ color: C.dim, fontSize: 13 }}>Déjà un compte ? <Text style={{ color: C.greenL }}>Se connecter</Text></Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  // ── ÉTAPE 2 : Informations du compte ────────────────────────
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.border, gap: 12 }}>
+        <TouchableOpacity onPress={() => setStep(1)}>
+          <Text style={{ color: C.muted, fontSize: 22 }}>←</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: C.text, fontSize: 17, fontWeight: '900' }}>Créer un compte</Text>
+          <Text style={{ color: roleInfo?.color || C.greenL, fontSize: 11, marginTop: 1, fontWeight: '700' }}>
+            Étape 2/2 — {roleInfo?.icon} {roleInfo?.label}
+          </Text>
+        </View>
+      </View>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
-          {/* Header */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24, gap: 12 }}>
-            <TouchableOpacity onPress={() => step > 1 ? setStep(1) : navigation?.goBack?.()}>
-              <Text style={{ color: C.muted, fontSize: 22 }}>←</Text>
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: C.text, fontSize: 20, fontWeight: '900' }}>
-                {step === 1 ? 'Choisir un profil' : 'Créer mon compte'}
-              </Text>
-              <Text style={{ color: C.dim, fontSize: 12, marginTop: 2 }}>
-                {step === 1 ? 'Étape 1 / 2 — Sélectionnez votre rôle' : `Étape 2 / 2 — ${ROLES.find(r=>r.value===role)?.icon} ${ROLES.find(r=>r.value===role)?.label}`}
-              </Text>
+          {/* Infos personnelles */}
+          <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: C.border }}>
+            <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🪪 Informations personnelles</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Inp label="Prénom" value={form.prenom} onChange={f('prenom')} placeholder="Adjoua" required />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Inp label="Nom" value={form.nom} onChange={f('nom')} placeholder="Koné" required />
+              </View>
             </View>
+            <Inp label="Email" value={form.email} onChange={f('email')} placeholder="email@exemple.com" keyboardType="email-address" required />
+            <Inp label="Mot de passe" value={form.password} onChange={f('password')} placeholder="Minimum 6 caractères" secure required />
+            <Inp label="Confirmer le mot de passe" value={form.confirm} onChange={f('confirm')} placeholder="Répétez le mot de passe" secure required />
+            <Inp label="Téléphone" value={form.telephone} onChange={f('telephone')} placeholder="+225 07 00 00 00" keyboardType="phone-pad" />
           </View>
 
-          {/* ÉTAPE 1 : Sélection rôle */}
-          {step === 1 && (
-            <>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
-                {ROLES.map(r => (
-                  <TouchableOpacity key={r.value} onPress={() => setRole(r.value)}
-                    style={{
-                      width: '47%', backgroundColor: role === r.value ? `${C.green}18` : C.card,
-                      borderRadius: 14, padding: 14, borderWidth: 1.5,
-                      borderColor: role === r.value ? C.green : C.border,
-                    }}>
-                    <Text style={{ fontSize: 26, marginBottom: 6 }}>{r.icon}</Text>
-                    <Text style={{ color: role === r.value ? C.greenL : C.text, fontWeight: '700', fontSize: 13, marginBottom: 3 }}>{r.label}</Text>
-                    <Text style={{ color: C.dim, fontSize: 11, lineHeight: 16 }}>{r.desc}</Text>
-                  </TouchableOpacity>
-                ))}
+          {/* Localisation */}
+          <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: C.border }}>
+            <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🌍 Localisation</Text>
+            <ModalSelector
+              label="Pays *"
+              value={pays}
+              options={paysOptions}
+              onSelect={v => { setPays(v); setVille(''); }}
+              placeholder="Sélectionner un pays..."
+            />
+            <ModalSelector
+              label="Ville / Commune *"
+              value={ville}
+              options={villesOptions}
+              onSelect={setVille}
+              placeholder={pays ? 'Sélectionner une ville...' : 'Choisissez d'abord un pays'}
+            />
+          </View>
+
+          {/* Champs spécifiques selon le rôle */}
+          {extraFields.length > 0 && (
+            <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: `${roleInfo?.color || C.border}40` }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <Text style={{ fontSize: 18 }}>{roleInfo?.icon}</Text>
+                <Text style={{ color: roleInfo?.color || C.text, fontWeight: '800', fontSize: 14 }}>
+                  Informations {roleInfo?.label}
+                </Text>
+                {roleInfo?.badge && (
+                  <View style={{ backgroundColor: `${roleInfo.color}25`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: roleInfo.color, fontSize: 10, fontWeight: '800' }}>{roleInfo.badge}</Text>
+                  </View>
+                )}
               </View>
-              <TouchableOpacity onPress={() => { if (!role) { Alert.alert('Requis', 'Sélectionnez votre profil'); return; } setStep(2); }}
-                style={{ backgroundColor: role ? C.green : '#1E2F42', borderRadius: C.r, padding: 16, alignItems: 'center' }}>
-                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Continuer →</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigation?.navigate?.('Login')} style={{ marginTop: 16, alignItems: 'center' }}>
-                <Text style={{ color: C.dim, fontSize: 13 }}>Déjà un compte ? <Text style={{ color: C.greenL }}>Se connecter</Text></Text>
-              </TouchableOpacity>
-            </>
+              {extraFields.map(field => (
+                <Inp
+                  key={field.key}
+                  label={field.label}
+                  value={extra[field.key]}
+                  onChange={e(field.key)}
+                  placeholder={field.placeholder}
+                  keyboardType={field.keyboard}
+                  required={field.required}
+                />
+              ))}
+              {/* Message spécifique MC vs MR */}
+              {role === 'medecin_independant' && (
+                <View style={{ backgroundColor: `${C.purple}10`, borderRadius: 10, padding: 10, marginTop: 4 }}>
+                  <Text style={{ color: '#C4B5FD', fontSize: 12, lineHeight: 18 }}>
+                    ⭐ En tant que Médecin Conseil (MC), votre profil sera visible publiquement. Les patients pourront vous contacter directement pour des consultations privées.
+                  </Text>
+                </View>
+              )}
+              {role === 'medecin' && (
+                <View style={{ backgroundColor: `${C.teal}10`, borderRadius: 10, padding: 10, marginTop: 4 }}>
+                  <Text style={{ color: '#5EEAD4', fontSize: 12, lineHeight: 18 }}>
+                    🏥 En tant que Médecin Résident (MR), vous serez rattaché à une clinique. Votre planning sera géré par l'établissement employeur.
+                  </Text>
+                </View>
+              )}
+            </View>
           )}
 
-          {/* ÉTAPE 2 : Informations */}
-          {step === 2 && (
-            <>
-              {/* Infos personnelles */}
-              <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🪪 Informations personnelles</Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Inp label="Prénom *" value={form.prenom} onChange={f('prenom')} placeholder="Adjoua" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Inp label="Nom *" value={form.nom} onChange={f('nom')} placeholder="Koné" />
-                  </View>
-                </View>
-                <Inp label="Email *" value={form.email} onChange={f('email')} placeholder="email@exemple.com" keyboardType="email-address" />
-                <Inp label="Mot de passe *" value={form.password} onChange={f('password')} placeholder="Minimum 6 caractères" secure />
-                <Inp label="Téléphone" value={form.telephone} onChange={f('telephone')} placeholder="+225 07 00 00 00" keyboardType="phone-pad" />
-              </View>
+          <TouchableOpacity onPress={handleRegister} disabled={loading}
+            style={{ backgroundColor: loading ? '#1E2F42' : (roleInfo?.color || C.green), borderRadius: C.r, padding: 16, alignItems: 'center', marginBottom: 12 }}>
+            {loading
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Créer mon compte ✓</Text>
+            }
+          </TouchableOpacity>
 
-              {/* Géographie */}
-              <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🌍 Localisation</Text>
-                <ModalSelector
-                  label="Pays *"
-                  value={pays}
-                  options={paysOptions}
-                  onSelect={v => { setPays(v); setVille(''); }}
-                  placeholder="Sélectionner un pays..."
-                />
-                <ModalSelector
-                  label="Ville / Commune *"
-                  value={ville}
-                  options={villesOptions}
-                  onSelect={setVille}
-                  placeholder={pays ? 'Sélectionner une ville...' : 'Choisissez d\'abord un pays'}
-                />
-              </View>
-
-              {/* Champs spécifiques par rôle */}
-              {(role === 'clinique') && (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🏥 Informations clinique</Text>
-                  <Inp label="Nom de la clinique *" value={extra.nom_clinique} onChange={e('nom_clinique')} placeholder="Polyclinique du Sud..." />
-                  <Inp label="Adresse" value={extra.adresse} onChange={e('adresse')} placeholder="Quartier, Rue..." />
-                </View>
-              )}
-              {(role === 'medecin_independant' || role === 'medecin') && (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🩺 Informations médicales</Text>
-                  <Inp label="Spécialité" value={extra.specialite} onChange={e('specialite')} placeholder="Médecine générale, Cardiologie..." />
-                  <Inp label="Numéro d'ordre" value={extra.numero_ordre} onChange={e('numero_ordre')} placeholder="Ordre des médecins..." />
-                </View>
-              )}
-              {role === 'pharmacie' && (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>💊 Informations pharmacie</Text>
-                  <Inp label="Nom de la pharmacie *" value={extra.nom_pharmacie} onChange={e('nom_pharmacie')} placeholder="Pharmacie Centrale..." />
-                  <Inp label="Adresse" value={extra.adresse} onChange={e('adresse')} placeholder="Quartier, Rue..." />
-                </View>
-              )}
-              {role === 'optique' && (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🔭 Cabinet optique</Text>
-                  <Inp label="Nom du cabinet *" value={extra.nom_optique} onChange={e('nom_optique')} placeholder="Vision Plus Optique..." />
-                </View>
-              )}
-              {(role === 'imagerie' || role === 'laboratoire') && (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🏥 Établissement</Text>
-                  <Inp label="Nom de l'établissement *" value={extra.nom_etab} onChange={e('nom_etab')} placeholder="Centre d'Imagerie..." />
-                </View>
-              )}
-              {role === 'assureur' && (
-                <View style={{ backgroundColor: C.card, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: C.border }}>
-                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginBottom: 14 }}>🛡️ Compagnie d'assurance</Text>
-                  <Inp label="Nom de la compagnie *" value={extra.nom_assureur} onChange={e('nom_assureur')} placeholder="NSIA Assurances..." />
-                </View>
-              )}
-
-              <TouchableOpacity onPress={handleRegister} disabled={loading}
-                style={{ backgroundColor: loading ? '#1E2F42' : C.green, borderRadius: C.r, padding: 16, alignItems: 'center', marginBottom: 12 }}>
-                {loading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Créer mon compte ✓</Text>
-                }
-              </TouchableOpacity>
-            </>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

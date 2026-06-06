@@ -8,13 +8,11 @@ import { useAuthStore } from '../../store/authStore';
 import { C } from '../../components/UI';
 
 const DEMOS = [
-  { role:'patient',             email:'patient@demo.ci',        pwd:'demo1234',      icon:'👤', label:'Patient',         color:C.green },
-  { role:'medecin_independant', email:'medecin.indep@demo.ci',  pwd:'demo1234',      icon:'⭐', label:'Méd. Conseil',    color:C.purple },
-  { role:'medecin',             email:'clinique@demo.ci',       pwd:'demo1234',      icon:'🩺', label:'Méd. Résident',   color:C.teal },
-  { role:'pharmacie',           email:'pharmacie@demo.ci',      pwd:'demo1234',      icon:'💊', label:'Pharmacie',       color:C.teal },
-  { role:'livreur',             email:'livreur@demo.ci',        pwd:'demo1234',      icon:'🛵', label:'Livreur',         color:C.amber },
-  { role:'optique',             email:'optique@demo.ci',        pwd:'demo1234',      icon:'🔭', label:'Optique',         color:'#6366F1' },
-  { role:'ministere',           email:'ministere@sante.ci',     pwd:'MinistereCI2024',icon:'🏛️',label:'Ministère',       color:C.green },
+  { role:'patient',             email:'patient@demo.ci',       pwd:'demo1234',       icon:'👤', label:'Patient',         color:C.green  },
+  { role:'medecin_independant', email:'medecin.indep@demo.ci', pwd:'demo1234',       icon:'⭐', label:'Méd. Conseil',    color:'#7C3AED' },
+  { role:'medecin',             email:'medecin@demo.ci',       pwd:'demo1234',       icon:'🩺', label:'Méd. Résident',   color:C.teal   },
+  { role:'pharmacie',           email:'pharmacie@demo.ci',     pwd:'demo1234',       icon:'💊', label:'Pharmacie',       color:C.teal   },
+  { role:'livreur',             email:'livreur@demo.ci',       pwd:'demo1234',       icon:'🛵', label:'Livreur',         color:C.amber  },
 ];
 
 export default function LoginScreen({ navigation }) {
@@ -37,7 +35,7 @@ export default function LoginScreen({ navigation }) {
           {/* Logo */}
           <View style={{ alignItems: 'center', marginVertical: 32 }}>
             <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: `${C.green}20`, borderWidth: 2, borderColor: C.green, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 32 }}>+</Text>
+              <Text style={{ fontSize: 32, color: C.greenL }}>+</Text>
             </View>
             <Text style={{ fontSize: 26, fontWeight: '900', color: C.text }}>
               <Text style={{ color: C.greenL }}>Medi</Text>Connect
@@ -96,7 +94,7 @@ export default function LoginScreen({ navigation }) {
               <TouchableOpacity key={d.role} onPress={() => handleLogin(d.email, d.pwd)} disabled={loading}
                 style={{
                   backgroundColor: `${d.color}18`,
-                  borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9,
+                  borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
                   borderWidth: 1, borderColor: `${d.color}40`,
                   flexDirection: 'row', alignItems: 'center', gap: 6,
                   minWidth: '28%',
@@ -106,6 +104,14 @@ export default function LoginScreen({ navigation }) {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Infos démo */}
+          <View style={{ backgroundColor: `${C.border}30`, borderRadius: 10, padding: 12, marginTop: 16 }}>
+            <Text style={{ color: C.dim, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
+              Comptes démo — mot de passe: <Text style={{ color: C.greenL, fontWeight: '700' }}>demo1234</Text>
+            </Text>
+          </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

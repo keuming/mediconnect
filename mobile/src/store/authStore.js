@@ -39,10 +39,13 @@ export const useAuthStore = create(
           });
           const data = await res.json();
           if (data.success && data.token) {
-            // Normaliser le rôle
+            // Normaliser le rôle pour la navigation
             const user = data.user;
-            if (user.role === 'medecin_prive') user.role = 'medecin_independant';
-            if (user.role === 'medecin_conseil') user.role = 'medecin_independant';
+            // Médecins indépendants → même navigateur
+            if (['medecin_prive','medecin_conseil'].includes(user.role))
+              user.role = 'medecin_independant';
+            // Médecin résident → navigateur médecin
+            // (garde 'medecin' tel quel)
             set({ user, token: data.token, loading: false });
             return { success: true };
           }

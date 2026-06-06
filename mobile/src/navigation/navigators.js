@@ -242,23 +242,26 @@ const ROLE_NAV = {
 export function RootNavigator() {
   const { user, isAuthenticated } = useAuthStore();
   const authed  = isAuthenticated();
-  const navName = authed ? (ROLE_NAV[user?.role] || 'Login') : 'Login';
+
+  // Déterminer l'écran initial selon le rôle
+  const getInitialRoute = () => {
+    if (!authed) return 'Login';
+    return ROLE_NAV[user?.role] || 'Patient';
+  };
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false, animationEnabled: true }}>
-      {!authed ? (
-        <>
-          <Stack.Screen name="Login"    component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-        </>
-      ) : (
-        <>
-          <Stack.Screen name="Patient"  component={PatientNavigator} />
-          <Stack.Screen name="Livreur"  component={LivreurNavigator} />
-          <Stack.Screen name="Pharmacie" component={PharmaNavigator} />
-          <Stack.Screen name="Medecin"  component={MedecinNavigator} />
-        </>
-      )}
+    <Stack.Navigator
+      initialRouteName={getInitialRoute()}
+      screenOptions={{ headerShown: false, animationEnabled: true }}
+    >
+      {/* Auth */}
+      <Stack.Screen name="Login"    component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      {/* Profils */}
+      <Stack.Screen name="Patient"  component={PatientNavigator} />
+      <Stack.Screen name="Livreur"  component={LivreurNavigator} />
+      <Stack.Screen name="Pharmacie" component={PharmaNavigator} />
+      <Stack.Screen name="Medecin"  component={MedecinNavigator} />
     </Stack.Navigator>
   );
 }
