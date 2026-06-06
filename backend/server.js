@@ -714,3 +714,4 @@ if (!process.env.VERCEL) {
 }
 
 module.exports = app;
+// card tables Sam  6 jui 2026 16:22:21 GMT
