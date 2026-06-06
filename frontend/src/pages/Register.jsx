@@ -12,6 +12,8 @@ const ROLES = [
   { value: 'medecin_independant', label: 'Médecin Conseil',      icon: '⭐', desc: 'Médecin de famille · Suivi privé · 500 F/mois' },
   { value: 'imagerie',            label: 'Imagerie Médicale',    icon: '🩻', desc: 'Radiologie, IRM, Scanner' },
   { value: 'laboratoire',         label: 'Laboratoire',          icon: '🧪', desc: 'Analyses biologiques' },
+  { value: 'optique',             label: 'Cabinet Optique',       icon: '🔭', desc: 'Gestion stock, ventes, ordonnances optiques' },
+  { value: 'ministere',           label: 'Ministère de la Santé', icon: '🏛️', desc: 'Dashboard épidémiologique national' },
 ];
 
 const PAYS = [
@@ -244,7 +246,13 @@ export default function Register() {
                 </div>
               </div>
             )}
-            {(role==='imagerie'||role==='laboratoire') && extraInp(`Nom de l'établissement`, 'nom_etab', { placeholder:role==='imagerie'?'Centre d\'imagerie du Plateau':'Laboratoire Biomédical' })}
+            {role==='optique' && extraInp("Nom du cabinet optique *", 'nom_optique', { placeholder:'Vision Plus Optique...' })}
+      {role==='ministere' && (
+        <div style={{ background:'rgba(10,143,88,.08)', borderRadius:10, padding:14, marginBottom:16, fontSize:13, color:C.muted }}>
+          ⚠️ L'accès Ministère de la Santé est réservé aux agents officiels. Votre compte sera validé par l'administrateur avant activation.
+        </div>
+      )}
+      {(role==='imagerie'||role==='laboratoire') && extraInp(`Nom de l'établissement`, 'nom_etab', { placeholder:role==='imagerie'?'Centre d\'imagerie du Plateau':'Laboratoire Biomédical' })}
             {(role==='patient') && (
               <div style={{ background:C.input, borderRadius:12, padding:16, marginBottom:16, fontSize:13, color:C.muted }}>
                 👤 Votre dossier médical électronique sera créé automatiquement. Vous pourrez le compléter depuis votre tableau de bord.

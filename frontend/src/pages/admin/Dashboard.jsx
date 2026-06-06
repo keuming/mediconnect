@@ -29,6 +29,10 @@ const ROLE_META={
   pharmacie:{color:"teal",icon:"💊",label:"Pharmacie"},
   livreur:{color:"amber",icon:"🛵",label:"Livreur"},
   assureur:{color:"blue",icon:"🛡️",label:"Assureur"},
+  imagerie:{color:"purple",icon:"🩻",label:"Imagerie"},
+  laboratoire:{color:"teal",icon:"🧪",label:"Laboratoire"},
+  optique:{color:"indigo",icon:"🔭",label:"Cabinet Optique"},
+  ministere:{color:"green",icon:"🏛️",label:"Ministère Santé"},
   admin:{color:"gray",icon:"⚙️",label:"Admin"},
 };
 
@@ -362,7 +366,7 @@ function PageUtilisateurs(){
       )}
 
       {/* Modal: Créer utilisateur */}
-      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="👤 Créer un utilisateur" width={560}>
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="➕ Ajouter un prestataire / utilisateur" width={600}>
         <Grid cols={2} gap={12}>
           <Inp label="Prénom *" required value={form.prenom} onChange={f("prenom")} placeholder="Adjoua"/>
           <Inp label="Nom *" required value={form.nom} onChange={f("nom")} placeholder="Koné"/>
@@ -372,6 +376,18 @@ function PageUtilisateurs(){
           <Inp label="Ville" value={form.ville} onChange={f("ville")} placeholder="Abidjan"/>
         </Grid>
         <Sel label="Rôle *" required value={form.role} onChange={f("role")} options={Object.entries(ROLE_META).map(([role,m])=>({v:role,l:`${m.icon} ${m.label}`}))}/>
+        {/* Champs spécifiques selon le rôle */}
+        {form.role==='clinique'&&<Inp label="Nom de la clinique *" value={form.nom_clinique} onChange={f("nom_clinique")} placeholder="Polyclinique du Sud..."/>}
+        {form.role==='pharmacie'&&<Inp label="Nom de la pharmacie *" value={form.nom_pharmacie} onChange={f("nom_pharmacie")} placeholder="Pharmacie Centrale..."/>}
+        {form.role==='optique'&&<Inp label="Nom du cabinet optique *" value={form.nom_optique} onChange={f("nom_optique")} placeholder="Vision Plus Optique..."/>}
+        {(form.role==='imagerie'||form.role==='laboratoire')&&<Inp label="Nom de l'établissement *" value={form.nom_etab} onChange={f("nom_etab")} placeholder="Centre d'Imagerie..."/>}
+        {form.role==='assureur'&&<Inp label="Nom de la compagnie *" value={form.nom_assureur} onChange={f("nom_assureur")} placeholder="NSIA Assurances..."/>}
+        {form.role==='ministere'&&(
+          <div style={{background:"rgba(10,143,88,.08)",borderRadius:10,padding:12,fontSize:12,color:"#8BA0B5",marginBottom:8}}>
+            🏛️ Le compte Ministère aura accès au dashboard épidémiologique national (données anonymisées).
+          </div>
+        )}
+        {form.role==='medecin_independant'&&<Inp label="Spécialité" value={form.specialite} onChange={f("specialite")} placeholder="Médecine générale..."/>}
         <div style={{display:"flex",gap:10}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
           <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{if(!form.prenom||!form.nom||!form.email||!form.password){toast.error("Champs requis manquants");return;}addMut.mutate(form);}}>Créer l'utilisateur</Btn>
