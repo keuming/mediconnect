@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import useAuthStore from '../../context/authStore';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -678,11 +679,12 @@ const NAV = [
 export default function DashboardOptique() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuthStore();
 
   return (
     <div style={{ display:'flex', minHeight:'100vh', background:C.bg }}>
       {/* Sidebar */}
-      <div style={{ width:220, background:C.card, borderRight:`1px solid ${C.border}`, padding:'24px 12px', flexShrink:0 }}>
+      <div style={{ width:220, background:C.card, borderRight:`1px solid ${C.border}`, padding:'24px 12px', flexShrink:0, display:'flex', flexDirection:'column' }}>
         <div style={{ marginBottom:24, padding:'0 8px' }}>
           <div style={{ fontSize:22 }}>🔭</div>
           <div style={{ color:C.text, fontWeight:800, fontSize:15 }}>Cabinet Optique</div>
@@ -702,6 +704,15 @@ export default function DashboardOptique() {
             </button>
           );
         })}
+        <div style={{ marginTop:'auto', paddingTop:16, borderTop:`1px solid ${C.border}` }}>
+          <button onClick={() => { logout(); navigate('/login'); }} style={{
+            width:'100%', textAlign:'left', padding:'10px 12px', borderRadius:8,
+            border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:10,
+            background:'transparent', color:C.red, fontWeight:700, fontSize:13,
+          }}>
+            <span>🚪</span> Déconnexion
+          </button>
+        </div>
       </div>
 
       {/* Contenu */}
