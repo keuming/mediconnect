@@ -1176,4 +1176,3 @@ if (!process.env.VERCEL) {
 }
 
 module.exports = app;
-// restart Sam  6 jui 2026 13:48:53 GMT
