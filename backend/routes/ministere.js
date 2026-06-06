@@ -3,7 +3,7 @@ const { db } = require('../config/db');
 const { auth, can } = require('../middleware/auth');
 
 // GET /api/ministere/overview
-router.get('/overview', auth, can('admin'), async (req, res) => {
+router.get('/overview', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const a = req.query.annee || new Date().getFullYear();
     const [totC, totP, totO, totCl] = await Promise.all([
@@ -23,7 +23,7 @@ router.get('/overview', auth, can('admin'), async (req, res) => {
 });
 
 // GET /api/ministere/pathologies
-router.get('/pathologies', auth, can('admin'), async (req, res) => {
+router.get('/pathologies', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const { annee, mois, top = 20 } = req.query;
     const a = annee || new Date().getFullYear();
@@ -71,7 +71,7 @@ router.get('/pathologies', auth, can('admin'), async (req, res) => {
 });
 
 // GET /api/ministere/pathologies/evolution
-router.get('/pathologies/evolution', auth, can('admin'), async (req, res) => {
+router.get('/pathologies/evolution', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const { annee, affection } = req.query;
     const a = annee || new Date().getFullYear();
@@ -89,7 +89,7 @@ router.get('/pathologies/evolution', auth, can('admin'), async (req, res) => {
 });
 
 // GET /api/ministere/medicaments
-router.get('/medicaments', auth, can('admin'), async (req, res) => {
+router.get('/medicaments', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const { annee, mois, top = 20 } = req.query;
     const a = annee || new Date().getFullYear();
@@ -121,7 +121,7 @@ router.get('/medicaments', auth, can('admin'), async (req, res) => {
 });
 
 // GET /api/ministere/epidemio-mensuelle
-router.get('/epidemio-mensuelle', auth, can('admin'), async (req, res) => {
+router.get('/epidemio-mensuelle', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const a = req.query.annee || new Date().getFullYear();
     const r = await db(`
@@ -148,7 +148,7 @@ router.get('/epidemio-mensuelle', auth, can('admin'), async (req, res) => {
 });
 
 // GET /api/ministere/demographics
-router.get('/demographics', auth, can('admin'), async (req, res) => {
+router.get('/demographics', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const a = req.query.annee || new Date().getFullYear();
     const r = await db(`
@@ -171,7 +171,7 @@ router.get('/demographics', auth, can('admin'), async (req, res) => {
 });
 
 // GET /api/ministere/geo-morbidite
-router.get('/geo-morbidite', auth, can('admin'), async (req, res) => {
+router.get('/geo-morbidite', auth, can('admin', 'ministere'), async (req, res) => {
   try {
     const a = req.query.annee || new Date().getFullYear();
     const r = await db(`

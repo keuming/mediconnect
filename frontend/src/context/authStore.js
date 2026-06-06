@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const API = 'https://mediconnect-backend-v2.vercel.app/api';
+const API = 'https://mediconnect-fed6.vercel.app/api';
 
 const useAuthStore = create(
   persist(
@@ -102,6 +102,7 @@ const useAuthStore = create(
             }
             // S'assurer que le rôle est normalisé
             if (user.role === 'medecin_prive') user.role = 'medecin_independant';
+            if (user.role === 'ministere_sante') user.role = 'ministere';
             set({ token: data.token, user, loading: false });
             return { success: true, user };
           }

@@ -75,6 +75,7 @@ const RoleRedirect = () => {
     pharmacie:           '/pharmacie',
     livreur:             '/livreur',
     admin:               '/admin',
+    ministere:           '/ministere',
     assureur:            '/assureur',
     imagerie:            '/imagerie',
     laboratoire:         '/laboratoire',
@@ -180,6 +181,13 @@ export default function App() {
               </PrivateRoute>
             } />
 
+            {/* Ministère Santé — accès direct */}
+            <Route path="/ministere/*" element={
+              <PrivateRoute roles={['ministere','admin']}>
+                <AppLayout role="ministere"><DashboardMinistere /></AppLayout>
+              </PrivateRoute>
+            } />
+
             {/* 404 */}
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
@@ -188,4 +196,3 @@ export default function App() {
     </QueryClientProvider>
   );
 }
-// Sam  6 jui 2026 13:32:31 GMT

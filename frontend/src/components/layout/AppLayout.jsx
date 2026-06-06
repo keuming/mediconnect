@@ -67,6 +67,13 @@ const NAV = {
     { path:'/admin/configuration',           icon:'⚙️', label:'Configuration' },
     { path:'/admin/ministere',               icon:'🏛️', label:'Ministère Santé',      badge:'NEW' },
   ],
+  ministere: [
+    { path:'/ministere',                    icon:'🏛️', label:'Vue d\'ensemble' },
+    { path:'/ministere/pathologies',        icon:'🦠', label:'Morbidité' },
+    { path:'/ministere/medicaments',        icon:'💊', label:'Médicaments' },
+    { path:'/ministere/demographics',       icon:'👥', label:'Démographie' },
+    { path:'/ministere/geo',                icon:'🗺️', label:'Géographie' },
+  ],
   assureur: [
     { path:'/assureur',             icon:'📊', label:'Dashboard' },
     { path:'/assureur/dossiers',    icon:'📁', label:'Dossiers' },
