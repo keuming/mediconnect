@@ -236,6 +236,22 @@ app.use('/api',           require('./routes/extra'));
 app.use('/api/optique',   require('./routes/optique'));
 
 // ── HEALTH & ROOT ─────────────────────────────────────────────────
+// Route de migration forcée (admin seulement)
+app.post('/api/admin/migrate', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== (process.env.JWT_SECRET || 'mediconnect_dev_secret_2024')) {
+    return res.status(403).json({ success: false, message: 'Clé invalide' });
+  }
+  try {
+    await db(`ALTER TABLE utilisateurs DROP CONSTRAINT IF EXISTS utilisateurs_role_check`);
+    await db(`ALTER TABLE utilisateurs ADD CONSTRAINT utilisateurs_role_check CHECK (role IN ('patient','clinique','medecin','medecin_independant','medecin_conseil','medecin_prive','pharmacie','livreur','admin','assureur','imagerie','laboratoire','ministere','ministere_sante','optique'))`);
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash('demo1234', 10);
+    await db(`INSERT INTO utilisateurs (id,email,password,role,prenom,nom,is_active) VALUES (gen_random_uuid(),'optique@demo.ci',$1,'optique','Cabinet','Optique Demo',true) ON CONFLICT (email) DO UPDATE SET role='optique'`, [hash]);
+    res.json({ success: true, message: 'Migration OK — compte optique@demo.ci créé' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db('SELECT 1');
@@ -685,4 +701,3 @@ if (!process.env.VERCEL) {
 }
 
 module.exports = app;
-// optique Sam  6 jui 2026 15:05:42 GMT
