@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useAuthStore from '../context/authStore';
+import { PAYS_OPTIONS, getVillesByPays } from '../utils/geoAfrique';
 
 const ROLES = [
   { value: 'patient',             label: 'Patient',              icon: '👤', desc: 'Prendre des RDV, gérer mes ordonnances' },
@@ -37,6 +38,8 @@ const C = {
 export default function Register() {
   const [step, setStep]   = useState(1);
   const [role, setRole]   = useState('');
+  const [pays, setPays]   = useState('CI');
+  const [ville, setVille] = useState('');
   const [form, setForm]   = useState({
     prenom:'', nom:'', email:'', telephone:'',
     ville:'Abidjan', pays_code:'CI', password:'', confirm:''
@@ -58,6 +61,8 @@ export default function Register() {
     const payload = {
       ...form,
       role,
+      pays_code: pays,
+      ville: ville,
       ...extraForm,
     };
     delete payload.confirm;
@@ -171,15 +176,22 @@ export default function Register() {
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
               <div style={{ marginBottom:14 }}>
-                <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:5 }}>Pays</label>
-                <select value={form.pays_code} onChange={e=>setForm({...form,pays_code:e.target.value})}
-                  style={{ width:'100%', background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:'10px 14px', color:C.text, fontSize:13, outline:'none' }}>
-                  {PAYS.map(p=><option key={p.code} value={p.code}>{p.name}</option>)}
+                <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:.5, marginBottom:6 }}>Pays *</label>
+                <select value={pays} onChange={e=>{setPays(e.target.value);setVille('');}}
+                  style={{ width:'100%', background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:'10px 12px', color:C.text, fontSize:13, outline:'none' }}>
+                  <option value="">Sélectionner un pays...</option>
+                  {PAYS_OPTIONS.map(p=><option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
-              {inp('Ville', 'ville', { placeholder:'Abidjan' })}
+              <div style={{ marginBottom:14 }}>
+                <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:.5, marginBottom:6 }}>Ville / Commune *</label>
+                <select value={ville} onChange={e=>setVille(e.target.value)}
+                  style={{ width:'100%', background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:'10px 12px', color:ville?C.text:C.dim, fontSize:13, outline:'none' }}>
+                  <option value="">Sélectionner une ville...</option>
+                  {getVillesByPays(pays).map(v=><option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
             </div>
-
             <div style={{ marginBottom:14 }}>
               <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:5 }}>Mot de passe *</label>
               <div style={{ position:'relative' }}>

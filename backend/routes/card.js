@@ -114,8 +114,9 @@ router.post('/lier-carte', auth, async (req, res) => {
 
     // Générer numéro de compte unique
     const annee = new Date().getFullYear();
-    const seq = await db("SELECT COUNT(*)+1 AS n FROM mediconnect_accounts");
-    const numCompte = `MCA-${pays_code||'CI'}-${annee}-${String(seq.rows[0].n).padStart(6,'0')}`;
+    const codeP = pays_code || 'CI';
+    const seq = await db("SELECT COUNT(*)+1 AS n FROM mediconnect_accounts WHERE numero_compte LIKE $1", [`MCA-${codeP}-%`]);
+    const numCompte = `MCA-${codeP}-${annee}-${String(seq.rows[0].n).padStart(6,'0')}`;
 
     // Créer le compte
     const account = await db(`
@@ -300,11 +301,12 @@ router.post('/admin/generer-cartes', auth, can('admin'), async (req, res) => {
   if (quantite > 1000) return res.status(400).json({ success: false, message: 'Maximum 1000 cartes par lot' });
   try {
     const annee = new Date().getFullYear();
-    const existing = await db("SELECT COUNT(*) c FROM mediconnect_cards");
+    const pays_code = req.body.pays_code || 'CI';
+    const existing = await db("SELECT COUNT(*) c FROM mediconnect_cards WHERE numero_carte LIKE $1", [`MC-${pays_code}-%`]);
     let start = +existing.rows[0].c + 1;
     const cartes = [];
     for (let i = 0; i < quantite; i++) {
-      const num = `MC-CI-${annee}-${String(start+i).padStart(6,'0')}`;
+      const num = `MC-${pays_code}-${annee}-${String(start+i).padStart(6,'0')}`;
       cartes.push(num);
     }
     let created = 0;

@@ -33,7 +33,7 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  const { email, password, prenom, nom, role, telephone } = req.body;
+  const { email, password, prenom, nom, role, telephone, pays_code, ville } = req.body;
   if (!email || !password)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
   try {
@@ -43,8 +43,8 @@ router.post('/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const id = uuid();
     const r = await db(
-      'INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [id, email, hash, prenom||'', nom||'', role||'patient', telephone||null]
+      'INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,pays_code,ville) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [id, email, hash, prenom||'', nom||'', role||'patient', telephone||null, pays_code||'CI', ville||null]
     );
     const token = jwt.sign({ id, role: role||'patient' }, JWT_SECRET, { expiresIn: '7d' });
     const { password: _, ...u } = r.rows[0];
