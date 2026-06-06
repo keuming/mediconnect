@@ -14,6 +14,7 @@ const DEMOS = [
   { role: 'imagerie',            label: 'Imagerie',          icon: '🩻', email: 'imagerie@demo.ci' },
   { role: 'laboratoire',         label: 'Laboratoire',       icon: '🧪', email: 'laboratoire@demo.ci' },
   { role: 'ministere',           label: 'Ministère Santé',   icon: '🏛️', email: 'ministere@sante.ci',  pwd: 'MinistereCI2024' },
+  { role: 'optique',             label: 'Cabinet Optique',   icon: '🔭', email: 'optique@demo.ci' },
 ];
 
 export default function Login() {

@@ -161,9 +161,36 @@ const initTables = async () => {
     "UPDATE utilisateurs SET is_active=true WHERE is_active IS NULL",
   ];
   for (const sql of alters) { await db(sql).catch(()=>{}); }
+  // Tables Cabinet Optique
+  const optiqueTables = [
+    `CREATE TABLE IF NOT EXISTS cabinets_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID, nom VARCHAR(200) NOT NULL, adresse TEXT, ville VARCHAR(100), telephone VARCHAR(30), email VARCHAR(200), numero_registre VARCHAR(100), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS patients_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, prenom VARCHAR(100) NOT NULL, nom VARCHAR(100) NOT NULL, date_naissance DATE, telephone VARCHAR(30), email VARCHAR(200), adresse TEXT, ville VARCHAR(100), assurance VARCHAR(100), numero_police VARCHAR(100), taux_prise_en_charge INTEGER DEFAULT 0, od_sphere DECIMAL(5,2), od_cylindre DECIMAL(5,2), od_axe INTEGER, og_sphere DECIMAL(5,2), og_cylindre DECIMAL(5,2), og_axe INTEGER, addition DECIMAL(4,2), ecart_pupillaire DECIMAL(5,1), notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS ordonnances_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, patient_id UUID, patient_nom VARCHAR(200), medecin_prescripteur VARCHAR(200), date_prescription DATE DEFAULT CURRENT_DATE, date_validite DATE, od_sphere DECIMAL(5,2), od_cylindre DECIMAL(5,2), od_axe INTEGER, od_addition DECIMAL(4,2), od_prisme DECIMAL(4,2), og_sphere DECIMAL(5,2), og_cylindre DECIMAL(5,2), og_axe INTEGER, og_addition DECIMAL(4,2), og_prisme DECIMAL(4,2), ecart_pupillaire_vl DECIMAL(5,1), ecart_pupillaire_vp DECIMAL(5,1), type_correction VARCHAR(50) DEFAULT 'unifocal', diagnostic_ophtalmologique TEXT, notes TEXT, statut VARCHAR(20) DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS stock_montures (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, reference VARCHAR(100), marque VARCHAR(100) NOT NULL, modele VARCHAR(100), couleur VARCHAR(50), taille VARCHAR(20), materiau VARCHAR(50), genre VARCHAR(20) DEFAULT 'mixte', quantite INTEGER DEFAULT 0, seuil_alerte INTEGER DEFAULT 2, prix_achat DECIMAL(10,2), prix_vente DECIMAL(10,2) NOT NULL, fournisseur VARCHAR(200), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS stock_verres (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, reference VARCHAR(100), marque VARCHAR(100) NOT NULL, type_verre VARCHAR(50) NOT NULL, indice DECIMAL(4,2), traitement VARCHAR(200), teinte VARCHAR(50), gamme_sphere_min DECIMAL(5,2), gamme_sphere_max DECIMAL(5,2), gamme_cylindre_max DECIMAL(5,2), quantite INTEGER DEFAULT 0, seuil_alerte INTEGER DEFAULT 2, prix_achat DECIMAL(10,2), prix_vente_paire DECIMAL(10,2) NOT NULL, fournisseur VARCHAR(200), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS stock_accessoires_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, nom VARCHAR(200) NOT NULL, categorie VARCHAR(100), reference VARCHAR(100), quantite INTEGER DEFAULT 0, seuil_alerte INTEGER DEFAULT 5, prix_achat DECIMAL(10,2), prix_vente DECIMAL(10,2) NOT NULL, fournisseur VARCHAR(200), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS ventes_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, patient_id UUID, patient_nom VARCHAR(200) NOT NULL, ordonnance_id UUID, monture_id UUID, monture_desc VARCHAR(200), monture_prix DECIMAL(10,2) DEFAULT 0, verre_od_id UUID, verre_og_id UUID, verres_desc VARCHAR(200), verres_prix DECIMAL(10,2) DEFAULT 0, pose_prix DECIMAL(10,2) DEFAULT 0, accessoires_json JSONB DEFAULT '[]', montant_total DECIMAL(12,2) DEFAULT 0, remise_montant DECIMAL(10,2) DEFAULT 0, montant_net DECIMAL(12,2) DEFAULT 0, est_assure BOOLEAN DEFAULT false, assurance VARCHAR(100), numero_police VARCHAR(100), taux_prise_en_charge INTEGER DEFAULT 0, montant_assurance DECIMAL(10,2) DEFAULT 0, montant_patient DECIMAL(10,2) DEFAULT 0, mode_paiement VARCHAR(50) DEFAULT 'Espèces', acompte_verse DECIMAL(10,2) DEFAULT 0, solde_restant DECIMAL(10,2) DEFAULT 0, statut_paiement VARCHAR(30) DEFAULT 'en_attente', statut VARCHAR(30) DEFAULT 'en_cours', date_livraison_prevue DATE, date_livraison_effective DATE, notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS factures_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, vente_id UUID, patient_nom VARCHAR(200) NOT NULL, patient_id UUID, montant_total DECIMAL(12,2) DEFAULT 0, montant_assurance DECIMAL(10,2) DEFAULT 0, montant_patient DECIMAL(10,2) DEFAULT 0, montant_paye DECIMAL(12,2) DEFAULT 0, lignes_json JSONB DEFAULT '[]', statut VARCHAR(30) DEFAULT 'emise', mode_paiement VARCHAR(50) DEFAULT 'Espèces', date_echeance DATE, notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS assurances_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, vente_id UUID, patient_nom VARCHAR(200) NOT NULL, patient_id UUID, compagnie VARCHAR(100) NOT NULL, numero_police VARCHAR(100), plafond_monture DECIMAL(10,2), plafond_verres DECIMAL(10,2), montant_monture DECIMAL(10,2) DEFAULT 0, montant_verres DECIMAL(10,2) DEFAULT 0, montant_total_soumis DECIMAL(10,2) DEFAULT 0, montant_pris_en_charge DECIMAL(10,2) DEFAULT 0, ticket_moderateur DECIMAL(10,2) DEFAULT 0, statut VARCHAR(30) DEFAULT 'soumis', motif_rejet TEXT, date_soumission DATE DEFAULT CURRENT_DATE, date_reponse DATE, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+    `CREATE TABLE IF NOT EXISTS fournisseurs_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, nom VARCHAR(200) NOT NULL, contact VARCHAR(100), telephone VARCHAR(30), email VARCHAR(200), adresse TEXT, pays VARCHAR(100) DEFAULT 'Côte d''Ivoire', categorie VARCHAR(50), delai_livraison_jours INTEGER DEFAULT 7, notes TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW())`,
+  ];
+  for (const sql of optiqueTables) { await db(sql).catch(e => console.error('[INIT OPTIQUE]', e.message)); }
+
+  // Créer compte optique démo si inexistant
+  const existsOptique = await db("SELECT id FROM utilisateurs WHERE email='optique@demo.ci'").catch(()=>({rows:[]}));
+  if (!existsOptique.rows.length) {
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash('demo1234', 10);
+    await db(
+      "INSERT INTO utilisateurs (id,email,password,role,prenom,nom,telephone,is_active) VALUES (gen_random_uuid(),$1,$2,'optique','Cabinet','Optique Demo','+225 07 00 00 10',true)",
+      ['optique@demo.ci', hash]
+    ).catch(e => console.error('[INIT] Compte optique:', e.message));
+    console.log('[DB] Compte optique@demo.ci créé');
+  }
+
   // Supprimer contrainte role si elle existe et la recréer avec ministere
   await db(`ALTER TABLE utilisateurs DROP CONSTRAINT IF EXISTS utilisateurs_role_check`).catch(()=>{});
-  await db(`ALTER TABLE utilisateurs ADD CONSTRAINT utilisateurs_role_check CHECK (role IN ('patient','clinique','medecin','medecin_independant','medecin_conseil','medecin_prive','pharmacie','livreur','admin','assureur','imagerie','laboratoire','ministere','ministere_sante'))`).catch(()=>{});
+  await db(`ALTER TABLE utilisateurs ADD CONSTRAINT utilisateurs_role_check CHECK (role IN ('patient','clinique','medecin','medecin_independant','medecin_conseil','medecin_prive','pharmacie','livreur','admin','assureur','imagerie','laboratoire','ministere','ministere_sante','optique'))`).catch(()=>{});
 
   // Créer compte Ministère de la Santé si inexistant
   const bcrypt = require('bcryptjs');
@@ -206,6 +233,7 @@ app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/planning',  require('./routes/planning'));
 app.use('/api/ministere', require('./routes/ministere'));
 app.use('/api',           require('./routes/extra'));
+app.use('/api/optique',   require('./routes/optique'));
 
 // ── HEALTH & ROOT ─────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
