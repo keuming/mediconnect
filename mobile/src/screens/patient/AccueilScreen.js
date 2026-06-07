@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, Modal, TextInput, Alert, ActivityIndicator,
-  KeyboardAvoidingView, Platform, FlatList, Linking,
+  KeyboardAvoidingView, Platform, FlatList, Linking, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -39,54 +39,80 @@ const labelIMC = (imc) => {
   return               { label: 'Obésité',     color: '#F97316' };
 };
 
-function MediConnectCard({ carte }) {
+function MediConnectCard({ carte, profil }) {
   if (!carte) return null;
   const imc     = carte.imc || (carte.poids && carte.taille ? Math.round(carte.poids / Math.pow(carte.taille/100,2) * 10)/10 : null);
   const imcInfo = labelIMC(imc);
+  const age     = profil?.date_naissance ? calcAge(profil.date_naissance) : null;
   return (
     <View style={s.mcCard}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      {/* Header carte */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <Text style={s.mcBrand}><Text style={{ color: '#34D399' }}>Medi</Text>Connect Card</Text>
-        <View style={s.mcChip} />
-      </View>
-      <Text style={s.mcNum}>•••• •••• •••• {String(carte.numero || '0000').slice(-4)}</Text>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, marginBottom: 12 }}>
-        <View><Text style={s.mcLabel}>Titulaire</Text><Text style={s.mcValue}>{(carte.nom_complet || '').toUpperCase()}</Text></View>
-        <View><Text style={s.mcLabel}>Validité</Text><Text style={s.mcValue}>{carte.validite || '—'}</Text></View>
         <View style={[s.mcBadge, carte.statut === 'active' ? s.mcBadgeActive : s.mcBadgePending]}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: carte.statut === 'active' ? '#34D399' : '#FCD34D' }}>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: carte.statut === 'active' ? '#34D399' : '#FCD34D' }}>
             {carte.statut === 'active' ? '✓ Active' : '⏳ En cours'}
           </Text>
         </View>
       </View>
-      {/* Données médicales */}
-      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 10, gap: 0 }}>
-        {carte.taille && (
+
+      {/* Nom complet + numéro */}
+      <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900', letterSpacing: 0.5, marginBottom: 2 }}>
+        {(carte.nom_complet || 'Patient').toUpperCase()}
+      </Text>
+      <Text style={s.mcNum}>•••• •••• •••• {String(carte.numero || '0000').slice(-4)}</Text>
+
+      {/* Données médicales ligne 1 : taille, poids, groupe, âge */}
+      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 10, marginTop: 10 }}>
+        {carte.taille ? (
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Taille</Text>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 2 }}>{carte.taille} cm</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Taille</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{carte.taille} cm</Text>
           </View>
-        )}
-        {carte.poids && (
-          <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: carte.taille ? 1 : 0, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Poids</Text>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 2 }}>{carte.poids} kg</Text>
-          </View>
-        )}
-        {imc && imcInfo && (
+        ) : null}
+        {carte.poids ? (
           <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>IMC</Text>
-            <Text style={{ color: imcInfo.color, fontSize: 14, fontWeight: '700', marginTop: 2 }}>{imc}</Text>
-            <Text style={{ color: imcInfo.color, fontSize: 9, fontWeight: '700' }}>{imcInfo.label}</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Poids</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{carte.poids} kg</Text>
           </View>
-        )}
-        {carte.groupe_sanguin && (
+        ) : null}
+        {carte.groupe_sanguin ? (
           <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Groupe</Text>
-            <Text style={{ color: '#F87171', fontSize: 14, fontWeight: '900', marginTop: 2 }}>{carte.groupe_sanguin}</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Groupe</Text>
+            <Text style={{ color: '#F87171', fontSize: 13, fontWeight: '900', marginTop: 2 }}>{carte.groupe_sanguin}</Text>
           </View>
-        )}
+        ) : null}
+        {age !== null ? (
+          <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Âge</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{age} ans</Text>
+          </View>
+        ) : null}
       </View>
+
+      {/* Données médicales ligne 2 : IMC, tension, BPM */}
+      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 10, marginTop: 8 }}>
+        {imc && imcInfo ? (
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>IMC</Text>
+            <Text style={{ color: imcInfo.color, fontSize: 13, fontWeight: '700', marginTop: 2 }}>{imc}</Text>
+            <Text style={{ color: imcInfo.color, fontSize: 8, fontWeight: '700' }}>{imcInfo.label}</Text>
+          </View>
+        ) : null}
+        <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: imc ? 1 : 0, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
+          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Tension</Text>
+          <Text style={{ color: profil?.tension_du_jour ? '#60A5FA' : 'rgba(255,255,255,0.3)', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
+            {profil?.tension_du_jour || '— mmHg'}
+          </Text>
+        </View>
+        <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
+          <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>BPM</Text>
+          <Text style={{ color: profil?.bpm_du_jour ? '#F87171' : 'rgba(255,255,255,0.3)', fontSize: 13, fontWeight: '700', marginTop: 2 }}>
+            {profil?.bpm_du_jour ? `${profil.bpm_du_jour} ♥` : '— ♥'}
+          </Text>
+        </View>
+      </View>
+
       <Text style={s.mcWatermark}>+</Text>
     </View>
   );
@@ -130,7 +156,8 @@ function FamilleBlock({ membres, onAjouter }) {
 function ModalMenu({ visible, onClose, onAction }) {
   const ITEMS = [
     { icon: '👤', label: 'Mon profil',               key: 'profil' },
-    { icon: '💳', label: 'Ajouter une carte famille', key: 'carte' },
+    { icon: '💳', label: 'Commander ma carte',        key: 'commander_carte' },
+    { icon: '👨\u200d👩\u200d👧', label: 'Ajouter carte famille',  key: 'carte' },
     { icon: '💰', label: 'Payer mon abonnement',     key: 'abonnement' },
     { icon: '⭐', label: 'Demande médecin conseil',  key: 'medecin_conseil' },
     { icon: '🛡️', label: 'Souscrire une assurance',  key: 'assurance' },
@@ -606,6 +633,10 @@ export default function PatientAccueil({ navigation }) {
 
   const token = user?.token;
 
+  const { data: profil } = useQuery({
+    queryKey: ['p-profil'],
+    queryFn:  () => patientAPI.getProfil?.(token).then(r => r.data) ?? Promise.resolve(null),
+  });
   const { data: rdvs,       refetch: refRdv, isFetching: ldRdv } = useQuery({ queryKey: ['p-rdvs'],    queryFn: () => patientAPI.getRDV(token).then(r => r.data || []) });
   const { data: cmds,       refetch: refCmd }                     = useQuery({ queryKey: ['p-cmds'],    queryFn: () => patientAPI.getCommandes?.(token).then(r => r.data || []) ?? Promise.resolve([]) });
   const { data: carteData }                                        = useQuery({ queryKey: ['p-carte'],   queryFn: () => patientAPI.getCarte?.(token).then(r => r.data) ?? Promise.resolve(null) });
@@ -628,6 +659,7 @@ export default function PatientAccueil({ navigation }) {
 
   const handleMenu = (key) => {
     if (key === 'profil')         navigation.navigate('Profil');  // → ProfilScreen
+    if (key === 'commander_carte')  setModalCarte(true);
     if (key === 'carte')          setModalCarte(true);
     if (key === 'abonnement')     navigation.navigate('Abonnement');
     if (key === 'medecin_conseil')setModalConseil(true);
@@ -659,19 +691,39 @@ export default function PatientAccueil({ navigation }) {
       >
         {/* ── En-tête ── */}
         <View style={s.topBar}>
-          <View>
+          {/* GAUCHE : bouton MENU vert */}
+          <TouchableOpacity onPress={() => setModalMenu(true)} style={s.menuBtn} activeOpacity={0.85}>
+            <Text style={{ fontSize: 20, color: '#fff' }}>☰</Text>
+          </TouchableOpacity>
+
+          {/* CENTRE : Bonjour + Nom */}
+          <View style={{ flex: 1, marginLeft: 14 }}>
             <Text style={s.greeting}>Bonjour 👋</Text>
             <Text style={s.userName}>{user?.prenom || 'Patient'} {user?.nom || ''}</Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={logout} style={s.iconBtn}><Text style={{ fontSize: 18 }}>⏻</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setModalMenu(true)} style={s.iconBtn}><Text style={{ fontSize: 18 }}>☰</Text></TouchableOpacity>
+
+          {/* DROITE : photo + nom patient */}
+          <View style={{ alignItems: 'center', gap: 4 }}>
+            <View style={s.avatarCircle}>
+              {user?.photo_url
+                ? <Image source={{ uri: user.photo_url }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                : <Text style={{ fontSize: 18, color: '#34D399', fontWeight: '800' }}>
+                    {(user?.prenom?.[0] || 'P').toUpperCase()}
+                  </Text>
+              }
+            </View>
+            <Text style={{ fontSize: 10, color: '#5A7A94', fontWeight: '700', maxWidth: 60 }} numberOfLines={1}>
+              {user?.prenom || 'Patient'}
+            </Text>
+            <TouchableOpacity onPress={logout}>
+              <Text style={{ fontSize: 10, color: '#2A3F55' }}>⏻</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
         {/* ── Carte MediConnect ── */}
         {aUneCarte
-          ? <MediConnectCard carte={carteData} />
+          ? <MediConnectCard carte={carteData} profil={profil} />
           : (
             <TouchableOpacity style={s.noCard} onPress={() => setModalCarte(true)} activeOpacity={0.85}>
               <View style={s.noCardIcon}><Text style={{ fontSize: 26 }}>💳</Text></View>
@@ -763,9 +815,11 @@ export default function PatientAccueil({ navigation }) {
 // ─── Styles ───────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   scroll:           { padding: 20, paddingBottom: 40 },
-  topBar:           { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  greeting:         { fontSize: 13, color: C.dim, marginBottom: 2 },
-  userName:         { fontSize: 20, fontWeight: '800', color: C.text },
+  topBar:           { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  greeting:         { fontSize: 12, color: C.dim, marginBottom: 2 },
+  userName:         { fontSize: 18, fontWeight: '900', color: C.text },
+  menuBtn:          { width: 48, height: 48, borderRadius: 14, backgroundColor: '#0A8F58', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  avatarCircle:     { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(10,143,88,0.15)', borderWidth: 1.5, borderColor: '#0A8F58', alignItems: 'center', justifyContent: 'center' },
   iconBtn:          { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   mcCard:           { borderRadius: 18, padding: 20, marginBottom: 14, overflow: 'hidden', backgroundColor: '#0A3D2E', borderWidth: 1, borderColor: '#0A8F58' },
   mcBrand:          { fontSize: 14, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
@@ -808,7 +862,7 @@ const s = StyleSheet.create({
   rdvCardHeure:     { fontSize: 14, fontWeight: '800', color: C.green },
   rdvCardMed:       { fontSize: 14, fontWeight: '700', color: C.text, marginBottom: 2 },
   rdvCardMotif:     { fontSize: 12, color: C.muted },
-  menuOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 80, paddingRight: 16 },
+  menuOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-start', alignItems: 'flex-start', paddingTop: 80, paddingLeft: 16 },
   menuBox:          { backgroundColor: '#0D1B2A', borderRadius: 16, padding: 8, borderWidth: 1, borderColor: '#1a2d42', minWidth: 240 },
   menuTitle:        { color: '#5A7A94', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, padding: 10, paddingBottom: 6 },
   menuItem:         { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 10 },

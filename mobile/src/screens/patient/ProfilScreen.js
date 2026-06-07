@@ -210,6 +210,8 @@ export default function ProfilScreen({ navigation }) {
   const [taille,    setTaille]    = useState('');
   const [poids,     setPoids]     = useState('');
   const [maladies,  setMaladies]  = useState([]);
+  const [tension,   setTension]   = useState('');
+  const [bpm,       setBpm]       = useState('');
 
   // Pré-remplir quand le profil charge
   useEffect(() => {
@@ -226,6 +228,8 @@ export default function ProfilScreen({ navigation }) {
     setTaille(profil.taille ? String(profil.taille) : '');
     setPoids(profil.poids  ? String(profil.poids)  : '');
     setMaladies(profil.maladies_chroniques || []);
+    setTension(profil.tension_du_jour || '');
+    setBpm(profil.bpm_du_jour ? String(profil.bpm_du_jour) : '');
   }, [profil]);
 
   const imc = calcIMC(poids, taille);
@@ -252,6 +256,8 @@ export default function ProfilScreen({ navigation }) {
       taille: taille ? parseFloat(taille) : null,
       poids:  poids  ? parseFloat(poids)  : null,
       maladies_chroniques: maladies,
+      tension_du_jour: tension || null,
+      bpm_du_jour: bpm ? parseInt(bpm) : null,
     });
   };
 
@@ -325,6 +331,21 @@ export default function ProfilScreen({ navigation }) {
               <View style={{ flex:1 }}>
                 <Text style={LBL}>Poids (kg)</Text>
                 <TextInput value={poids} onChangeText={setPoids} placeholder="Ex: 70" placeholderTextColor={P.faint} keyboardType="numeric" style={INP} />
+              </View>
+            </View>
+
+            {/* Tension + BPM du jour */}
+            <View style={{ backgroundColor:`${P.faint}15`, borderRadius:12, padding:12, borderWidth:1, borderColor:`${P.border}`, marginBottom:14 }}>
+              <Text style={{ color:P.dim, fontSize:11, marginBottom:10 }}>📋 Mesures du jour — mises à jour depuis le profil</Text>
+              <View style={{ flexDirection:'row', gap:10 }}>
+                <View style={{ flex:1 }}>
+                  <Text style={LBL}>Tension artérielle</Text>
+                  <TextInput value={tension} onChangeText={setTension} placeholder="Ex: 120/80 mmHg" placeholderTextColor={P.faint} style={INP} />
+                </View>
+                <View style={{ flex:1 }}>
+                  <Text style={LBL}>Battements / min</Text>
+                  <TextInput value={bpm} onChangeText={setBpm} placeholder="Ex: 72" placeholderTextColor={P.faint} keyboardType="numeric" style={INP} />
+                </View>
               </View>
             </View>
 
