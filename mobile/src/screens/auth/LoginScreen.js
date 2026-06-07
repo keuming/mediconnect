@@ -55,7 +55,7 @@ export default function LoginScreen({ navigation }) {
         >
 
           {/* ── Hero ── */}
-          <View style={{ alignItems:'center', paddingTop: 48, paddingBottom: 36 }}>
+          <View style={{ alignItems:'center', paddingTop: 48, paddingBottom: 32 }}>
             <View style={{
               width: 72, height: 72, borderRadius: 22,
               backgroundColor: `${P.green}20`,
@@ -65,13 +65,41 @@ export default function LoginScreen({ navigation }) {
             }}>
               <Text style={{ fontSize: 32, color: P.greenL, fontWeight: '300' }}>+</Text>
             </View>
+
             <Text style={{ fontSize: 26, fontWeight: '900', color: P.text, letterSpacing: -0.5 }}>
               <Text style={{ color: P.greenL }}>Medi</Text>Connect
             </Text>
-            <Text style={{ color: P.green, fontSize: 10, fontWeight: '800', letterSpacing: 5, marginTop: 3 }}>AFRICA</Text>
-            <Text style={{ color: P.dim, fontSize: 13, marginTop: 8, textAlign:'center', lineHeight: 20 }}>
-              La santé numérique pour l'Afrique
+            <Text style={{ color: P.green, fontSize: 10, fontWeight: '800', letterSpacing: 5, marginTop: 3 }}>
+              AFRICA
             </Text>
+
+            {/* Tagline enrichie */}
+            <Text style={{ color: P.muted, fontSize: 13, marginTop: 10, textAlign:'center', lineHeight: 21, paddingHorizontal: 10 }}>
+              La santé numérique pour l'Afrique —{'\n'}
+              <Text style={{ color: P.greenL, fontWeight: '700' }}>consultations · ordonnances · livraisons</Text>
+            </Text>
+
+            {/* Bandeau urgence */}
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 16,
+              backgroundColor: `${P.green}12`,
+              borderRadius: 30,
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderWidth: 1,
+              borderColor: `${P.green}30`,
+            }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: P.greenL }} />
+              <Text style={{ color: P.greenL, fontSize: 12, fontWeight: '700' }}>
+                MediConnect For Africa
+              </Text>
+              <Text style={{ color: P.dim, fontSize: 11 }}>
+                — urgence médicale préventive 24h/24
+              </Text>
+            </View>
           </View>
 
           {/* ── Formulaire ── */}
@@ -159,7 +187,6 @@ export default function LoginScreen({ navigation }) {
               alignItems:'center',
               borderWidth: 1,
               borderColor: P.border,
-              marginBottom: 32,
             }}
           >
             <Text style={{ color: P.muted, fontSize: 14, fontWeight: '600' }}>
@@ -167,35 +194,6 @@ export default function LoginScreen({ navigation }) {
               <Text style={{ color: P.greenL, fontWeight: '700' }}>Créer un compte</Text>
             </Text>
           </TouchableOpacity>
-
-          {/* ── Comptes de démonstration (texte discret) ── */}
-          <View style={{
-            backgroundColor: `${P.green}06`,
-            borderRadius: 12,
-            padding: 14,
-            borderWidth: 1,
-            borderColor: `${P.green}15`,
-          }}>
-            <Text style={{ color: P.faint, fontSize: 10, fontWeight: '700', textTransform:'uppercase', letterSpacing: 1, textAlign:'center', marginBottom: 10 }}>
-              Comptes de démonstration
-            </Text>
-            {[
-              { icon:'👤', label:'Patient',       email:'patient@demo.ci' },
-              { icon:'⭐', label:'Méd. Conseil',  email:'medecin.indep@demo.ci' },
-              { icon:'🩺', label:'Méd. Résident', email:'medecin@demo.ci' },
-              { icon:'💊', label:'Pharmacie',     email:'pharmacie@demo.ci' },
-              { icon:'🛵', label:'Livreur',       email:'livreur@demo.ci' },
-            ].map(d => (
-              <View key={d.email} style={{ flexDirection:'row', alignItems:'center', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: `${P.border}60` }}>
-                <Text style={{ fontSize: 14, marginRight: 8 }}>{d.icon}</Text>
-                <Text style={{ color: P.dim, fontSize: 12, width: 100 }}>{d.label}</Text>
-                <Text style={{ color: P.muted, fontSize: 12, flex: 1 }}>{d.email}</Text>
-              </View>
-            ))}
-            <Text style={{ color: P.dim, fontSize: 11, textAlign:'center', marginTop: 10 }}>
-              Mot de passe : <Text style={{ color: P.greenL, fontWeight: '700' }}>demo1234</Text>
-            </Text>
-          </View>
 
         </ScrollView>
       </KeyboardAvoidingView>
