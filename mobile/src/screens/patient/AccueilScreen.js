@@ -39,9 +39,10 @@ const labelIMC = (imc) => {
   return               { label: 'Obésité',     color: '#F97316' };
 };
 
-function MediConnectCard({ carte, profil }) {
-  if (!carte) return null;
-  const imc     = carte.imc || (carte.poids && carte.taille ? Math.round(carte.poids / Math.pow(carte.taille/100,2) * 10)/10 : null);
+function MediConnectCard({ carte, profil, user }) {
+  // Affiche la carte si elle existe, sinon une carte vide avec les données du profil
+  const nomComplet = carte?.nom_complet || (user ? `${user.prenom || ''} ${user.nom || ''}`.trim() : 'Patient');
+  const imc     = carte?.imc || (carte?.poids && carte?.taille ? Math.round(carte.poids / Math.pow(carte.taille/100,2) * 10)/10 : null);
   const imcInfo = labelIMC(imc);
   const age     = profil?.date_naissance ? calcAge(profil.date_naissance) : null;
   return (
@@ -49,37 +50,37 @@ function MediConnectCard({ carte, profil }) {
       {/* Header carte */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <Text style={s.mcBrand}><Text style={{ color: '#34D399' }}>Medi</Text>Connect Card</Text>
-        <View style={[s.mcBadge, carte.statut === 'active' ? s.mcBadgeActive : s.mcBadgePending]}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: carte.statut === 'active' ? '#34D399' : '#FCD34D' }}>
-            {carte.statut === 'active' ? '✓ Active' : '⏳ En cours'}
+        <View style={[s.mcBadge, carte?.statut === 'active' ? s.mcBadgeActive : s.mcBadgePending]}>
+          <Text style={{ fontSize: 10, fontWeight: '700', color: carte?.statut === 'active' ? '#34D399' : '#FCD34D' }}>
+            {carte ? (carte.statut === 'active' ? '✓ Active' : '⏳ En cours') : '⏳ Non activée'}
           </Text>
         </View>
       </View>
 
       {/* Nom complet + numéro */}
       <Text style={{ color: '#fff', fontSize: 17, fontWeight: '900', letterSpacing: 0.5, marginBottom: 2 }}>
-        {(carte.nom_complet || 'Patient').toUpperCase()}
+        {nomComplet.toUpperCase()}
       </Text>
-      <Text style={s.mcNum}>•••• •••• •••• {String(carte.numero || '0000').slice(-4)}</Text>
+      <Text style={s.mcNum}>•••• •••• •••• {String(carte?.numero || '0000').slice(-4)}</Text>
 
       {/* Données médicales ligne 1 : taille, poids, groupe, âge */}
       <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 10, marginTop: 10 }}>
-        {carte.taille ? (
+        {carte?.taille ? (
           <View style={{ flex: 1, alignItems: 'center' }}>
             <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Taille</Text>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{carte.taille} cm</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{carte?.taille} cm</Text>
           </View>
         ) : null}
-        {carte.poids ? (
+        {carte?.poids ? (
           <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
             <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Poids</Text>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{carte.poids} kg</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 2 }}>{carte?.poids} kg</Text>
           </View>
         ) : null}
-        {carte.groupe_sanguin ? (
+        {carte?.groupe_sanguin ? (
           <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
             <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Groupe</Text>
-            <Text style={{ color: '#F87171', fontSize: 13, fontWeight: '900', marginTop: 2 }}>{carte.groupe_sanguin}</Text>
+            <Text style={{ color: '#F87171', fontSize: 13, fontWeight: '900', marginTop: 2 }}>{carte?.groupe_sanguin}</Text>
           </View>
         ) : null}
         {age !== null ? (
@@ -170,9 +171,9 @@ function ModalMenu({ visible, onClose, onAction }) {
           <Text style={s.menuTitle}>Menu</Text>
           {ITEMS.map(item => (
             <TouchableOpacity key={item.key} style={s.menuItem} onPress={() => { onClose(); onAction(item.key); }}>
-              <Text style={{ fontSize: 20 }}>{item.icon}</Text>
-              <Text style={s.menuItemLabel}>{item.label}</Text>
-              <Text style={{ color: '#2A3F55', fontSize: 16 }}>›</Text>
+              <Text style={{ fontSize: 18, flexShrink: 0 }}>{item.icon}</Text>
+              <Text style={s.menuItemLabel} numberOfLines={1}>{item.label}</Text>
+              <Text style={{ color: '#2A3F55', fontSize: 16, flexShrink: 0 }}>›</Text>
             </TouchableOpacity>
           ))}
           {/* Séparateur */}
@@ -715,26 +716,14 @@ export default function PatientAccueil({ navigation }) {
             <Text style={{ fontSize: 10, color: '#5A7A94', fontWeight: '700', maxWidth: 60 }} numberOfLines={1}>
               {user?.prenom || 'Patient'}
             </Text>
-            <TouchableOpacity onPress={logout}>
-              <Text style={{ fontSize: 10, color: '#2A3F55' }}>⏻</Text>
+            <TouchableOpacity onPress={logout} style={{ backgroundColor:'#EF444420', borderRadius:8, paddingHorizontal:8, paddingVertical:4, borderWidth:1, borderColor:'#EF444440' }}>
+              <Text style={{ fontSize: 11, color: '#F87171', fontWeight:'700' }}>⏻ Quitter</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ── Carte MediConnect ── */}
-        {aUneCarte
-          ? <MediConnectCard carte={carteData} profil={profil} />
-          : (
-            <TouchableOpacity style={s.noCard} onPress={() => setModalCarte(true)} activeOpacity={0.85}>
-              <View style={s.noCardIcon}><Text style={{ fontSize: 26 }}>💳</Text></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.noCardTitle}>Pas encore de carte MediConnect</Text>
-                <Text style={s.noCardSub}>Accédez aux soins, gérez votre famille et payez sans cash.</Text>
-              </View>
-              <View style={s.btnCmd}><Text style={s.btnCmdText}>Commander</Text></View>
-            </TouchableOpacity>
-          )
-        }
+        {/* ── Carte MediConnect — toujours affichée ── */}
+        <MediConnectCard carte={carteData} profil={profil} user={user} />
 
         {/* ── Famille ── */}
         {aUneCarte && <FamilleBlock membres={membres} onAjouter={() => setModalFamille(true)} />}
@@ -863,10 +852,10 @@ const s = StyleSheet.create({
   rdvCardMed:       { fontSize: 14, fontWeight: '700', color: C.text, marginBottom: 2 },
   rdvCardMotif:     { fontSize: 12, color: C.muted },
   menuOverlay:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-start', alignItems: 'flex-start', paddingTop: 80, paddingLeft: 16 },
-  menuBox:          { backgroundColor: '#0D1B2A', borderRadius: 16, padding: 8, borderWidth: 1, borderColor: '#1a2d42', minWidth: 240 },
+  menuBox:          { backgroundColor: '#0D1B2A', borderRadius: 16, padding: 8, borderWidth: 1, borderColor: '#1a2d42', width: 280 },
   menuTitle:        { color: '#5A7A94', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, padding: 10, paddingBottom: 6 },
-  menuItem:         { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 10 },
-  menuItemLabel:    { color: '#F0F6FF', fontSize: 14, fontWeight: '600', flex: 1 },
+  menuItem:         { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, minHeight: 48 },
+  menuItemLabel:    { color: '#F0F6FF', fontSize: 13, fontWeight: '600', flex: 1, flexShrink: 1 },
   modalHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1a2d42' },
   modalTitle:       { fontSize: 16, fontWeight: '800', color: '#F0F6FF' },
   modalInfoCard:    { backgroundColor: '#0D1B2A', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#1a2d42', marginBottom: 20, alignItems: 'center' },
