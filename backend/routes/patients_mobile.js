@@ -38,6 +38,7 @@ router.put('/profil', auth, async (req, res) => {
     groupe_sanguin, taille, poids,
     maladies_chroniques, antecedents, allergies,
     assurance, numero_police,
+    tension_du_jour, bpm_du_jour,
   } = req.body;
 
   const imc = calcIMC(poids, taille);
@@ -57,8 +58,10 @@ router.put('/profil', auth, async (req, res) => {
         taille              = COALESCE($9,  taille),
         poids               = COALESCE($10, poids),
         imc                 = COALESCE($11, imc),
-        maladies_chroniques = COALESCE($12, maladies_chroniques)
-      WHERE id = $13
+        maladies_chroniques = COALESCE($12, maladies_chroniques),
+        tension_du_jour    = COALESCE($13, tension_du_jour),
+        bpm_du_jour        = COALESCE($14, bpm_du_jour)
+      WHERE id = $15
     `, [prenom||null, nom||null, telephone||null, adresse||null,
         pays_code||null, ville||null,
         date_naissance ? new Date(date_naissance) : null,
@@ -67,6 +70,8 @@ router.put('/profil', auth, async (req, res) => {
         poids  ? parseFloat(poids)  : null,
         imc,
         maladies_chroniques ? (Array.isArray(maladies_chroniques) ? maladies_chroniques : [maladies_chroniques]) : null,
+        tension_du_jour||null,
+        bpm_du_jour ? parseInt(bpm_du_jour) : null,
         req.user.id]);
 
     // Mise à jour patients (si profil patient existe)
