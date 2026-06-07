@@ -5,110 +5,195 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/authStore';
-import { C } from '../../components/UI';
 
-const DEMOS = [
-  { role:'patient',             email:'patient@demo.ci',       pwd:'demo1234',       icon:'👤', label:'Patient',         color:C.green  },
-  { role:'medecin_independant', email:'medecin.indep@demo.ci', pwd:'demo1234',       icon:'⭐', label:'Méd. Conseil',    color:'#7C3AED' },
-  { role:'medecin',             email:'medecin@demo.ci',       pwd:'demo1234',       icon:'🩺', label:'Méd. Résident',   color:C.teal   },
-  { role:'pharmacie',           email:'pharmacie@demo.ci',     pwd:'demo1234',       icon:'💊', label:'Pharmacie',       color:C.teal   },
-  { role:'livreur',             email:'livreur@demo.ci',       pwd:'demo1234',       icon:'🛵', label:'Livreur',         color:C.amber  },
-];
+const P = {
+  bg:     '#060E18',
+  card:   '#0D1B2A',
+  input:  '#0A1520',
+  border: '#1a2d42',
+  text:   '#F0F6FF',
+  muted:  '#8BA3B8',
+  dim:    '#5A7A94',
+  faint:  '#2A3F55',
+  green:  '#0A8F58',
+  greenL: '#34D399',
+  r:      12,
+};
 
 export default function LoginScreen({ navigation }) {
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [showPwd,  setShowPwd]  = useState(false);
+  const [focused,  setFocused]  = useState('');
   const { doLogin, loading }    = useAuthStore();
 
-  const handleLogin = async (e = email, p = password) => {
-    if (!e || !p) { Alert.alert('Champs requis', 'Entrez votre email et mot de passe.'); return; }
-    const res = await doLogin(e, p);
+  const handleLogin = async () => {
+    if (!email || !password) { Alert.alert('Champs requis', 'Entrez votre email et mot de passe.'); return; }
+    const res = await doLogin(email, password);
     if (!res.success) Alert.alert('Connexion échouée', res.message || 'Email ou mot de passe incorrect');
   };
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+  const inputStyle = (name) => ({
+    backgroundColor: P.input,
+    borderRadius: P.r,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    color: P.text,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: focused === name ? P.green : P.border,
+    marginBottom: 14,
+  });
 
-          {/* Logo */}
-          <View style={{ alignItems: 'center', marginVertical: 32 }}>
-            <View style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: `${C.green}20`, borderWidth: 2, borderColor: C.green, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 32, color: C.greenL }}>+</Text>
+  return (
+    <SafeAreaView style={{ flex:1, backgroundColor: P.bg }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex:1 }}>
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+
+          {/* ── Hero ── */}
+          <View style={{ alignItems:'center', paddingTop: 48, paddingBottom: 36 }}>
+            <View style={{
+              width: 72, height: 72, borderRadius: 22,
+              backgroundColor: `${P.green}20`,
+              borderWidth: 1.5, borderColor: P.green,
+              alignItems:'center', justifyContent:'center',
+              marginBottom: 16,
+            }}>
+              <Text style={{ fontSize: 32, color: P.greenL, fontWeight: '300' }}>+</Text>
             </View>
-            <Text style={{ fontSize: 26, fontWeight: '900', color: C.text }}>
-              <Text style={{ color: C.greenL }}>Medi</Text>Connect
+            <Text style={{ fontSize: 26, fontWeight: '900', color: P.text, letterSpacing: -0.5 }}>
+              <Text style={{ color: P.greenL }}>Medi</Text>Connect
             </Text>
-            <Text style={{ color: C.green, fontSize: 11, fontWeight: '800', letterSpacing: 4, marginTop: 2 }}>AFRICA</Text>
-            <Text style={{ color: C.dim, fontSize: 12, marginTop: 6 }}>La santé numérique pour l'Afrique</Text>
+            <Text style={{ color: P.green, fontSize: 10, fontWeight: '800', letterSpacing: 5, marginTop: 3 }}>AFRICA</Text>
+            <Text style={{ color: P.dim, fontSize: 13, marginTop: 8, textAlign:'center', lineHeight: 20 }}>
+              La santé numérique pour l'Afrique
+            </Text>
           </View>
 
-          {/* Formulaire */}
-          <View style={{ backgroundColor: C.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: C.border, marginBottom: 16 }}>
-            <Text style={{ color: C.text, fontWeight: '800', fontSize: 15, marginBottom: 16 }}>Connexion</Text>
+          {/* ── Formulaire ── */}
+          <View style={{
+            backgroundColor: P.card, borderRadius: 18,
+            borderWidth: 1, borderColor: P.border,
+            padding: 22, marginBottom: 12,
+          }}>
+            <Text style={{ color: P.text, fontWeight: '800', fontSize: 16, marginBottom: 20 }}>
+              Connexion
+            </Text>
 
-            <Text style={{ fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Email</Text>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: P.dim, textTransform:'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Email
+            </Text>
             <TextInput
-              value={email} onChangeText={setEmail} placeholder="votre@email.com"
-              placeholderTextColor={C.dim} keyboardType="email-address" autoCapitalize="none"
-              style={{ backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border, marginBottom: 14 }}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="votre@email.com"
+              placeholderTextColor={P.faint}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              onFocus={() => setFocused('email')}
+              onBlur={() => setFocused('')}
+              style={inputStyle('email')}
             />
 
-            <Text style={{ fontSize: 11, fontWeight: '700', color: C.dim, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Mot de passe</Text>
-            <View style={{ position: 'relative', marginBottom: 20 }}>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: P.dim, textTransform:'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Mot de passe
+            </Text>
+            <View style={{ position:'relative', marginBottom: 6 }}>
               <TextInput
-                value={password} onChangeText={setPassword} placeholder="••••••••"
-                placeholderTextColor={C.dim} secureTextEntry={!showPwd}
-                style={{ backgroundColor: C.input, borderRadius: C.r, paddingHorizontal: 14, paddingVertical: 12, color: C.text, fontSize: 14, borderWidth: 1, borderColor: C.border, paddingRight: 46 }}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                placeholderTextColor={P.faint}
+                secureTextEntry={!showPwd}
+                onFocus={() => setFocused('pwd')}
+                onBlur={() => setFocused('')}
+                style={[inputStyle('pwd'), { paddingRight: 48, marginBottom: 0 }]}
               />
-              <TouchableOpacity onPress={() => setShowPwd(!showPwd)}
-                style={{ position: 'absolute', right: 12, top: 12 }}>
-                <Text style={{ fontSize: 18, color: C.dim }}>{showPwd ? '🙈' : '👁️'}</Text>
+              <TouchableOpacity
+                onPress={() => setShowPwd(!showPwd)}
+                style={{ position:'absolute', right: 14, top: 13 }}
+              >
+                <Text style={{ fontSize: 17, color: P.dim }}>{showPwd ? '🙈' : '👁️'}</Text>
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity onPress={() => handleLogin()} disabled={loading}
-              style={{ backgroundColor: loading ? '#1E2F42' : C.green, borderRadius: C.r, padding: 15, alignItems: 'center' }}>
+            <TouchableOpacity style={{ alignSelf:'flex-end', marginBottom: 22, marginTop: 6 }}>
+              <Text style={{ fontSize: 12, color: P.dim }}>Mot de passe oublié ?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleLogin}
+              disabled={loading}
+              activeOpacity={0.85}
+              style={{
+                backgroundColor: loading ? '#1E2F42' : P.green,
+                borderRadius: P.r,
+                padding: 15,
+                alignItems:'center',
+                shadowColor: P.green,
+                shadowOpacity: 0.3,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 4,
+              }}
+            >
               {loading
                 ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Se connecter</Text>
+                : <Text style={{ color:'#fff', fontWeight:'800', fontSize: 15 }}>Se connecter</Text>
               }
             </TouchableOpacity>
           </View>
 
-          {/* Créer un compte */}
-          <TouchableOpacity onPress={() => navigation?.navigate?.('Register')}
-            style={{ backgroundColor: 'transparent', borderRadius: C.r, padding: 14, alignItems: 'center', borderWidth: 1.5, borderColor: C.border, marginBottom: 24 }}>
-            <Text style={{ color: C.muted, fontSize: 14, fontWeight: '600' }}>
-              Pas de compte ? <Text style={{ color: C.greenL }}>Créer un compte</Text>
+          {/* ── Créer un compte ── */}
+          <TouchableOpacity
+            onPress={() => navigation?.navigate?.('Register')}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor:'transparent',
+              borderRadius: P.r,
+              padding: 14,
+              alignItems:'center',
+              borderWidth: 1,
+              borderColor: P.border,
+              marginBottom: 32,
+            }}
+          >
+            <Text style={{ color: P.muted, fontSize: 14, fontWeight: '600' }}>
+              Pas de compte ?{'  '}
+              <Text style={{ color: P.greenL, fontWeight: '700' }}>Créer un compte</Text>
             </Text>
           </TouchableOpacity>
 
-          {/* Comptes démo */}
-          <Text style={{ color: C.dim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, textAlign: 'center', marginBottom: 12 }}>
-            Accès démo rapide
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-            {DEMOS.map(d => (
-              <TouchableOpacity key={d.role} onPress={() => handleLogin(d.email, d.pwd)} disabled={loading}
-                style={{
-                  backgroundColor: `${d.color}18`,
-                  borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-                  borderWidth: 1, borderColor: `${d.color}40`,
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  minWidth: '28%',
-                }}>
-                <Text style={{ fontSize: 16 }}>{d.icon}</Text>
-                <Text style={{ color: d.color, fontSize: 11, fontWeight: '700' }}>{d.label}</Text>
-              </TouchableOpacity>
+          {/* ── Comptes de démonstration (texte discret) ── */}
+          <View style={{
+            backgroundColor: `${P.green}06`,
+            borderRadius: 12,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: `${P.green}15`,
+          }}>
+            <Text style={{ color: P.faint, fontSize: 10, fontWeight: '700', textTransform:'uppercase', letterSpacing: 1, textAlign:'center', marginBottom: 10 }}>
+              Comptes de démonstration
+            </Text>
+            {[
+              { icon:'👤', label:'Patient',       email:'patient@demo.ci' },
+              { icon:'⭐', label:'Méd. Conseil',  email:'medecin.indep@demo.ci' },
+              { icon:'🩺', label:'Méd. Résident', email:'medecin@demo.ci' },
+              { icon:'💊', label:'Pharmacie',     email:'pharmacie@demo.ci' },
+              { icon:'🛵', label:'Livreur',       email:'livreur@demo.ci' },
+            ].map(d => (
+              <View key={d.email} style={{ flexDirection:'row', alignItems:'center', paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: `${P.border}60` }}>
+                <Text style={{ fontSize: 14, marginRight: 8 }}>{d.icon}</Text>
+                <Text style={{ color: P.dim, fontSize: 12, width: 100 }}>{d.label}</Text>
+                <Text style={{ color: P.muted, fontSize: 12, flex: 1 }}>{d.email}</Text>
+              </View>
             ))}
-          </View>
-
-          {/* Infos démo */}
-          <View style={{ backgroundColor: `${C.border}30`, borderRadius: 10, padding: 12, marginTop: 16 }}>
-            <Text style={{ color: C.dim, fontSize: 11, textAlign: 'center', lineHeight: 16 }}>
-              Comptes démo — mot de passe: <Text style={{ color: C.greenL, fontWeight: '700' }}>demo1234</Text>
+            <Text style={{ color: P.dim, fontSize: 11, textAlign:'center', marginTop: 10 }}>
+              Mot de passe : <Text style={{ color: P.greenL, fontWeight: '700' }}>demo1234</Text>
             </Text>
           </View>
 
