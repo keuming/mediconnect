@@ -1,23 +1,17 @@
 {
   "cli": {
-    "version": ">= 18.9.1",
+    "version": "12.6.2",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "env": {
-        "API_URL": "http://localhost:5000"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "API_URL": "https://mediconnect-backend-v2.vercel.app"
       }
     },
     "production": {
@@ -28,8 +22,7 @@
       "env": {
         "API_URL": "https://mediconnect-backend-v2.vercel.app",
         "NODE_ENV": "production"
-      },
-      "node": "20.18.0"
+      }
     }
   },
   "submit": {
