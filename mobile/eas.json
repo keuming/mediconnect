@@ -29,8 +29,7 @@
         "API_URL": "https://mediconnect-backend-v2.vercel.app",
         "NODE_ENV": "production"
       },
-      "node": "20.18.0",
-      "npm": "10.8.2"
+      "node": "20.18.0"
     }
   },
   "submit": {
