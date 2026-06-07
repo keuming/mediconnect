@@ -31,16 +31,26 @@ const INP = { backgroundColor: '#0A1520', borderRadius: 10, paddingHorizontal: 1
 const LBL = { fontSize: 10, fontWeight: '700', color: '#5A7A94', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 };
 
 // ─── Carte MediConnect ────────────────────────────────────────────────────
+const labelIMC = (imc) => {
+  if (!imc) return null;
+  if (imc < 18.5) return { label: 'Insuffisance', color: '#60A5FA' };
+  if (imc < 25)   return { label: 'Normal',        color: '#34D399' };
+  if (imc < 30)   return { label: 'Surpoids',      color: '#FCD34D' };
+  return               { label: 'Obésité',     color: '#F97316' };
+};
+
 function MediConnectCard({ carte }) {
   if (!carte) return null;
+  const imc     = carte.imc || (carte.poids && carte.taille ? Math.round(carte.poids / Math.pow(carte.taille/100,2) * 10)/10 : null);
+  const imcInfo = labelIMC(imc);
   return (
     <View style={s.mcCard}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Text style={s.mcBrand}><Text style={{ color: '#34D399' }}>Medi</Text>Connect Card</Text>
         <View style={s.mcChip} />
       </View>
       <Text style={s.mcNum}>•••• •••• •••• {String(carte.numero || '0000').slice(-4)}</Text>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12, marginBottom: 12 }}>
         <View><Text style={s.mcLabel}>Titulaire</Text><Text style={s.mcValue}>{(carte.nom_complet || '').toUpperCase()}</Text></View>
         <View><Text style={s.mcLabel}>Validité</Text><Text style={s.mcValue}>{carte.validite || '—'}</Text></View>
         <View style={[s.mcBadge, carte.statut === 'active' ? s.mcBadgeActive : s.mcBadgePending]}>
@@ -48,6 +58,34 @@ function MediConnectCard({ carte }) {
             {carte.statut === 'active' ? '✓ Active' : '⏳ En cours'}
           </Text>
         </View>
+      </View>
+      {/* Données médicales */}
+      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 10, gap: 0 }}>
+        {carte.taille && (
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Taille</Text>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 2 }}>{carte.taille} cm</Text>
+          </View>
+        )}
+        {carte.poids && (
+          <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: carte.taille ? 1 : 0, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Poids</Text>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 2 }}>{carte.poids} kg</Text>
+          </View>
+        )}
+        {imc && imcInfo && (
+          <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>IMC</Text>
+            <Text style={{ color: imcInfo.color, fontSize: 14, fontWeight: '700', marginTop: 2 }}>{imc}</Text>
+            <Text style={{ color: imcInfo.color, fontSize: 9, fontWeight: '700' }}>{imcInfo.label}</Text>
+          </View>
+        )}
+        {carte.groupe_sanguin && (
+          <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' }}>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Groupe</Text>
+            <Text style={{ color: '#F87171', fontSize: 14, fontWeight: '900', marginTop: 2 }}>{carte.groupe_sanguin}</Text>
+          </View>
+        )}
       </View>
       <Text style={s.mcWatermark}>+</Text>
     </View>
@@ -589,7 +627,7 @@ export default function PatientAccueil({ navigation }) {
   const { mutate: demanderQuote,   isPending: ldQuote }           = useMutation({ mutationFn: d => patientAPI.demanderQuotationAssurance?.(token, d), onSuccess: () => { setModalAssur(false); Alert.alert('Demande envoyée', 'L\'assureur vous contactera pour votre devis.'); }, onError: e => Alert.alert('Erreur', e.message) });
 
   const handleMenu = (key) => {
-    if (key === 'profil')         navigation.navigate('Profil');
+    if (key === 'profil')         navigation.navigate('Profil');  // → ProfilScreen
     if (key === 'carte')          setModalCarte(true);
     if (key === 'abonnement')     navigation.navigate('Abonnement');
     if (key === 'medecin_conseil')setModalConseil(true);

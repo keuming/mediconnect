@@ -129,3 +129,13 @@ export const santeAPI = {
 };
 
 export default request;
+
+// ─── PROFIL PATIENT (ajouts v2) ────────────────────────────────────────────
+export const profilAPI = {
+  getProfil:    (token)       => request('/patients/profil', {}, token),
+  updateProfil: (token, data) => request('/patients/profil', { method: 'PUT', body: JSON.stringify(data) }, token),
+};
+
+// Alias sur patientAPI pour compatibilité AccueilScreen
+patientAPI.getProfil    = profilAPI.getProfil;
+patientAPI.updateProfil = profilAPI.updateProfil;

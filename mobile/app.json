@@ -6,11 +6,32 @@
     "orientation": "portrait",
     "scheme": "mediconnect",
     "backgroundColor": "#060E18",
-    "splash": { "backgroundColor": "#060E18" },
+    "splash": {
+      "backgroundColor": "#060E18"
+    },
     "android": {
       "package": "cloud.mediconnect4africa",
-      "adaptiveIcon": { "backgroundColor": "#0A8F58" }
+      "adaptiveIcon": {
+        "backgroundColor": "#0A8F58"
+      },
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
+      "usesCleartextTraffic": false
     },
-    "ios": { "bundleIdentifier": "cloud.mediconnect4africa" }
+    "ios": {
+      "bundleIdentifier": "cloud.mediconnect4africa"
+    },
+    "extra": {
+      "apiUrl": "https://mediconnect-alpha-azure.vercel.app",
+      "eas": {
+        "projectId": "6e112d1f-9189-4889-afb8-4ec52b219f63"
+      }
+    },
+    "owner": "keumingo"
   }
 }
