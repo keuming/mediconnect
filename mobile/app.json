@@ -22,7 +22,8 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "usesCleartextTraffic": false
+      "usesCleartextTraffic": false,
+      "kotlinVersion": "2.1.20"
     },
     "ios": {
       "bundleIdentifier": "cloud.mediconnect4africa"
@@ -33,6 +34,16 @@
         "projectId": "6e112d1f-9189-4889-afb8-4ec52b219f63"
       }
     },
-    "owner": "keumingo"
+    "owner": "keumingo",
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.1.20"
+          }
+        }
+      ]
+    ]
   }
 }
