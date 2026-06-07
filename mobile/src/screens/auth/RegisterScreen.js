@@ -32,7 +32,7 @@ const ROLES = [
     label: 'Médecin Résident',
     icon:  '🩺',
     color: C.teal,
-    desc:  'Médecin employé d'une clinique ou d'un hôpital',
+    desc:  `Médecin employé d'une clinique ou d'un hôpital`,
     badge: 'MR',
   },
   {
@@ -112,7 +112,7 @@ const EXTRA_FIELDS = {
   ],
   clinique: [
     { key:'nom_clinique',  label:'Nom de la clinique *',  placeholder:'Polyclinique du Sud...', required: true },
-    { key:'type_clinique', label:'Type d'établissement', placeholder:'Clinique, Hôpital, Cabinet...' },
+    { key:'type_clinique', label:`Type d'établissement`,  placeholder:'Clinique, Hôpital, Cabinet...' },
     { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
   ],
   assureur: [
@@ -120,7 +120,7 @@ const EXTRA_FIELDS = {
     { key:'num_agrement',  label:'N° Agrément',           placeholder:'CIMA-2024-...' },
   ],
   imagerie: [
-    { key:'nom_etab',      label:'Nom de l'établissement *', placeholder:'Centre d'Imagerie...', required: true },
+    { key:'nom_etab',      label:`Nom de l'établissement *`, placeholder:`Centre d'Imagerie...`, required: true },
     { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
   ],
   laboratoire: [
@@ -347,7 +347,7 @@ export default function RegisterScreen({ navigation }) {
               value={ville}
               options={villesOptions}
               onSelect={setVille}
-              placeholder={pays ? 'Sélectionner une ville...' : 'Choisissez d'abord un pays'}
+              placeholder={pays ? 'Sélectionner une ville...' : `Choisissez d'abord un pays`}
             />
           </View>
 
