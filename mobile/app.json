@@ -3,6 +3,7 @@
     "name": "MediConnect Africa",
     "slug": "mediconnect-africa",
     "version": "3.0.0",
+    "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "scheme": "mediconnect",
     "backgroundColor": "#060E18",
@@ -27,7 +28,7 @@
       "bundleIdentifier": "cloud.mediconnect4africa"
     },
     "extra": {
-      "apiUrl": "https://mediconnect-alpha-azure.vercel.app",
+      "apiUrl": "https://mediconnect-backend-v2.vercel.app",
       "eas": {
         "projectId": "6e112d1f-9189-4889-afb8-4ec52b219f63"
       }
