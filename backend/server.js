@@ -652,9 +652,154 @@ app.get('/api/public/cliniques', async (req, res) => {
   try { const r=await db('SELECT * FROM cliniques WHERE is_active=true ORDER BY nom'); res.json({ success:true, data:r.rows }); }
   catch(e) { res.json({ success:true, data:[] }); }
 });
+// GET /api/public/medecins/:id/disponibilites — créneaux disponibles réels
 app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
-  res.json({ success:true, data:[] });
+  try {
+    const { date_debut, date_fin } = req.query;
+    const debut = date_debut || new Date().toISOString().split('T')[0];
+    const fin   = date_fin   || new Date(Date.now()+14*24*3600*1000).toISOString().split('T')[0];
+    const r = await db(`
+      SELECT d.*, m.prenom||' '||m.nom AS medecin_nom, m.specialite, m.tarif
+      FROM disponibilites d
+      LEFT JOIN medecins m ON m.id=d.medecin_id
+      WHERE d.medecin_id=$1 AND d.statut='disponible'
+        AND d.date >= $2 AND d.date <= $3
+      ORDER BY d.date, d.heure_debut
+    `, [req.params.id, debut, fin]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
+
+// GET /api/public/cliniques/:id/medecins — médecins d'une clinique
+app.get('/api/public/cliniques/:id/medecins', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT m.*,
+        (SELECT COUNT(*) FROM disponibilites d
+         WHERE d.medecin_id=m.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
+      FROM medecins m WHERE m.clinique_id=$1 AND m.statut='Disponible'
+      ORDER BY m.specialite, m.nom
+    `, [req.params.id]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/public/medecins-independants — médecins conseils publics
+app.get('/api/public/medecins-independants', async (req, res) => {
+  try {
+    const { specialite } = req.query;
+    let sql = `
+      SELECT u.id, u.prenom, u.nom, u.telephone, u.ville, u.pays_code,
+             mi.specialite, mi.tarif_consultation, mi.experience_ans, mi.bio, mi.note_moyenne,
+             (SELECT COUNT(*) FROM disponibilites d
+              WHERE d.medecin_id=u.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
+      FROM utilisateurs u
+      LEFT JOIN medecins_independants mi ON mi.user_id=u.id
+      WHERE u.role='medecin_independant' AND u.is_active=true
+    `;
+    const p = [];
+    if (specialite) { p.push(specialite); sql += ` AND mi.specialite=$${p.length}`; }
+    sql += ' ORDER BY mi.note_moyenne DESC NULLS LAST, u.nom';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/patients/rdvs — RDV du patient connecté
+app.get('/api/patients/rdvs', auth, async (req, res) => {
+  try {
+    const { statut, upcoming } = req.query;
+    let sql = `
+      SELECT r.*,
+             m.prenom||' '||m.nom AS medecin_nom_complet,
+             m.specialite AS medecin_specialite,
+             cl.nom AS clinique_nom, cl.adresse AS clinique_adresse, cl.telephone AS clinique_tel
+      FROM rendez_vous r
+      LEFT JOIN medecins m ON m.id=r.medecin_id
+      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
+      WHERE r.patient_id=$1
+    `;
+    const p = [req.user.id];
+    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
+    if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
+    sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/patients/rdv — Patient prend un RDV (authentifié)
+app.post('/api/patients/rdv', auth, async (req, res) => {
+  const { medecin_id, clinique_id, disponibilite_id, date_rdv, heure_rdv, motif, type_rdv } = req.body;
+  if (!date_rdv || !heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
+  try {
+    // Récupérer infos patient
+    const userRow = await db('SELECT prenom, nom, telephone FROM utilisateurs WHERE id=$1', [req.user.id]);
+    const u = userRow.rows[0] || {};
+    const patient_nom = `${u.prenom||''} ${u.nom||''}`.trim() || 'Patient';
+
+    // Récupérer nom médecin si fourni
+    let medecin_nom = null;
+    if (medecin_id) {
+      const mRow = await db('SELECT prenom, nom FROM medecins WHERE id=$1', [medecin_id]);
+      if (mRow.rows[0]) medecin_nom = `Dr. ${mRow.rows[0].prenom} ${mRow.rows[0].nom}`;
+      else {
+        // Médecin indépendant
+        const uRow = await db('SELECT prenom, nom FROM utilisateurs WHERE id=$1', [medecin_id]);
+        if (uRow.rows[0]) medecin_nom = `Dr. ${uRow.rows[0].prenom} ${uRow.rows[0].nom}`;
+      }
+    }
+
+    const ref = 'MC-RDV-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const r = await db(`
+      INSERT INTO rendez_vous
+        (id,reference,patient_id,patient_nom,medecin_id,medecin_nom,clinique_id,date_rdv,heure_rdv,motif,statut,source)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'en_attente','patient_app')
+      RETURNING *
+    `, [uuid(), ref, req.user.id, patient_nom, medecin_id||null, medecin_nom, clinique_id||null, date_rdv, heure_rdv, motif||null]);
+
+    // Marquer la disponibilité comme réservée si fournie
+    if (disponibilite_id) {
+      await db("UPDATE disponibilites SET statut='reserve' WHERE id=$1", [disponibilite_id]).catch(()=>{});
+    }
+
+    res.status(201).json({ success:true, data:{ reference:ref, rdv:r.rows[0] }, message:`RDV confirmé pour le ${date_rdv} à ${heure_rdv}` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// DELETE /api/patients/rdv/:id — Annuler un RDV
+app.delete('/api/patients/rdv/:id', auth, async (req, res) => {
+  try {
+    const rdv = await db('SELECT * FROM rendez_vous WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!rdv.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
+    if (rdv.rows[0].statut === 'termine') return res.status(400).json({ success:false, message:'Impossible d annuler un RDV terminé' });
+    await db("UPDATE rendez_vous SET statut='annule', updated_at=NOW() WHERE id=$1", [req.params.id]);
+    res.json({ success:true, message:'RDV annulé' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/patients/cliniques — Cliniques disponibles pour RDV avec leurs spécialités
+app.get('/api/patients/cliniques', auth, async (req, res) => {
+  try {
+    const { pays_code, ville, specialite } = req.query;
+    let sql = `
+      SELECT cl.*,
+        (SELECT COUNT(*) FROM medecins m WHERE m.clinique_id=cl.id AND m.statut='Disponible') AS nb_medecins,
+        (SELECT COUNT(*) FROM disponibilites d
+         JOIN medecins m ON m.id=d.medecin_id
+         WHERE m.clinique_id=cl.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
+      FROM cliniques cl
+      WHERE cl.is_active IS NOT false
+    `;
+    const p = [];
+    if (pays_code) { p.push(pays_code); sql += ` AND cl.pays_code=$${p.length}`; }
+    if (ville)     { p.push(ville);     sql += ` AND cl.ville ILIKE $${p.length}`; }
+    sql += ' ORDER BY cl.nom LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
 app.post('/api/public/rdv', async (req, res) => {
   const { patient_nom, patient_telephone, clinique_id, medecin_id, date_rdv, heure_rdv, motif } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
