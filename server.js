@@ -375,23 +375,70 @@ app.put('/api/patients/:id', auth, async (req, res) => {
 app.get('/api/rendez-vous', auth, async (req, res) => {
   try {
     const { date, statut, medecin_id } = req.query;
-    const cid = req.user?.clinique_id;
-    let sql = 'SELECT * FROM rendez_vous WHERE 1=1'; const p = [];
-    if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    if (date) { p.push(date); sql+=` AND date_rdv=$${p.length}`; }
-    if (statut) { p.push(statut); sql+=` AND statut=$${p.length}`; }
-    if (medecin_id) { p.push(medecin_id); sql+=` AND medecin_id=$${p.length}`; }
-    sql+=' ORDER BY date_rdv,heure_rdv LIMIT 200';
-    const r = await db(sql, p); res.json({ success:true, data:r.rows });
+    const role = req.user?.role;
+    const uid  = req.user?.id;
+    const cid  = req.user?.clinique_id;
+
+    let sql = `
+      SELECT r.*,
+             u.prenom||' '||u.nom AS patient_nom_complet,
+             u.telephone AS patient_tel,
+             m.prenom||' '||m.nom AS medecin_nom_complet,
+             m.specialite AS medecin_specialite,
+             cl.nom AS clinique_nom
+      FROM rendez_vous r
+      LEFT JOIN utilisateurs u ON u.id=r.patient_id
+      LEFT JOIN medecins m ON m.id=r.medecin_id
+      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
+      WHERE 1=1
+    `;
+    const p = [];
+
+    // Filtrage selon le rôle
+    if (role === 'clinique' && cid) {
+      // Clinique : voit ses RDV + RDV de ses médecins
+      p.push(cid);
+      sql += ` AND (r.clinique_id=$${p.length} OR m.clinique_id=$${p.length})`;
+    } else if (role === 'medecin' || role === 'medecin_independant') {
+      // Médecin : voit ses propres RDV
+      p.push(uid);
+      sql += ` AND r.medecin_id=$${p.length}`;
+    } else if (role === 'patient') {
+      p.push(uid);
+      sql += ` AND r.patient_id=$${p.length}`;
+    }
+    // admin voit tout
+
+    if (date)       { p.push(date);       sql += ` AND r.date_rdv=$${p.length}`; }
+    if (statut)     { p.push(statut);     sql += ` AND r.statut=$${p.length}`; }
+    if (medecin_id) { p.push(medecin_id); sql += ` AND r.medecin_id=$${p.length}`; }
+
+    sql += ' ORDER BY r.date_rdv, r.heure_rdv LIMIT 200';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/rendez-vous', auth, async (req, res) => {
-  const { patient_nom, patient_id, medecin_nom, medecin_id, date_rdv, heure_rdv, motif, statut, assurance, notes } = req.body;
+  const { patient_nom, patient_id, medecin_nom, medecin_id, clinique_id, date_rdv, heure_rdv, motif, statut, assurance, notes, source } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
   try {
     const ref = 'RDV-'+Date.now().toString(36).toUpperCase();
-    const r = await db('INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [uuid(),ref,req.user?.clinique_id,patient_id||null,patient_nom||null,medecin_id||null,medecin_nom||null,date_rdv,heure_rdv,motif||null,statut||'en_attente',assurance||null,notes||null]);
+    // patient_id : priorité au body, sinon l'utilisateur connecté (si rôle patient)
+    const finalPatientId = patient_id || (req.user?.role === 'patient' ? req.user.id : null);
+    // clinique_id : priorité au body, sinon depuis le token (si rôle clinique)
+    const finalCliniqueId = clinique_id || req.user?.clinique_id || null;
+
+    // Récupérer le nom du patient si non fourni
+    let finalPatientNom = patient_nom;
+    if (!finalPatientNom && finalPatientId) {
+      const u = await db('SELECT prenom, nom FROM utilisateurs WHERE id=$1', [finalPatientId]);
+      if (u.rows[0]) finalPatientNom = `${u.rows[0].prenom||''} ${u.rows[0].nom||''}`.trim();
+    }
+
+    const r = await db(
+      'INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [uuid(), ref, finalCliniqueId, finalPatientId, finalPatientNom||null, medecin_id||null, medecin_nom||null, date_rdv, heure_rdv, motif||null, statut||'en_attente', assurance||null, notes||null, source||'dashboard']
+    );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
