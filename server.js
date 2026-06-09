@@ -422,7 +422,11 @@ app.get('/api/rendez-vous', auth, async (req, res) => {
       p.push(uid);
       sql += ` AND r.medecin_id=$${p.length}`;
     } else if (role === 'patient') {
-      p.push(uid);
+      // Résoudre le vrai patient_id depuis la table patients
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [uid]).catch(()=>({rows:[]}));
+      const patId = pRow.rows[0]?.id;
+      if (!patId) return res.json({ success:true, data:[] });
+      p.push(patId);
       sql += ` AND r.patient_id=$${p.length}`;
     }
     // admin voit tout
@@ -441,8 +445,12 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
   try {
     const ref = 'RDV-'+Date.now().toString(36).toUpperCase();
-    // patient_id : priorité au body, sinon l'utilisateur connecté (si rôle patient)
-    const finalPatientId = patient_id || (req.user?.role === 'patient' ? req.user.id : null);
+    // patient_id : priorité au body, sinon résoudre depuis table patients via user_id
+    let finalPatientId = patient_id || null;
+    if (!finalPatientId && req.user?.role === 'patient') {
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      finalPatientId = pRow.rows[0]?.id || null;
+    }
     // clinique_id : priorité au body → token → user.id si rôle clinique
     let finalCliniqueId = clinique_id || req.user?.clinique_id || null;
     if (!finalCliniqueId && req.user?.role === 'clinique') {
@@ -458,21 +466,14 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
       if (u.rows[0]) finalPatientNom = `${u.rows[0].prenom||''} ${u.rows[0].nom||''}`.trim();
     }
 
-    // Déterminer si medecin_id est un utilisateur indépendant ou un médecin de clinique
+    // Déterminer si medecin_id est un utilisateur indépendant
     let finalMedecinId = medecin_id || null;
     let finalMedecinIndepId = null;
     if (medecin_id) {
-      // Vérifier d'abord si c'est un utilisateur (médecin indépendant)
       const roleCheck = await db('SELECT role FROM utilisateurs WHERE id=$1', [medecin_id]).catch(()=>({rows:[]}));
       if (roleCheck.rows[0]?.role === 'medecin_independant') {
         finalMedecinIndepId = medecin_id;
-        finalMedecinId = null;
-      } else {
-        // C'est un médecin de clinique — récupérer sa clinique_id si pas fournie
-        if (!finalCliniqueId) {
-          const mRow = await db('SELECT clinique_id FROM medecins WHERE id=$1', [medecin_id]).catch(()=>({rows:[]}));
-          if (mRow.rows[0]?.clinique_id) finalCliniqueId = mRow.rows[0].clinique_id;
-        }
+        finalMedecinId = null; // pas dans table medecins
       }
     }
 
@@ -797,6 +798,11 @@ app.get('/api/public/medecins-independants', async (req, res) => {
 app.get('/api/patients/rdvs', auth, async (req, res) => {
   try {
     const { statut, upcoming } = req.query;
+    // Résoudre le vrai patient_id depuis la table patients
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.json({ success:true, data:[] });
+
     let sql = `
       SELECT r.*,
              m.prenom||' '||m.nom AS medecin_nom_complet,
@@ -807,7 +813,7 @@ app.get('/api/patients/rdvs', auth, async (req, res) => {
       LEFT JOIN cliniques cl ON cl.id=r.clinique_id
       WHERE r.patient_id=$1
     `;
-    const p = [req.user.id];
+    const p = [patientId];
     if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
     if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
     sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
@@ -858,7 +864,10 @@ app.post('/api/patients/rdv', auth, async (req, res) => {
 // DELETE /api/patients/rdv/:id — Annuler un RDV
 app.delete('/api/patients/rdv/:id', auth, async (req, res) => {
   try {
-    const rdv = await db('SELECT * FROM rendez_vous WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.status(404).json({ success:false, message:'Patient introuvable' });
+    const rdv = await db('SELECT * FROM rendez_vous WHERE id=$1 AND patient_id=$2', [req.params.id, patientId]);
     if (!rdv.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
     if (rdv.rows[0].statut === 'termine') return res.status(400).json({ success:false, message:'Impossible d annuler un RDV terminé' });
     await db("UPDATE rendez_vous SET statut='annule', updated_at=NOW() WHERE id=$1", [req.params.id]);
