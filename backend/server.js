@@ -366,6 +366,9 @@ app.get('/api/patients', auth, async (req, res) => {
 app.get('/api/patients/rdvs', auth, async (req, res) => {
   try {
     const { statut, upcoming } = req.query;
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.json({ success:true, data:[] });
     let sql = `
       SELECT r.*,
              m.prenom||' '||m.nom AS medecin_nom_complet,
@@ -376,7 +379,7 @@ app.get('/api/patients/rdvs', auth, async (req, res) => {
       LEFT JOIN cliniques cl ON cl.id=r.clinique_id
       WHERE r.patient_id=$1
     `;
-    const p = [req.user.id];
+    const p = [patientId];
     if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
     if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
     sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
