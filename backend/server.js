@@ -1,32 +1,366 @@
-// GET /api/patients/rdvs — RDV du patient connecté
-app.get('/api/patients/rdvs', auth, async (req, res) => {
+require('dotenv').config();
+const express    = require('express');
+const helmet     = require('helmet');
+const morgan     = require('morgan');
+const rateLimit  = require('express-rate-limit');
+const { Pool }   = require('pg');
+const bcrypt     = require('bcryptjs');
+const jwt        = require('jsonwebtoken');
+const { v4: uuid } = require('uuid');
+const path       = require('path');
+
+const isProd = process.env.NODE_ENV === 'production';
+const JWT_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
+
+// ── DB Pool ───────────────────────────────────────────────────────
+const cleanUrl = (u) => u ? u.replace(/[?&]channel_binding=[^&]*/g, '') : u;
+const pool = new Pool({
+  connectionString: cleanUrl(process.env.DATABASE_URL),
+  ssl: { rejectUnauthorized: false },
+  max: 3,
+  idleTimeoutMillis: 20000,
+  connectionTimeoutMillis: 8000,
+});
+const db = async (text, params) => {
+  const c = await pool.connect();
+  try { return await c.query(text, params); } finally { c.release(); }
+};
+
+// ── Auth middleware ────────────────────────────────────────────────
+const auth = (req, res, next) => {
+  const h = req.headers.authorization || '';
+  if (!h.startsWith('Bearer ')) return res.status(401).json({ success:false, message:'Token manquant' });
   try {
-    const { statut, upcoming } = req.query;
-    let sql = `
-      SELECT r.*,
-             m.prenom||' '||m.nom AS medecin_nom_complet,
-             m.specialite AS medecin_specialite,
-             cl.nom AS clinique_nom, cl.adresse AS clinique_adresse, cl.telephone AS clinique_tel
-      FROM rendez_vous r
-      LEFT JOIN medecins m ON m.id=r.medecin_id
-      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
-      WHERE r.patient_id=$1
-    `;
-    const p = [req.user.id];
-    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
-    if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
-    sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
-    const r = await db(sql, p);
+    req.user = jwt.verify(h.slice(7), JWT_SECRET);
+    next();
+  } catch { return res.status(401).json({ success:false, message:'Token invalide' }); }
+};
+const can = (...roles) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ success:false, message:'Non authentifié' });
+  if (!roles.includes(req.user.role)) return res.status(403).json({ success:false, message:'Accès refusé' });
+  next();
+};
+
+// ── Auto-init tables ──────────────────────────────────────────────
+const initTables = async () => {
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS utilisateurs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email VARCHAR(200) UNIQUE NOT NULL, password VARCHAR(200) NOT NULL,
+      role VARCHAR(30) DEFAULT 'patient', prenom VARCHAR(100), nom VARCHAR(100),
+      telephone VARCHAR(30), ville VARCHAR(100), adresse TEXT,
+      clinique_id UUID, patient_id UUID, medecin_id UUID,
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS cliniques (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID, nom VARCHAR(200), type VARCHAR(100) DEFAULT 'Clinique',
+      adresse TEXT, ville VARCHAR(100), telephone VARCHAR(30),
+      email VARCHAR(200), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS medecins (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID, clinique_id UUID, prenom VARCHAR(100), nom VARCHAR(100),
+      specialite VARCHAR(100), telephone VARCHAR(30), email VARCHAR(200),
+      tarif DECIMAL(10,2), experience_ans INTEGER, statut VARCHAR(30) DEFAULT 'Disponible',
+      jours_travail VARCHAR(200) DEFAULT 'Lun,Mar,Mer,Jeu,Ven',
+      horaires_debut TIME DEFAULT '08:00', horaires_fin TIME DEFAULT '17:00',
+      note_moyenne DECIMAL(3,2), created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS patients (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID, clinique_id UUID, code_secret VARCHAR(30),
+      prenom VARCHAR(100), nom VARCHAR(100), telephone VARCHAR(30),
+      email VARCHAR(200), date_naissance DATE, groupe_sanguin VARCHAR(10),
+      allergies TEXT, antecedents TEXT, ville VARCHAR(100),
+      assurance VARCHAR(100), numero_police VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS rendez_vous (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      reference VARCHAR(50), clinique_id UUID, patient_id UUID,
+      patient_nom VARCHAR(200), medecin_id UUID, medecin_nom VARCHAR(200),
+      date_rdv DATE NOT NULL, heure_rdv TIME NOT NULL,
+      motif TEXT, statut VARCHAR(30) DEFAULT 'en_attente',
+      assurance VARCHAR(100), source VARCHAR(30) DEFAULT 'dashboard',
+      notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS consultations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, medecin_nom VARCHAR(200),
+      rdv_id UUID, diagnostic TEXT, traitement TEXT, notes TEXT,
+      tension_arterielle VARCHAR(20), temperature VARCHAR(10), poids VARCHAR(10), taille VARCHAR(10),
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS ordonnances (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      medicaments TEXT, posologie TEXT, duree VARCHAR(100), notes_ord TEXT,
+      statut VARCHAR(20) DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS stock (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID, nom VARCHAR(200) NOT NULL,
+      categorie VARCHAR(100) DEFAULT 'Médicament', quantite INTEGER DEFAULT 0,
+      unite VARCHAR(50) DEFAULT 'boite', seuil_alerte INTEGER DEFAULT 10,
+      prix_unitaire DECIMAL(12,2), fournisseur VARCHAR(200),
+      date_expiration DATE, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS factures (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      reference VARCHAR(50), clinique_id UUID, patient_id UUID,
+      patient_nom VARCHAR(200), montant DECIMAL(12,2) DEFAULT 0,
+      mode_paiement VARCHAR(50) DEFAULT 'Espèces',
+      statut VARCHAR(30) DEFAULT 'en_attente', assurance VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS caisse_sessions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID, date DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(20) DEFAULT 'ouverte',
+      total_encaisse DECIMAL(12,2) DEFAULT 0, total_decaisse DECIMAL(12,2) DEFAULT 0,
+      opened_at TIMESTAMPTZ DEFAULT NOW(), closed_at TIMESTAMPTZ
+    )`,
+    `CREATE TABLE IF NOT EXISTS dossiers_assurance (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      reference VARCHAR(50), clinique_id UUID, patient_id UUID,
+      patient_nom VARCHAR(200), compagnie VARCHAR(100), numero_police VARCHAR(100),
+      montant_total DECIMAL(12,2) DEFAULT 0, montant_assur DECIMAL(12,2) DEFAULT 0,
+      ticket_moder DECIMAL(12,2) DEFAULT 0, taux_couverture INTEGER DEFAULT 80,
+      diagnostic TEXT, statut VARCHAR(30) DEFAULT 'soumis', motif_rejet TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS commandes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, pharmacie_id UUID, livreur_id UUID,
+      adresse_livraison TEXT, nombre_articles INTEGER DEFAULT 1,
+      frais_livraison DECIMAL(10,2) DEFAULT 1500,
+      statut VARCHAR(30) DEFAULT 'en_attente',
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS disponibilites (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      medecin_id UUID NOT NULL, clinique_id UUID,
+      date DATE NOT NULL, heure_debut TIME NOT NULL, heure_fin TIME NOT NULL,
+      statut VARCHAR(20) DEFAULT 'disponible', recurrent BOOLEAN DEFAULT false,
+      motif_absence TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS bulletins (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      type VARCHAR(50) NOT NULL, categorie VARCHAR(30) DEFAULT 'imagerie',
+      patient_nom VARCHAR(200), patient_id UUID, emetteur_nom VARCHAR(200),
+      clinique_id UUID, rapport TEXT, notes TEXT,
+      statut VARCHAR(20) DEFAULT 'nouveau',
+      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS specialites_clinique (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID NOT NULL, nom VARCHAR(200) NOT NULL,
+      description TEXT, tarif_consultation DECIMAL(10,2),
+      disponible BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+  ];
+  for (const sql of tables) {
+    await db(sql).catch(e => console.error('[INIT TABLE]', e.message));
+  }
+  // Ajouter colonnes manquantes si la table existe déjà (migration douce)
+  const alterations = [
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS patient_nom VARCHAR(200)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS reference VARCHAR(50)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS assurance VARCHAR(100)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS source VARCHAR(30) DEFAULT 'dashboard'",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS notes TEXT",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS code_secret VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS allergies TEXT",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS antecedents TEXT",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS groupe_sanguin VARCHAR(10)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS assurance VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS numero_police VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_debut TIME DEFAULT '08:00'",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_fin TIME DEFAULT '17:00'",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS note_moyenne DECIMAL(3,2)",
+    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    // Rendre patient_id nullable (ancienne contrainte NOT NULL)
+    "ALTER TABLE rendez_vous ALTER COLUMN patient_id DROP NOT NULL",
+    "ALTER TABLE rendez_vous ALTER COLUMN clinique_id DROP NOT NULL",
+  ];
+  for (const sql of alterations) {
+    await db(sql).catch(() => {});
+  }
+  console.log('[DB] Tables vérifiées et migrées');
+};
+
+// ── App Express ───────────────────────────────────────────────────
+const app = express();
+
+// Trust proxy Vercel (obligatoire pour express-rate-limit)
+app.set('trust proxy', 1);
+
+// CORS EN PREMIER
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  next();
+});
+
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(morgan(isProd ? 'tiny' : 'dev'));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Rate limiting
+app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==='OPTIONS' }));
+app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
+
+// ── HEALTH ────────────────────────────────────────────────────────
+app.get('/api/health', async (req, res) => {
+  try {
+    await db('SELECT 1');
+    res.json({ success:true, status:'ok', db:'connected', env: process.env.NODE_ENV||'unknown', ts:new Date().toISOString() });
+  } catch(e) {
+    res.status(503).json({ success:false, db:'error', error:e.message });
+  }
+});
+app.get('/', (req, res) => res.json({ success:true, message:'MediConnect API v2', health:'/api/health' }));
+
+// ── AUTH ──────────────────────────────────────────────────────────
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ success:false, message:'Email et mot de passe requis' });
+  try {
+    const r = await db('SELECT * FROM utilisateurs WHERE email=$1 AND is_active IS NOT false LIMIT 1', [email]);
+    if (!r.rows.length) return res.status(401).json({ success:false, message:'Email ou mot de passe incorrect' });
+    const user = r.rows[0];
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(401).json({ success:false, message:'Email ou mot de passe incorrect' });
+    const token = jwt.sign({ id:user.id, role:user.role, clinique_id:user.clinique_id, patient_id:user.patient_id, medecin_id:user.medecin_id }, JWT_SECRET, { expiresIn:'7d' });
+    const { password:_, ...u } = user;
+    res.json({ success:true, token, user:u });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password, prenom, nom, role, telephone } = req.body;
+  if (!email || !password) return res.status(400).json({ success:false, message:'Email et mot de passe requis' });
+  try {
+    const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+    if (exists.rows.length) return res.status(409).json({ success:false, message:'Email déjà utilisé' });
+    const hash = await bcrypt.hash(password, 10);
+    const id = uuid();
+    const r = await db('INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [id, email, hash, prenom||'', nom||'', role||'patient', telephone||null]);
+    const token = jwt.sign({ id, role:role||'patient' }, JWT_SECRET, { expiresIn:'7d' });
+    const { password:_, ...u } = r.rows[0];
+    res.status(201).json({ success:true, token, user:u });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── UTILISATEURS ──────────────────────────────────────────────────
+app.get('/api/utilisateurs', auth, can('admin'), async (req, res) => {
+  try {
+    const r = await db('SELECT id,email,role,prenom,nom,telephone,ville,is_active,created_at FROM utilisateurs ORDER BY created_at DESC LIMIT 500');
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.get('/api/utilisateurs/me', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT id,email,role,prenom,nom,telephone,ville,clinique_id,patient_id FROM utilisateurs WHERE id=$1', [req.user.id]);
+    res.json({ success:true, data:r.rows[0]||{} });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── CLINIQUES ─────────────────────────────────────────────────────
+app.get('/api/cliniques', async (req, res) => {
+  try { const r = await db('SELECT * FROM cliniques ORDER BY nom'); res.json({ success:true, data:r.rows }); }
+  catch(e) { res.json({ success:true, data:[] }); }
+});
+app.get('/api/cliniques/stats', auth, async (req, res) => {
+  try {
+    // clinique_id dans le token OU user.id si le compte EST la clinique
+    const cid = req.user?.clinique_id || (req.user?.role === 'clinique' ? req.user?.id : null);
+    if (!cid) return res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } });
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Chercher aussi dans cliniques par user_id
+    const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 OR id=$1 LIMIT 1', [cid]).catch(()=>({rows:[]}));
+    const effectiveCid = clRow.rows[0]?.id || cid;
+
+    const [m, r, p, rj] = await Promise.all([
+      db("SELECT COUNT(*) c FROM medecins WHERE clinique_id=$1 AND statut='Disponible'", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')`, [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv=$2 AND statut NOT IN ('annule')`, [effectiveCid, today]).catch(()=>({rows:[{c:0}]})),
+    ]);
+    res.json({ success:true, data:{
+      medecins_actifs: +m.rows[0]?.c||0,
+      rdv_ce_mois:     +r.rows[0]?.c||0,
+      patients_mois:   +p.rows[0]?.c||0,
+      rdv_aujourd_hui: +rj.rows[0]?.c||0,
+    }});
+  } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } }); }
+});
+
+// ── MÉDECINS ──────────────────────────────────────────────────────
+const medecinRouter = (method, path, ...handlers) => app[method]('/api/medecins' + path, ...handlers);
+medecinRouter('get', '/', auth, async (req, res) => {
+  try {
+    const cid = req.query.clinique_id || req.user?.clinique_id;
+    const r = cid
+      ? await db('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom,prenom', [cid])
+      : await db('SELECT * FROM medecins ORDER BY nom,prenom');
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
-
-app.get('/api/patients/me', auth, async (req, res) => {
+// Route publique médecins (sans auth) — pour le dashboard patient
+app.get('/api/public/medecins', async (req, res) => {
   try {
-    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
-    res.json({ success:true, data:r.rows[0]||null });
+    const { clinique_id, specialite } = req.query;
+    let sql = 'SELECT * FROM medecins WHERE 1=1'; const p = [];
+    if (clinique_id) { p.push(clinique_id); sql += ` AND clinique_id=$${p.length}`; }
+    if (specialite)  { p.push(specialite);  sql += ` AND specialite=$${p.length}`; }
+    sql += ' ORDER BY nom,prenom';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+medecinRouter('post', '/', auth, async (req, res) => {
+  const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+  if (!prenom||!nom||!specialite) return res.status(400).json({ success:false, message:'Prénom, nom et spécialité requis' });
+  try {
+    const r = await db('INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,telephone,email,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      [uuid(), req.user?.clinique_id, prenom, nom, specialite, telephone||null, email||null, tarif||null, experience_ans||null, jours_travail||'Lun,Mar,Mer,Jeu,Ven', horaires_debut||'08:00', horaires_fin||'17:00']);
+    res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+medecinRouter('put', '/:id', auth, async (req, res) => {
+  const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+  try {
+    const r = await db('UPDATE medecins SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),specialite=COALESCE($3,specialite),statut=COALESCE($4,statut),tarif=COALESCE($5,tarif),telephone=COALESCE($6,telephone),experience_ans=COALESCE($7,experience_ans),jours_travail=COALESCE($8,jours_travail),horaires_debut=COALESCE($9,horaires_debut),horaires_fin=COALESCE($10,horaires_fin),updated_at=NOW() WHERE id=$11 RETURNING *',
+      [prenom,nom,specialite,statut,tarif,telephone,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]);
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+medecinRouter('delete', '/:id', auth, async (req, res) => {
+  try { await db('DELETE FROM medecins WHERE id=$1', [req.params.id]); res.json({ success:true }); }
+  catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── PATIENTS ──────────────────────────────────────────────────────
+const vd = d => d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+app.get('/api/patients', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const r = cid ? await db('SELECT * FROM patients WHERE clinique_id=$1 ORDER BY nom,prenom LIMIT 500', [cid]) : await db('SELECT * FROM patients ORDER BY nom LIMIT 500');
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.get('/api/patients/:id', auth, async (req, res) => {
   try { const r = await db('SELECT * FROM patients WHERE id=$1', [req.params.id]); res.json({ success:true, data:r.rows[0]||null }); }
@@ -458,371 +792,29 @@ app.get('/api/public/medecins-independants', async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
-
-require('dotenv').config();
-const express    = require('express');
-const helmet     = require('helmet');
-const morgan     = require('morgan');
-const rateLimit  = require('express-rate-limit');
-const { Pool }   = require('pg');
-const bcrypt     = require('bcryptjs');
-const jwt        = require('jsonwebtoken');
-const { v4: uuid } = require('uuid');
-const path       = require('path');
-
-const isProd = process.env.NODE_ENV === 'production';
-const JWT_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
-
-// ── DB Pool ───────────────────────────────────────────────────────
-const cleanUrl = (u) => u ? u.replace(/[?&]channel_binding=[^&]*/g, '') : u;
-const pool = new Pool({
-  connectionString: cleanUrl(process.env.DATABASE_URL),
-  ssl: { rejectUnauthorized: false },
-  max: 3,
-  idleTimeoutMillis: 20000,
-  connectionTimeoutMillis: 8000,
-});
-const db = async (text, params) => {
-  const c = await pool.connect();
-  try { return await c.query(text, params); } finally { c.release(); }
-};
-
-// ── Auth middleware ────────────────────────────────────────────────
-const auth = (req, res, next) => {
-  const h = req.headers.authorization || '';
-  if (!h.startsWith('Bearer ')) return res.status(401).json({ success:false, message:'Token manquant' });
+// GET /api/patients/rdvs — RDV du patient connecté
+app.get('/api/patients/rdvs', auth, async (req, res) => {
   try {
-    req.user = jwt.verify(h.slice(7), JWT_SECRET);
-    next();
-  } catch { return res.status(401).json({ success:false, message:'Token invalide' }); }
-};
-const can = (...roles) => (req, res, next) => {
-  if (!req.user) return res.status(401).json({ success:false, message:'Non authentifié' });
-  if (!roles.includes(req.user.role)) return res.status(403).json({ success:false, message:'Accès refusé' });
-  next();
-};
-
-// ── Auto-init tables ──────────────────────────────────────────────
-const initTables = async () => {
-  const tables = [
-    `CREATE TABLE IF NOT EXISTS utilisateurs (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      email VARCHAR(200) UNIQUE NOT NULL, password VARCHAR(200) NOT NULL,
-      role VARCHAR(30) DEFAULT 'patient', prenom VARCHAR(100), nom VARCHAR(100),
-      telephone VARCHAR(30), ville VARCHAR(100), adresse TEXT,
-      clinique_id UUID, patient_id UUID, medecin_id UUID,
-      is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS cliniques (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID, nom VARCHAR(200), type VARCHAR(100) DEFAULT 'Clinique',
-      adresse TEXT, ville VARCHAR(100), telephone VARCHAR(30),
-      email VARCHAR(200), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS medecins (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID, clinique_id UUID, prenom VARCHAR(100), nom VARCHAR(100),
-      specialite VARCHAR(100), telephone VARCHAR(30), email VARCHAR(200),
-      tarif DECIMAL(10,2), experience_ans INTEGER, statut VARCHAR(30) DEFAULT 'Disponible',
-      jours_travail VARCHAR(200) DEFAULT 'Lun,Mar,Mer,Jeu,Ven',
-      horaires_debut TIME DEFAULT '08:00', horaires_fin TIME DEFAULT '17:00',
-      note_moyenne DECIMAL(3,2), created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS patients (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID, clinique_id UUID, code_secret VARCHAR(30),
-      prenom VARCHAR(100), nom VARCHAR(100), telephone VARCHAR(30),
-      email VARCHAR(200), date_naissance DATE, groupe_sanguin VARCHAR(10),
-      allergies TEXT, antecedents TEXT, ville VARCHAR(100),
-      assurance VARCHAR(100), numero_police VARCHAR(100),
-      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS rendez_vous (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      reference VARCHAR(50), clinique_id UUID, patient_id UUID,
-      patient_nom VARCHAR(200), medecin_id UUID, medecin_nom VARCHAR(200),
-      date_rdv DATE NOT NULL, heure_rdv TIME NOT NULL,
-      motif TEXT, statut VARCHAR(30) DEFAULT 'en_attente',
-      assurance VARCHAR(100), source VARCHAR(30) DEFAULT 'dashboard',
-      notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS consultations (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      patient_id UUID, clinique_id UUID, medecin_id UUID, medecin_nom VARCHAR(200),
-      rdv_id UUID, diagnostic TEXT, traitement TEXT, notes TEXT,
-      tension_arterielle VARCHAR(20), temperature VARCHAR(10), poids VARCHAR(10), taille VARCHAR(10),
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS ordonnances (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
-      medicaments TEXT, posologie TEXT, duree VARCHAR(100), notes_ord TEXT,
-      statut VARCHAR(20) DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS stock (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      clinique_id UUID, nom VARCHAR(200) NOT NULL,
-      categorie VARCHAR(100) DEFAULT 'Médicament', quantite INTEGER DEFAULT 0,
-      unite VARCHAR(50) DEFAULT 'boite', seuil_alerte INTEGER DEFAULT 10,
-      prix_unitaire DECIMAL(12,2), fournisseur VARCHAR(200),
-      date_expiration DATE, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS factures (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      reference VARCHAR(50), clinique_id UUID, patient_id UUID,
-      patient_nom VARCHAR(200), montant DECIMAL(12,2) DEFAULT 0,
-      mode_paiement VARCHAR(50) DEFAULT 'Espèces',
-      statut VARCHAR(30) DEFAULT 'en_attente', assurance VARCHAR(100),
-      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS caisse_sessions (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      clinique_id UUID, date DATE DEFAULT CURRENT_DATE,
-      statut VARCHAR(20) DEFAULT 'ouverte',
-      total_encaisse DECIMAL(12,2) DEFAULT 0, total_decaisse DECIMAL(12,2) DEFAULT 0,
-      opened_at TIMESTAMPTZ DEFAULT NOW(), closed_at TIMESTAMPTZ
-    )`,
-    `CREATE TABLE IF NOT EXISTS dossiers_assurance (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      reference VARCHAR(50), clinique_id UUID, patient_id UUID,
-      patient_nom VARCHAR(200), compagnie VARCHAR(100), numero_police VARCHAR(100),
-      montant_total DECIMAL(12,2) DEFAULT 0, montant_assur DECIMAL(12,2) DEFAULT 0,
-      ticket_moder DECIMAL(12,2) DEFAULT 0, taux_couverture INTEGER DEFAULT 80,
-      diagnostic TEXT, statut VARCHAR(30) DEFAULT 'soumis', motif_rejet TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS commandes (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      patient_id UUID, pharmacie_id UUID, livreur_id UUID,
-      adresse_livraison TEXT, nombre_articles INTEGER DEFAULT 1,
-      frais_livraison DECIMAL(10,2) DEFAULT 1500,
-      statut VARCHAR(30) DEFAULT 'en_attente',
-      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS disponibilites (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      medecin_id UUID NOT NULL, clinique_id UUID,
-      date DATE NOT NULL, heure_debut TIME NOT NULL, heure_fin TIME NOT NULL,
-      statut VARCHAR(20) DEFAULT 'disponible', recurrent BOOLEAN DEFAULT false,
-      motif_absence TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS bulletins (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      type VARCHAR(50) NOT NULL, categorie VARCHAR(30) DEFAULT 'imagerie',
-      patient_nom VARCHAR(200), patient_id UUID, emetteur_nom VARCHAR(200),
-      clinique_id UUID, rapport TEXT, notes TEXT,
-      statut VARCHAR(20) DEFAULT 'nouveau',
-      created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS specialites_clinique (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      clinique_id UUID NOT NULL, nom VARCHAR(200) NOT NULL,
-      description TEXT, tarif_consultation DECIMAL(10,2),
-      disponible BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
-    )`,
-  ];
-  for (const sql of tables) {
-    await db(sql).catch(e => console.error('[INIT TABLE]', e.message));
-  }
-  // Ajouter colonnes manquantes si la table existe déjà (migration douce)
-  const alterations = [
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS patient_nom VARCHAR(200)",
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS reference VARCHAR(50)",
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS assurance VARCHAR(100)",
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS source VARCHAR(30) DEFAULT 'dashboard'",
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS notes TEXT",
-    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS code_secret VARCHAR(30)",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS allergies TEXT",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS antecedents TEXT",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS groupe_sanguin VARCHAR(10)",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS assurance VARCHAR(100)",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS numero_police VARCHAR(100)",
-    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
-    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_debut TIME DEFAULT '08:00'",
-    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS horaires_fin TIME DEFAULT '17:00'",
-    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS note_moyenne DECIMAL(3,2)",
-    "ALTER TABLE medecins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
-    // Rendre patient_id nullable (ancienne contrainte NOT NULL)
-    "ALTER TABLE rendez_vous ALTER COLUMN patient_id DROP NOT NULL",
-    "ALTER TABLE rendez_vous ALTER COLUMN clinique_id DROP NOT NULL",
-  ];
-  for (const sql of alterations) {
-    await db(sql).catch(() => {});
-  }
-  console.log('[DB] Tables vérifiées et migrées');
-};
-
-// ── App Express ───────────────────────────────────────────────────
-const app = express();
-
-// Trust proxy Vercel (obligatoire pour express-rate-limit)
-app.set('trust proxy', 1);
-
-// CORS EN PREMIER
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization');
-  res.setHeader('Access-Control-Max-Age', '86400');
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
-  next();
-});
-
-app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(morgan(isProd ? 'tiny' : 'dev'));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Rate limiting
-app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==='OPTIONS' }));
-app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
-
-// ── HEALTH ────────────────────────────────────────────────────────
-app.get('/api/health', async (req, res) => {
-  try {
-    await db('SELECT 1');
-    res.json({ success:true, status:'ok', db:'connected', env: process.env.NODE_ENV||'unknown', ts:new Date().toISOString() });
-  } catch(e) {
-    res.status(503).json({ success:false, db:'error', error:e.message });
-  }
-});
-app.get('/', (req, res) => res.json({ success:true, message:'MediConnect API v2', health:'/api/health' }));
-
-// ── AUTH ──────────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ success:false, message:'Email et mot de passe requis' });
-  try {
-    const r = await db('SELECT * FROM utilisateurs WHERE email=$1 AND is_active IS NOT false LIMIT 1', [email]);
-    if (!r.rows.length) return res.status(401).json({ success:false, message:'Email ou mot de passe incorrect' });
-    const user = r.rows[0];
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ success:false, message:'Email ou mot de passe incorrect' });
-    const token = jwt.sign({ id:user.id, role:user.role, clinique_id:user.clinique_id, patient_id:user.patient_id, medecin_id:user.medecin_id }, JWT_SECRET, { expiresIn:'7d' });
-    const { password:_, ...u } = user;
-    res.json({ success:true, token, user:u });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-app.post('/api/auth/register', async (req, res) => {
-  const { email, password, prenom, nom, role, telephone } = req.body;
-  if (!email || !password) return res.status(400).json({ success:false, message:'Email et mot de passe requis' });
-  try {
-    const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
-    if (exists.rows.length) return res.status(409).json({ success:false, message:'Email déjà utilisé' });
-    const hash = await bcrypt.hash(password, 10);
-    const id = uuid();
-    const r = await db('INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [id, email, hash, prenom||'', nom||'', role||'patient', telephone||null]);
-    const token = jwt.sign({ id, role:role||'patient' }, JWT_SECRET, { expiresIn:'7d' });
-    const { password:_, ...u } = r.rows[0];
-    res.status(201).json({ success:true, token, user:u });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-// ── UTILISATEURS ──────────────────────────────────────────────────
-app.get('/api/utilisateurs', auth, can('admin'), async (req, res) => {
-  try {
-    const r = await db('SELECT id,email,role,prenom,nom,telephone,ville,is_active,created_at FROM utilisateurs ORDER BY created_at DESC LIMIT 500');
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-app.get('/api/utilisateurs/me', auth, async (req, res) => {
-  try {
-    const r = await db('SELECT id,email,role,prenom,nom,telephone,ville,clinique_id,patient_id FROM utilisateurs WHERE id=$1', [req.user.id]);
-    res.json({ success:true, data:r.rows[0]||{} });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-// ── CLINIQUES ─────────────────────────────────────────────────────
-app.get('/api/cliniques', async (req, res) => {
-  try { const r = await db('SELECT * FROM cliniques ORDER BY nom'); res.json({ success:true, data:r.rows }); }
-  catch(e) { res.json({ success:true, data:[] }); }
-});
-app.get('/api/cliniques/stats', auth, async (req, res) => {
-  try {
-    // clinique_id dans le token OU user.id si le compte EST la clinique
-    const cid = req.user?.clinique_id || (req.user?.role === 'clinique' ? req.user?.id : null);
-    if (!cid) return res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } });
-
-    const today = new Date().toISOString().split('T')[0];
-
-    // Chercher aussi dans cliniques par user_id
-    const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 OR id=$1 LIMIT 1', [cid]).catch(()=>({rows:[]}));
-    const effectiveCid = clRow.rows[0]?.id || cid;
-
-    const [m, r, p, rj] = await Promise.all([
-      db("SELECT COUNT(*) c FROM medecins WHERE clinique_id=$1 AND statut='Disponible'", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
-      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')`, [effectiveCid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
-      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv=$2 AND statut NOT IN ('annule')`, [effectiveCid, today]).catch(()=>({rows:[{c:0}]})),
-    ]);
-    res.json({ success:true, data:{
-      medecins_actifs: +m.rows[0]?.c||0,
-      rdv_ce_mois:     +r.rows[0]?.c||0,
-      patients_mois:   +p.rows[0]?.c||0,
-      rdv_aujourd_hui: +rj.rows[0]?.c||0,
-    }});
-  } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } }); }
-});
-
-// ── MÉDECINS ──────────────────────────────────────────────────────
-const medecinRouter = (method, path, ...handlers) => app[method]('/api/medecins' + path, ...handlers);
-medecinRouter('get', '/', auth, async (req, res) => {
-  try {
-    const cid = req.query.clinique_id || req.user?.clinique_id;
-    const r = cid
-      ? await db('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom,prenom', [cid])
-      : await db('SELECT * FROM medecins ORDER BY nom,prenom');
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-
-// Route publique médecins (sans auth) — pour le dashboard patient
-app.get('/api/public/medecins', async (req, res) => {
-  try {
-    const { clinique_id, specialite } = req.query;
-    let sql = 'SELECT * FROM medecins WHERE 1=1'; const p = [];
-    if (clinique_id) { p.push(clinique_id); sql += ` AND clinique_id=$${p.length}`; }
-    if (specialite)  { p.push(specialite);  sql += ` AND specialite=$${p.length}`; }
-    sql += ' ORDER BY nom,prenom';
+    const { statut, upcoming } = req.query;
+    let sql = `
+      SELECT r.*,
+             m.prenom||' '||m.nom AS medecin_nom_complet,
+             m.specialite AS medecin_specialite,
+             cl.nom AS clinique_nom, cl.adresse AS clinique_adresse, cl.telephone AS clinique_tel
+      FROM rendez_vous r
+      LEFT JOIN medecins m ON m.id=r.medecin_id
+      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
+      WHERE r.patient_id=$1
+    `;
+    const p = [req.user.id];
+    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
+    if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
+    sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
     const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-medecinRouter('post', '/', auth, async (req, res) => {
-  const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
-  if (!prenom||!nom||!specialite) return res.status(400).json({ success:false, message:'Prénom, nom et spécialité requis' });
-  try {
-    const r = await db('INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,telephone,email,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [uuid(), req.user?.clinique_id, prenom, nom, specialite, telephone||null, email||null, tarif||null, experience_ans||null, jours_travail||'Lun,Mar,Mer,Jeu,Ven', horaires_debut||'08:00', horaires_fin||'17:00']);
-    res.status(201).json({ success:true, data:r.rows[0] });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-medecinRouter('put', '/:id', auth, async (req, res) => {
-  const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
-  try {
-    const r = await db('UPDATE medecins SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),specialite=COALESCE($3,specialite),statut=COALESCE($4,statut),tarif=COALESCE($5,tarif),telephone=COALESCE($6,telephone),experience_ans=COALESCE($7,experience_ans),jours_travail=COALESCE($8,jours_travail),horaires_debut=COALESCE($9,horaires_debut),horaires_fin=COALESCE($10,horaires_fin),updated_at=NOW() WHERE id=$11 RETURNING *',
-      [prenom,nom,specialite,statut,tarif,telephone,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]);
-    res.json({ success:true, data:r.rows[0] });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-medecinRouter('delete', '/:id', auth, async (req, res) => {
-  try { await db('DELETE FROM medecins WHERE id=$1', [req.params.id]); res.json({ success:true }); }
-  catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
 
-// ── PATIENTS ──────────────────────────────────────────────────────
-const vd = d => d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
-app.get('/api/patients', auth, async (req, res) => {
-  try {
-    const cid = req.user?.clinique_id;
-    const r = cid ? await db('SELECT * FROM patients WHERE clinique_id=$1 ORDER BY nom,prenom LIMIT 500', [cid]) : await db('SELECT * FROM patients ORDER BY nom LIMIT 500');
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
 // POST /api/patients/rdv — Patient prend un RDV (authentifié)
 app.post('/api/patients/rdv', auth, async (req, res) => {
   const { medecin_id, clinique_id, disponibilite_id, date_rdv, heure_rdv, motif, type_rdv } = req.body;
@@ -918,7 +910,12 @@ app.use((err, req, res, next) => {
 // ════════════════════════════════════════════════════════════════════
 
 // ── PATIENTS /me ─────────────────────────────────────────────────
-
+app.get('/api/patients/me', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
+    res.json({ success:true, data:r.rows[0]||null });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
 
 // ── LIVREURS commandes ────────────────────────────────────────────
 app.get('/api/livreurs/commandes', auth, async (req, res) => {
