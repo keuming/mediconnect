@@ -671,9 +671,6 @@ app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
   res.status(err.status||500).json({ success:false, message:isProd&&err.status>=500?'Erreur interne':err.message });
 });
-app.use((req, res) => {
-  res.status(404).json({ success:false, message:`Route introuvable: ${req.method} ${req.originalUrl}` });
-});
 
 
 // ════════════════════════════════════════════════════════════════════
@@ -1165,6 +1162,324 @@ app.get('/api/ministere/geo-morbidite', auth, can('admin'), async (req, res) => 
     `, [a]);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// ASSURANCE — offres, souscriptions, tiers-payant
+// ══════════════════════════════════════════════════════════════════
+
+const logAudit = async (userId, action, tableName, recordId, changes, req) => {
+  try {
+    await db(
+      `INSERT INTO audit_logs (user_id,action,table_name,record_id,changes,ip_address,user_agent)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [userId||null, action, tableName||null, recordId||null,
+       changes ? JSON.stringify(changes) : null,
+       req?.ip||null, req?.headers?.['user-agent']||null]
+    );
+  } catch(e) { console.error('[audit_log]', e.message); }
+};
+
+app.get('/api/assurance/offres', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT o.id, o.nom, o.description, o.prix_mensuel, o.couverture_details,
+             o.franchise, o.plafond_annuel, o.delai_remboursement,
+             u.prenom||' '||u.nom AS assureur_nom
+      FROM offres_assurance o JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE o.actif=true ORDER BY o.prix_mensuel ASC
+    `);
+    res.json({ success:true, offres:r.rows });
+  } catch(e) { console.error('[GET /assurance/offres]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/offres/:id', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT o.*, u.prenom||' '||u.nom AS assureur_nom, u.telephone AS assureur_tel
+      FROM offres_assurance o JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE o.id=$1 AND o.actif=true
+    `, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error:'Offre introuvable' });
+    res.json({ success:true, offre:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/assurance/souscrire', auth, async (req, res) => {
+  const { offre_id } = req.body;
+  if (!offre_id) return res.status(400).json({ error:'offre_id requis' });
+  try {
+    const offre = await db('SELECT * FROM offres_assurance WHERE id=$1 AND actif=true', [offre_id]);
+    if (!offre.rows.length) return res.status(404).json({ error:'Offre introuvable' });
+    const existing = await db(
+      `SELECT id FROM souscriptions_assurance WHERE patient_id=$1 AND offre_id=$2 AND statut IN ('en_attente','active')`,
+      [req.user.id, offre_id]
+    );
+    if (existing.rows.length) return res.status(409).json({ error:'Souscription déjà active pour cette offre' });
+    const r = await db(
+      `INSERT INTO souscriptions_assurance (patient_id,offre_id,statut,date_debut) VALUES ($1,$2,'en_attente',CURRENT_DATE) RETURNING *`,
+      [req.user.id, offre_id]
+    );
+    await logAudit(req.user.id, 'SOUSCRIPTION_ASSURANCE', 'souscriptions_assurance', r.rows[0].id, {offre_id}, req);
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Souscription en cours',$2,$3)`,
+      [req.user.id, `Votre souscription à "${offre.rows[0].nom}" est en cours de traitement.`, r.rows[0].id]);
+    res.status(201).json({ success:true, souscription:r.rows[0] });
+  } catch(e) { console.error('[POST /assurance/souscrire]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/mes-souscriptions', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT s.*, o.nom AS offre_nom, o.prix_mensuel, o.couverture_details, o.plafond_annuel,
+             u.prenom||' '||u.nom AS assureur_nom
+      FROM souscriptions_assurance s
+      JOIN offres_assurance o ON o.id=s.offre_id
+      JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE s.patient_id=$1 ORDER BY s.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, souscriptions:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/assurance/tiers-payant', auth, async (req, res) => {
+  const { consultation_id, assureur_id, souscription_id, montant_total, clinique_id } = req.body;
+  if (!assureur_id || !montant_total) return res.status(400).json({ error:'assureur_id et montant_total requis' });
+  try {
+    const r = await db(`
+      INSERT INTO dossiers_tiers_payant (patient_id,clinique_id,assureur_id,consultation_id,souscription_id,montant_total,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,'soumis') RETURNING *
+    `, [req.user.id, clinique_id||null, assureur_id, consultation_id||null, souscription_id||null, montant_total]);
+    await logAudit(req.user.id, 'SOUMISSION_TIERS_PAYANT', 'dossiers_tiers_payant', r.rows[0].id, req.body, req);
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Nouveau dossier TP',$2,$3)`,
+      [assureur_id, `Nouveau dossier TP — Réf: ${r.rows[0].reference} — ${montant_total} FCFA`, r.rows[0].id]);
+    res.status(201).json({ success:true, dossier:r.rows[0] });
+  } catch(e) { console.error('[POST /assurance/tiers-payant]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/mes-dossiers-tp', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT d.*, u.prenom||' '||u.nom AS assureur_nom
+      FROM dossiers_tiers_payant d JOIN utilisateurs u ON u.id=d.assureur_id
+      WHERE d.patient_id=$1 ORDER BY d.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, dossiers:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/dossiers-tp', auth, can('assureur','admin'), async (req, res) => {
+  try {
+    const params = [req.user.id];
+    let q = `SELECT d.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS patient_tel
+             FROM dossiers_tiers_payant d JOIN utilisateurs u ON u.id=d.patient_id
+             WHERE d.assureur_id=$1`;
+    if (req.query.statut) { q += ` AND d.statut=$2`; params.push(req.query.statut); }
+    q += ` ORDER BY d.created_at DESC`;
+    const r = await db(q, params);
+    res.json({ success:true, dossiers:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/assurance/dossiers-tp/:id', auth, can('assureur','admin'), async (req, res) => {
+  const { statut, montant_pris_en_charge, motif_rejet } = req.body;
+  if (!['en_cours','valide','rembourse','rejete','litige'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
+  try {
+    const dossier = await db('SELECT * FROM dossiers_tiers_payant WHERE id=$1 AND assureur_id=$2', [req.params.id, req.user.id]);
+    if (!dossier.rows.length) return res.status(404).json({ error:'Dossier introuvable' });
+    const montantPatient = montant_pris_en_charge ? dossier.rows[0].montant_total - montant_pris_en_charge : null;
+    const r = await db(`
+      UPDATE dossiers_tiers_payant SET statut=$1,
+        montant_pris_en_charge=COALESCE($2,montant_pris_en_charge),
+        montant_patient=COALESCE($3,montant_patient),
+        motif_rejet=COALESCE($4,motif_rejet),
+        date_validation=CASE WHEN $1='valide' THEN NOW() ELSE date_validation END,
+        date_remboursement=CASE WHEN $1='rembourse' THEN NOW() ELSE date_remboursement END
+      WHERE id=$5 RETURNING *
+    `, [statut, montant_pris_en_charge||null, montantPatient, motif_rejet||null, req.params.id]);
+    await logAudit(req.user.id, 'TRAITEMENT_TIERS_PAYANT', 'dossiers_tiers_payant', req.params.id, {statut}, req);
+    const msgs = {
+      valide:`Dossier TP ${r.rows[0].reference} validé.`,
+      rembourse:`Remboursement de ${montant_pris_en_charge} FCFA — Réf: ${r.rows[0].reference}`,
+      rejete:`Dossier TP ${r.rows[0].reference} rejeté. Motif: ${motif_rejet||'Non précisé'}`
+    };
+    if (msgs[statut]) await db(
+      `INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Mise à jour dossier TP',$2,$3)`,
+      [dossier.rows[0].patient_id, msgs[statut], req.params.id]
+    );
+    res.json({ success:true, dossier:r.rows[0] });
+  } catch(e) { console.error('[PATCH /assurance/dossiers-tp]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/mes-offres', auth, can('assureur','admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT o.*, COUNT(s.id) AS nb_souscriptions
+      FROM offres_assurance o LEFT JOIN souscriptions_assurance s ON s.offre_id=o.id
+      WHERE o.assureur_id=$1 GROUP BY o.id ORDER BY o.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, offres:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/assurance/offres', auth, can('assureur','admin'), async (req, res) => {
+  const { nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel } = req.body;
+  if (!nom || !prix_mensuel) return res.status(400).json({ error:'nom et prix_mensuel requis' });
+  try {
+    const r = await db(`
+      INSERT INTO offres_assurance (assureur_id,nom,description,prix_mensuel,couverture_details,franchise,plafond_annuel)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+    `, [req.user.id, nom, description||null, prix_mensuel, couverture_details||{}, franchise||0, plafond_annuel||null]);
+    res.status(201).json({ success:true, offre:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/assurance/offres/:id', auth, can('assureur','admin'), async (req, res) => {
+  const { nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel, actif } = req.body;
+  try {
+    const r = await db(`
+      UPDATE offres_assurance SET
+        nom=COALESCE($1,nom), description=COALESCE($2,description),
+        prix_mensuel=COALESCE($3,prix_mensuel), couverture_details=COALESCE($4,couverture_details),
+        franchise=COALESCE($5,franchise), plafond_annuel=COALESCE($6,plafond_annuel), actif=COALESCE($7,actif)
+      WHERE id=$8 AND assureur_id=$9 RETURNING *
+    `, [nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel, actif, req.params.id, req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ error:'Offre introuvable' });
+    res.json({ success:true, offre:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/assurance/souscriptions/:id', auth, can('assureur','admin'), async (req, res) => {
+  const { statut, date_fin } = req.body;
+  if (!['active','suspendue','resiliee'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
+  try {
+    const r = await db(`
+      UPDATE souscriptions_assurance SET statut=$1,
+        date_fin=COALESCE($2,date_fin),
+        date_debut=CASE WHEN $1='active' AND date_debut IS NULL THEN CURRENT_DATE ELSE date_debut END
+      WHERE id=$3 RETURNING *
+    `, [statut, date_fin||null, req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error:'Souscription introuvable' });
+    const msg = statut==='active' ? `Votre assurance ${r.rows[0].numero_police} est active.`
+               : statut==='suspendue' ? `Votre assurance a été suspendue.`
+               : `Votre assurance a été résiliée.`;
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Mise à jour assurance',$2,$3)`,
+      [r.rows[0].patient_id, msg, r.rows[0].id]);
+    res.json({ success:true, souscription:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+// BUSINESS DEVELOPER — dashboard, recrutements, commissions
+// ══════════════════════════════════════════════════════════════════
+
+app.get('/api/business-developer/dashboard', auth, can('business_developer','admin'), async (req, res) => {
+  const bdId = req.user.id;
+  try {
+    const [prest, comm, pat] = await Promise.all([
+      db(`SELECT COUNT(*) FILTER (WHERE is_active=true) AS total_actifs, COUNT(*) AS total,
+                 COUNT(*) FILTER (WHERE created_at>=DATE_TRUNC('month',NOW())) AS ce_mois
+          FROM utilisateurs WHERE recrute_par=$1`, [bdId]),
+      db(`SELECT SUM(montant) FILTER (WHERE statut='payee') AS total_percu,
+                 SUM(montant) FILTER (WHERE statut='en_attente') AS en_attente,
+                 SUM(montant) FILTER (WHERE statut='validee') AS a_percevoir,
+                 COUNT(*) AS total_transactions
+          FROM commissions_bd WHERE bd_id=$1`, [bdId]),
+      db(`SELECT COUNT(*) AS total_patients FROM commissions_bd WHERE bd_id=$1 AND type_commission='patient'`, [bdId])
+    ]);
+    res.json({ success:true, dashboard:{ prestataires:prest.rows[0], commissions:comm.rows[0], patients:pat.rows[0] } });
+  } catch(e) { console.error('[BD /dashboard]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/prestataires', auth, can('business_developer','admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT u.id, u.prenom, u.nom, u.email, u.telephone, u.role, u.ville, u.pays_code, u.is_active, u.created_at,
+             COALESCE(SUM(c.montant) FILTER (WHERE c.statut='payee'),0) AS commissions_generees
+      FROM utilisateurs u
+      LEFT JOIN commissions_bd c ON c.prestataire_id=u.id AND c.bd_id=$1
+      WHERE u.recrute_par=$1 GROUP BY u.id ORDER BY u.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, prestataires:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/commissions', auth, can('business_developer','admin'), async (req, res) => {
+  const { statut, type_commission } = req.query;
+  const params = [req.user.id];
+  let q = `SELECT c.*, u.prenom||' '||u.nom AS prestataire_nom, u.role AS prestataire_role
+           FROM commissions_bd c LEFT JOIN utilisateurs u ON u.id=c.prestataire_id
+           WHERE c.bd_id=$1`;
+  if (statut) { q += ` AND c.statut=$${params.push(statut)}`; }
+  if (type_commission) { q += ` AND c.type_commission=$${params.push(type_commission)}`; }
+  q += ` ORDER BY c.created_at DESC`;
+  try {
+    const r = await db(q, params);
+    res.json({ success:true, commissions:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/commissions/resume', auth, can('business_developer','admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT DATE_TRUNC('month',created_at) AS mois, type_commission,
+             COUNT(*) AS nb, SUM(montant) AS total_fcfa,
+             SUM(montant) FILTER (WHERE statut='payee') AS percu,
+             SUM(montant) FILTER (WHERE statut='en_attente') AS en_attente
+      FROM commissions_bd WHERE bd_id=$1
+      GROUP BY DATE_TRUNC('month',created_at), type_commission ORDER BY mois DESC
+    `, [req.user.id]);
+    res.json({ success:true, resume:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/business-developer/recruter', auth, can('business_developer','admin'), async (req, res) => {
+  const { prestataire_id } = req.body;
+  if (!prestataire_id) return res.status(400).json({ error:'prestataire_id requis' });
+  try {
+    const p = await db('SELECT id,prenom,nom,role,recrute_par FROM utilisateurs WHERE id=$1', [prestataire_id]);
+    if (!p.rows.length) return res.status(404).json({ error:'Prestataire introuvable' });
+    if (p.rows[0].recrute_par) return res.status(409).json({ error:'Déjà rattaché à un Business Developer' });
+    if (['patient','admin'].includes(p.rows[0].role)) return res.status(400).json({ error:'Ce profil ne peut pas être recruté' });
+    await db('UPDATE utilisateurs SET recrute_par=$1 WHERE id=$2', [req.user.id, prestataire_id]);
+    const r = await db(`
+      INSERT INTO commissions_bd (bd_id,prestataire_id,type_commission,montant,statut)
+      VALUES ($1,$2,'recrutement',25000,'en_attente') RETURNING *
+    `, [req.user.id, prestataire_id]);
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Nouveau recrutement',$2,$3)`,
+      [req.user.id, `${p.rows[0].prenom} ${p.rows[0].nom} recruté. Commission 25 000 FCFA en attente.`, r.rows[0].id]);
+    res.status(201).json({ success:true, message:'Prestataire recruté', commission:r.rows[0] });
+  } catch(e) { console.error('[BD /recruter]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/notifications', auth, can('business_developer','admin'), async (req, res) => {
+  try {
+    const r = await db(`SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.user.id]);
+    res.json({ success:true, notifications:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/business-developer/commissions/valider/:id', auth, can('admin'), async (req, res) => {
+  const { statut, reference_paiement } = req.body;
+  if (!['validee','payee','annulee'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
+  try {
+    const r = await db(
+      `UPDATE commissions_bd SET statut=$1, reference_paiement=COALESCE($2,reference_paiement) WHERE id=$3 RETURNING *`,
+      [statut, reference_paiement||null, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error:'Commission introuvable' });
+    if (statut==='payee') await db(
+      `INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Commission payée',$2,$3)`,
+      [r.rows[0].bd_id, `Commission de ${r.rows[0].montant} FCFA payée. Réf: ${reference_paiement||'N/A'}`, r.rows[0].id]
+    );
+    res.json({ success:true, commission:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+
+// ── CATCH-ALL 404 — doit rester en toute dernière position ────────
+app.use((req, res) => {
+  res.status(404).json({ success:false, message:`Route introuvable: ${req.method} ${req.originalUrl}` });
 });
 
 // ── DÉMARRAGE ─────────────────────────────────────────────────────
