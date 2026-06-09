@@ -247,6 +247,8 @@ app.use('/api/ministere', require('./routes/ministere'));
 app.use('/api',           require('./routes/extra'));
 app.use('/api/optique',   require('./routes/optique'));
 app.use('/api/card',      require('./routes/card'));
+app.use('/api/assurance',          require('./routes/assurance'));
+app.use('/api/business-developer', require('./routes/business_developer'));
 
 // ── HEALTH & ROOT ─────────────────────────────────────────────────
 // Route de migration forcée (admin seulement)
