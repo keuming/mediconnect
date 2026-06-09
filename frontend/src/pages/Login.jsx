@@ -4,17 +4,18 @@ import toast from 'react-hot-toast';
 import useAuthStore from '../context/authStore';
 
 const DEMOS = [
-  { role: 'patient',             label: 'Patient',          icon: '👤', email: 'patient@demo.ci' },
-  { role: 'clinique',            label: 'Clinique',          icon: '🏥', email: 'clinique@demo.ci' },
-  { role: 'medecin_independant', label: 'Méd. Conseil',      icon: '⭐', email: 'medecin.indep@demo.ci' },
-  { role: 'pharmacie',           label: 'Pharmacie',         icon: '💊', email: 'pharmacie@demo.ci' },
-  { role: 'livreur',             label: 'Livreur',           icon: '🛵', email: 'livreur@demo.ci' },
-  { role: 'admin',               label: 'Admin',             icon: '⚙️', email: 'admin@demo.ci' },
-  { role: 'assureur',            label: 'Assureur',          icon: '🛡️', email: 'assureur@demo.ci' },
-  { role: 'imagerie',            label: 'Imagerie',          icon: '🩻', email: 'imagerie@demo.ci' },
-  { role: 'laboratoire',         label: 'Laboratoire',       icon: '🧪', email: 'laboratoire@demo.ci' },
-  { role: 'ministere',           label: 'Ministère Santé',   icon: '🏛️', email: 'ministere@sante.ci',  pwd: 'MinistereCI2024' },
-  { role: 'optique',             label: 'Cabinet Optique',   icon: '🔭', email: 'optique@demo.ci' },
+  { role: 'patient',            label: 'Patient',        icon: '👤', email: 'patient@demo.ci' },
+  { role: 'clinique',           label: 'Clinique',       icon: '🏥', email: 'clinique@demo.ci' },
+  { role: 'medecin_independant',label: 'Méd. Conseil',   icon: '⭐', email: 'medecin.indep@demo.ci' },
+  { role: 'pharmacie',          label: 'Pharmacie',      icon: '💊', email: 'pharmacie@demo.ci' },
+  { role: 'livreur',            label: 'Livreur',        icon: '🛵', email: 'livreur@demo.ci' },
+  { role: 'assureur',           label: 'Assureur',       icon: '🛡️', email: 'assureur@demo.ci' },
+  { role: 'imagerie',           label: 'Imagerie',       icon: '🩻', email: 'imagerie@demo.ci' },
+  { role: 'laboratoire',        label: 'Laboratoire',    icon: '🧪', email: 'laboratoire@demo.ci' },
+  { role: 'optique',            label: 'Optique',        icon: '🔭', email: 'optique@demo.ci' },
+  { role: 'ministere',          label: 'Ministère',      icon: '🏛️', email: 'ministere@sante.ci', pwd: 'MinistereCI2024' },
+  { role: 'business_developer', label: 'Business Dev',   icon: '💼', email: 'bd@demo.ci' },
+  { role: 'admin',              label: 'Admin',          icon: '⚙️', email: 'admin@demo.ci' },
 ];
 
 export default function Login() {
@@ -35,6 +36,9 @@ export default function Login() {
     assureur:            '/assureur',
     imagerie:            '/imagerie',
     laboratoire:         '/laboratoire',
+    ministere:           '/ministere',
+    optique:             '/optique',
+    business_developer:  '/bd',
   };
 
   const redirectAfterLogin = (user) => {
@@ -78,7 +82,7 @@ export default function Login() {
           RDV médicaux · Assurances tiers-payant · Ordonnances · Livraison GPS · 8 pays
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {['🇨🇮 Côte d\'Ivoire','🇸🇳 Sénégal','🇧🇫 Burkina Faso','🇬🇭 Ghana','🇲🇱 Mali','🇹🇬 Togo','🇧🇯 Bénin','🇬🇳 Guinée'].map(p => (
+          {["🇨🇮 Côte d'Ivoire",'🇸🇳 Sénégal','🇧🇫 Burkina Faso','🇬🇭 Ghana','🇲🇱 Mali','🇹🇬 Togo','🇧🇯 Bénin','🇬🇳 Guinée'].map(p => (
             <span key={p} style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 20, padding: '4px 12px', fontSize: 12, color: '#8BA0B5' }}>{p}</span>
           ))}
         </div>
