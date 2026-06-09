@@ -460,7 +460,7 @@ app.get('/api/rendez-vous', auth, async (req, res) => {
       const patId = pRow.rows[0]?.id;
       if (!patId) return res.json({ success:true, data:[] });
       p.push(patId);
-      sql += ` AND r.patient_id=${p.length}`;
+      sql += ` AND r.patient_id=$${p.length}`;
     }
     // admin voit tout
 
