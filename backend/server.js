@@ -671,9 +671,6 @@ app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
   res.status(err.status||500).json({ success:false, message:isProd&&err.status>=500?'Erreur interne':err.message });
 });
-app.use((req, res) => {
-  res.status(404).json({ success:false, message:`Route introuvable: ${req.method} ${req.originalUrl}` });
-});
 
 
 // ════════════════════════════════════════════════════════════════════
@@ -1171,11 +1168,10 @@ app.get('/api/ministere/geo-morbidite', auth, can('admin'), async (req, res) => 
 // ASSURANCE — offres, souscriptions, tiers-payant
 // ══════════════════════════════════════════════════════════════════
 
-// Utilitaire audit log
 const logAudit = async (userId, action, tableName, recordId, changes, req) => {
   try {
     await db(
-      `INSERT INTO audit_logs (user_id, action, table_name, record_id, changes, ip_address, user_agent)
+      `INSERT INTO audit_logs (user_id,action,table_name,record_id,changes,ip_address,user_agent)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [userId||null, action, tableName||null, recordId||null,
        changes ? JSON.stringify(changes) : null,
@@ -1184,35 +1180,31 @@ const logAudit = async (userId, action, tableName, recordId, changes, req) => {
   } catch(e) { console.error('[audit_log]', e.message); }
 };
 
-// GET /api/assurance/offres — public
 app.get('/api/assurance/offres', async (req, res) => {
   try {
     const r = await db(`
       SELECT o.id, o.nom, o.description, o.prix_mensuel, o.couverture_details,
              o.franchise, o.plafond_annuel, o.delai_remboursement,
              u.prenom||' '||u.nom AS assureur_nom
-      FROM offres_assurance o
-      JOIN utilisateurs u ON u.id = o.assureur_id
-      WHERE o.actif = true ORDER BY o.prix_mensuel ASC
+      FROM offres_assurance o JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE o.actif=true ORDER BY o.prix_mensuel ASC
     `);
     res.json({ success:true, offres:r.rows });
   } catch(e) { console.error('[GET /assurance/offres]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/assurance/offres/:id — public
 app.get('/api/assurance/offres/:id', async (req, res) => {
   try {
     const r = await db(`
       SELECT o.*, u.prenom||' '||u.nom AS assureur_nom, u.telephone AS assureur_tel
-      FROM offres_assurance o JOIN utilisateurs u ON u.id = o.assureur_id
-      WHERE o.id = $1 AND o.actif = true
+      FROM offres_assurance o JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE o.id=$1 AND o.actif=true
     `, [req.params.id]);
     if (!r.rows.length) return res.status(404).json({ error:'Offre introuvable' });
     res.json({ success:true, offre:r.rows[0] });
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// POST /api/assurance/souscrire — patient
 app.post('/api/assurance/souscrire', auth, async (req, res) => {
   const { offre_id } = req.body;
   if (!offre_id) return res.status(400).json({ error:'offre_id requis' });
@@ -1225,8 +1217,7 @@ app.post('/api/assurance/souscrire', auth, async (req, res) => {
     );
     if (existing.rows.length) return res.status(409).json({ error:'Souscription déjà active pour cette offre' });
     const r = await db(
-      `INSERT INTO souscriptions_assurance (patient_id, offre_id, statut, date_debut)
-       VALUES ($1,$2,'en_attente',CURRENT_DATE) RETURNING *`,
+      `INSERT INTO souscriptions_assurance (patient_id,offre_id,statut,date_debut) VALUES ($1,$2,'en_attente',CURRENT_DATE) RETURNING *`,
       [req.user.id, offre_id]
     );
     await logAudit(req.user.id, 'SOUSCRIPTION_ASSURANCE', 'souscriptions_assurance', r.rows[0].id, {offre_id}, req);
@@ -1236,39 +1227,35 @@ app.post('/api/assurance/souscrire', auth, async (req, res) => {
   } catch(e) { console.error('[POST /assurance/souscrire]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/assurance/mes-souscriptions — patient
 app.get('/api/assurance/mes-souscriptions', auth, async (req, res) => {
   try {
     const r = await db(`
       SELECT s.*, o.nom AS offre_nom, o.prix_mensuel, o.couverture_details, o.plafond_annuel,
              u.prenom||' '||u.nom AS assureur_nom
       FROM souscriptions_assurance s
-      JOIN offres_assurance o ON o.id = s.offre_id
-      JOIN utilisateurs u ON u.id = o.assureur_id
+      JOIN offres_assurance o ON o.id=s.offre_id
+      JOIN utilisateurs u ON u.id=o.assureur_id
       WHERE s.patient_id=$1 ORDER BY s.created_at DESC
     `, [req.user.id]);
     res.json({ success:true, souscriptions:r.rows });
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// POST /api/assurance/tiers-payant — patient
 app.post('/api/assurance/tiers-payant', auth, async (req, res) => {
   const { consultation_id, assureur_id, souscription_id, montant_total, clinique_id } = req.body;
   if (!assureur_id || !montant_total) return res.status(400).json({ error:'assureur_id et montant_total requis' });
   try {
     const r = await db(`
-      INSERT INTO dossiers_tiers_payant
-        (patient_id, clinique_id, assureur_id, consultation_id, souscription_id, montant_total, statut)
+      INSERT INTO dossiers_tiers_payant (patient_id,clinique_id,assureur_id,consultation_id,souscription_id,montant_total,statut)
       VALUES ($1,$2,$3,$4,$5,$6,'soumis') RETURNING *
     `, [req.user.id, clinique_id||null, assureur_id, consultation_id||null, souscription_id||null, montant_total]);
     await logAudit(req.user.id, 'SOUMISSION_TIERS_PAYANT', 'dossiers_tiers_payant', r.rows[0].id, req.body, req);
-    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Nouveau dossier tiers-payant',$2,$3)`,
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Nouveau dossier TP',$2,$3)`,
       [assureur_id, `Nouveau dossier TP — Réf: ${r.rows[0].reference} — ${montant_total} FCFA`, r.rows[0].id]);
     res.status(201).json({ success:true, dossier:r.rows[0] });
   } catch(e) { console.error('[POST /assurance/tiers-payant]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/assurance/mes-dossiers-tp — patient
 app.get('/api/assurance/mes-dossiers-tp', auth, async (req, res) => {
   try {
     const r = await db(`
@@ -1280,7 +1267,6 @@ app.get('/api/assurance/mes-dossiers-tp', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/assurance/dossiers-tp — assureur
 app.get('/api/assurance/dossiers-tp', auth, can('assureur','admin'), async (req, res) => {
   try {
     const params = [req.user.id];
@@ -1294,11 +1280,9 @@ app.get('/api/assurance/dossiers-tp', auth, can('assureur','admin'), async (req,
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// PATCH /api/assurance/dossiers-tp/:id — assureur
 app.patch('/api/assurance/dossiers-tp/:id', auth, can('assureur','admin'), async (req, res) => {
   const { statut, montant_pris_en_charge, motif_rejet } = req.body;
-  const ok = ['en_cours','valide','rembourse','rejete','litige'];
-  if (!ok.includes(statut)) return res.status(400).json({ error:`Statut invalide` });
+  if (!['en_cours','valide','rembourse','rejete','litige'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
   try {
     const dossier = await db('SELECT * FROM dossiers_tiers_payant WHERE id=$1 AND assureur_id=$2', [req.params.id, req.user.id]);
     if (!dossier.rows.length) return res.status(404).json({ error:'Dossier introuvable' });
@@ -1315,7 +1299,7 @@ app.patch('/api/assurance/dossiers-tp/:id', auth, can('assureur','admin'), async
     await logAudit(req.user.id, 'TRAITEMENT_TIERS_PAYANT', 'dossiers_tiers_payant', req.params.id, {statut}, req);
     const msgs = {
       valide:`Dossier TP ${r.rows[0].reference} validé.`,
-      rembourse:`Remboursement de ${montant_pris_en_charge} FCFA effectué — Réf: ${r.rows[0].reference}`,
+      rembourse:`Remboursement de ${montant_pris_en_charge} FCFA — Réf: ${r.rows[0].reference}`,
       rejete:`Dossier TP ${r.rows[0].reference} rejeté. Motif: ${motif_rejet||'Non précisé'}`
     };
     if (msgs[statut]) await db(
@@ -1326,7 +1310,6 @@ app.patch('/api/assurance/dossiers-tp/:id', auth, can('assureur','admin'), async
   } catch(e) { console.error('[PATCH /assurance/dossiers-tp]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/assurance/mes-offres — assureur
 app.get('/api/assurance/mes-offres', auth, can('assureur','admin'), async (req, res) => {
   try {
     const r = await db(`
@@ -1338,7 +1321,6 @@ app.get('/api/assurance/mes-offres', auth, can('assureur','admin'), async (req, 
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// POST /api/assurance/offres — assureur
 app.post('/api/assurance/offres', auth, can('assureur','admin'), async (req, res) => {
   const { nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel } = req.body;
   if (!nom || !prix_mensuel) return res.status(400).json({ error:'nom et prix_mensuel requis' });
@@ -1351,7 +1333,6 @@ app.post('/api/assurance/offres', auth, can('assureur','admin'), async (req, res
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// PATCH /api/assurance/offres/:id — assureur
 app.patch('/api/assurance/offres/:id', auth, can('assureur','admin'), async (req, res) => {
   const { nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel, actif } = req.body;
   try {
@@ -1359,8 +1340,7 @@ app.patch('/api/assurance/offres/:id', auth, can('assureur','admin'), async (req
       UPDATE offres_assurance SET
         nom=COALESCE($1,nom), description=COALESCE($2,description),
         prix_mensuel=COALESCE($3,prix_mensuel), couverture_details=COALESCE($4,couverture_details),
-        franchise=COALESCE($5,franchise), plafond_annuel=COALESCE($6,plafond_annuel),
-        actif=COALESCE($7,actif)
+        franchise=COALESCE($5,franchise), plafond_annuel=COALESCE($6,plafond_annuel), actif=COALESCE($7,actif)
       WHERE id=$8 AND assureur_id=$9 RETURNING *
     `, [nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel, actif, req.params.id, req.user.id]);
     if (!r.rows.length) return res.status(404).json({ error:'Offre introuvable' });
@@ -1368,7 +1348,6 @@ app.patch('/api/assurance/offres/:id', auth, can('assureur','admin'), async (req
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// PATCH /api/assurance/souscriptions/:id — assureur
 app.patch('/api/assurance/souscriptions/:id', auth, can('assureur','admin'), async (req, res) => {
   const { statut, date_fin } = req.body;
   if (!['active','suspendue','resiliee'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
@@ -1394,28 +1373,24 @@ app.patch('/api/assurance/souscriptions/:id', auth, can('assureur','admin'), asy
 // BUSINESS DEVELOPER — dashboard, recrutements, commissions
 // ══════════════════════════════════════════════════════════════════
 
-// GET /api/business-developer/dashboard
 app.get('/api/business-developer/dashboard', auth, can('business_developer','admin'), async (req, res) => {
   const bdId = req.user.id;
   try {
     const [prest, comm, pat] = await Promise.all([
-      db(`SELECT COUNT(*) FILTER (WHERE is_active=true) AS total_actifs,
-                 COUNT(*) AS total,
-                 COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',NOW())) AS ce_mois
+      db(`SELECT COUNT(*) FILTER (WHERE is_active=true) AS total_actifs, COUNT(*) AS total,
+                 COUNT(*) FILTER (WHERE created_at>=DATE_TRUNC('month',NOW())) AS ce_mois
           FROM utilisateurs WHERE recrute_par=$1`, [bdId]),
       db(`SELECT SUM(montant) FILTER (WHERE statut='payee') AS total_percu,
                  SUM(montant) FILTER (WHERE statut='en_attente') AS en_attente,
                  SUM(montant) FILTER (WHERE statut='validee') AS a_percevoir,
                  COUNT(*) AS total_transactions
           FROM commissions_bd WHERE bd_id=$1`, [bdId]),
-      db(`SELECT COUNT(*) AS total_patients FROM commissions_bd
-          WHERE bd_id=$1 AND type_commission='patient'`, [bdId])
+      db(`SELECT COUNT(*) AS total_patients FROM commissions_bd WHERE bd_id=$1 AND type_commission='patient'`, [bdId])
     ]);
     res.json({ success:true, dashboard:{ prestataires:prest.rows[0], commissions:comm.rows[0], patients:pat.rows[0] } });
   } catch(e) { console.error('[BD /dashboard]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/business-developer/prestataires
 app.get('/api/business-developer/prestataires', auth, can('business_developer','admin'), async (req, res) => {
   try {
     const r = await db(`
@@ -1429,7 +1404,6 @@ app.get('/api/business-developer/prestataires', auth, can('business_developer','
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/business-developer/commissions
 app.get('/api/business-developer/commissions', auth, can('business_developer','admin'), async (req, res) => {
   const { statut, type_commission } = req.query;
   const params = [req.user.id];
@@ -1445,7 +1419,6 @@ app.get('/api/business-developer/commissions', auth, can('business_developer','a
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/business-developer/commissions/resume
 app.get('/api/business-developer/commissions/resume', auth, can('business_developer','admin'), async (req, res) => {
   try {
     const r = await db(`
@@ -1454,14 +1427,12 @@ app.get('/api/business-developer/commissions/resume', auth, can('business_develo
              SUM(montant) FILTER (WHERE statut='payee') AS percu,
              SUM(montant) FILTER (WHERE statut='en_attente') AS en_attente
       FROM commissions_bd WHERE bd_id=$1
-      GROUP BY DATE_TRUNC('month',created_at), type_commission
-      ORDER BY mois DESC, type_commission
+      GROUP BY DATE_TRUNC('month',created_at), type_commission ORDER BY mois DESC
     `, [req.user.id]);
     res.json({ success:true, resume:r.rows });
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// POST /api/business-developer/recruter
 app.post('/api/business-developer/recruter', auth, can('business_developer','admin'), async (req, res) => {
   const { prestataire_id } = req.body;
   if (!prestataire_id) return res.status(400).json({ error:'prestataire_id requis' });
@@ -1481,7 +1452,6 @@ app.post('/api/business-developer/recruter', auth, can('business_developer','adm
   } catch(e) { console.error('[BD /recruter]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// GET /api/business-developer/notifications
 app.get('/api/business-developer/notifications', auth, can('business_developer','admin'), async (req, res) => {
   try {
     const r = await db(`SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.user.id]);
@@ -1489,15 +1459,14 @@ app.get('/api/business-developer/notifications', auth, can('business_developer',
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
-// PATCH /api/business-developer/commissions/valider/:id — admin
 app.patch('/api/business-developer/commissions/valider/:id', auth, can('admin'), async (req, res) => {
   const { statut, reference_paiement } = req.body;
   if (!['validee','payee','annulee'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
   try {
-    const r = await db(`
-      UPDATE commissions_bd SET statut=$1, reference_paiement=COALESCE($2,reference_paiement)
-      WHERE id=$3 RETURNING *
-    `, [statut, reference_paiement||null, req.params.id]);
+    const r = await db(
+      `UPDATE commissions_bd SET statut=$1, reference_paiement=COALESCE($2,reference_paiement) WHERE id=$3 RETURNING *`,
+      [statut, reference_paiement||null, req.params.id]
+    );
     if (!r.rows.length) return res.status(404).json({ error:'Commission introuvable' });
     if (statut==='payee') await db(
       `INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Commission payée',$2,$3)`,
@@ -1507,6 +1476,11 @@ app.patch('/api/business-developer/commissions/valider/:id', auth, can('admin'),
   } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
 });
 
+
+// ── CATCH-ALL 404 — doit rester en toute dernière position ────────
+app.use((req, res) => {
+  res.status(404).json({ success:false, message:`Route introuvable: ${req.method} ${req.originalUrl}` });
+});
 
 // ── DÉMARRAGE ─────────────────────────────────────────────────────
 initTables().catch(console.error);
