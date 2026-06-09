@@ -456,8 +456,11 @@ app.get('/api/rendez-vous', auth, async (req, res) => {
       p.push(uid);
       sql += ` AND r.medecin_id=$${p.length}`;
     } else if (role === 'patient') {
-      p.push(uid);
-      sql += ` AND r.patient_id=$${p.length}`;
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [uid]).catch(()=>({rows:[]}));
+      const patId = pRow.rows[0]?.id;
+      if (!patId) return res.json({ success:true, data:[] });
+      p.push(patId);
+      sql += ` AND r.patient_id=${p.length}`;
     }
     // admin voit tout
 
