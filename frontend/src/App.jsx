@@ -6,17 +6,18 @@ import useAuthStore from './context/authStore';
 
 import Login    from './pages/Login';
 import Register from './pages/Register';
-import DashboardPatient     from './pages/patient/Dashboard';
-import DashboardClinique    from './pages/clinique/Dashboard';
-import DashboardPharmacie   from './pages/pharmacie/Dashboard';
-import DashboardLivreur     from './pages/livreur/Dashboard';
-import DashboardAdmin       from './pages/admin/Dashboard';
-import DashboardOptique    from './pages/optique/Dashboard';
-import DashboardMinistere   from './pages/admin/DashboardMinistere';
-import DashboardAssureur    from './pages/assureur/Dashboard';
-import DashboardImagerie    from './pages/imagerie/Dashboard';
-import DashboardLaboratoire from './pages/laboratoire/Dashboard';
-import DashboardMedecinIndep  from './pages/medecin/DashboardIndependant';
+import DashboardPatient          from './pages/patient/Dashboard';
+import DashboardClinique         from './pages/clinique/Dashboard';
+import DashboardPharmacie        from './pages/pharmacie/Dashboard';
+import DashboardLivreur          from './pages/livreur/Dashboard';
+import DashboardAdmin            from './pages/admin/Dashboard';
+import DashboardOptique          from './pages/optique/Dashboard';
+import DashboardMinistere        from './pages/admin/DashboardMinistere';
+import DashboardAssureur         from './pages/assureur/Dashboard';
+import DashboardImagerie         from './pages/imagerie/Dashboard';
+import DashboardLaboratoire      from './pages/laboratoire/Dashboard';
+import DashboardMedecinIndep     from './pages/medecin/DashboardIndependant';
+import BusinessDeveloperDashboard from './pages/BusinessDeveloper/BusinessDeveloperDashboard';
 import AppLayout from './components/layout/AppLayout';
 
 const queryClient = new QueryClient({
@@ -38,10 +39,10 @@ const queryClient = new QueryClient({
 });
 
 const Loader = () => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#060C12' }}>
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-      <div style={{ color: '#8BA0B5', fontSize: 14 }}>Chargement de MediConnect…</div>
+  <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'#060C12' }}>
+    <div style={{ textAlign:'center' }}>
+      <div style={{ fontSize:48,marginBottom:16 }}>⏳</div>
+      <div style={{ color:'#8BA0B5',fontSize:14 }}>Chargement de MediConnect…</div>
     </div>
   </div>
 );
@@ -49,12 +50,8 @@ const Loader = () => (
 const PrivateRoute = ({ children, roles }) => {
   const { user, token } = useAuthStore();
 
-  // Pas de session du tout → login
-  if (!token && !user) {
-    return <Navigate to="/login" replace />;
-  }
+  if (!token && !user) return <Navigate to="/login" replace />;
 
-  // Vérification du rôle si précisé
   if (roles && roles.length > 0 && user?.role) {
     const r = user.role;
     const normalized = ['medecin_prive','medecin_conseil'].includes(r) ? 'medecin_independant' : r;
@@ -68,27 +65,26 @@ const PrivateRoute = ({ children, roles }) => {
 const RoleRedirect = () => {
   const { user } = useAuthStore();
   const routes = {
-    patient:             '/patient',
-    clinique:            '/clinique',
-    medecin_independant: '/medecin/independant',
-    medecin_conseil:     '/medecin/independant',
-    medecin_prive:       '/medecin/independant',
-    pharmacie:           '/pharmacie',
-    livreur:             '/livreur',
-    admin:               '/admin',
-    ministere:           '/ministere',
-    optique:             '/optique',
-    assureur:            '/assureur',
-    imagerie:            '/imagerie',
-    laboratoire:         '/laboratoire',
+    patient:              '/patient',
+    clinique:             '/clinique',
+    medecin_independant:  '/medecin/independant',
+    medecin_conseil:      '/medecin/independant',
+    medecin_prive:        '/medecin/independant',
+    pharmacie:            '/pharmacie',
+    livreur:              '/livreur',
+    admin:                '/admin',
+    ministere:            '/ministere',
+    optique:              '/optique',
+    assureur:             '/assureur',
+    imagerie:             '/imagerie',
+    laboratoire:          '/laboratoire',
+    business_developer:   '/bd',
   };
   const role = user?.role;
-  // Normaliser
   const normalizedRole = role === 'medecin_prive' ? 'medecin_independant' : role;
   const dest = routes[role] || routes[normalizedRole];
   if (!dest) {
-    console.error('[RoleRedirect] Rôle inconnu:', role, '— redirection accueil');
-    // Fallback patient si rôle inconnu
+    console.error('[RoleRedirect] Rôle inconnu:', role);
     return <Navigate to="/patient" replace />;
   }
   return <Navigate to={dest} replace />;
@@ -100,104 +96,107 @@ export default function App() {
       <BrowserRouter>
         <Toaster position="top-right" toastOptions={{
           duration: 4000,
-          style: { background: '#141E2B', color: '#F0F4F8', border: '1px solid #1E2F42', fontSize: 14 },
-          success: { iconTheme: { primary: '#0A8F58', secondary: '#fff' } },
-          error:   { iconTheme: { primary: '#E11D48', secondary: '#fff' }, duration: 6000 },
+          style: { background:'#141E2B',color:'#F0F4F8',border:'1px solid #1E2F42',fontSize:14 },
+          success: { iconTheme: { primary:'#0A8F58',secondary:'#fff' } },
+          error:   { iconTheme: { primary:'#E11D48',secondary:'#fff' },duration:6000 },
         }} />
 
         <Suspense fallback={<Loader />}>
           <Routes>
-            {/* Routes publiques */}
+            {/* ── Publiques ─────────────────────────────────────── */}
             <Route path="/login"    element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/"         element={<Navigate to="/login" replace />} />
             <Route path="/app"      element={<PrivateRoute><RoleRedirect /></PrivateRoute>} />
 
-            {/* Patient */}
+            {/* ── Patient ───────────────────────────────────────── */}
             <Route path="/patient/*" element={
               <PrivateRoute roles={['patient']}>
                 <AppLayout role="patient"><DashboardPatient /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Clinique */}
+            {/* ── Clinique ──────────────────────────────────────── */}
             <Route path="/clinique/*" element={
               <PrivateRoute roles={['clinique']}>
                 <AppLayout role="clinique"><DashboardClinique /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Pharmacie */}
+            {/* ── Pharmacie ─────────────────────────────────────── */}
             <Route path="/pharmacie/*" element={
               <PrivateRoute roles={['pharmacie']}>
                 <AppLayout role="pharmacie"><DashboardPharmacie /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Livreur */}
+            {/* ── Livreur ───────────────────────────────────────── */}
             <Route path="/livreur/*" element={
               <PrivateRoute roles={['livreur']}>
                 <AppLayout role="livreur"><DashboardLivreur /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* Admin */}
-            {/* Ministère de la Santé — route dédiée avec son propre layout */}
+            {/* ── Admin + Ministère ─────────────────────────────── */}
             <Route path="/admin/ministere/*" element={
               <PrivateRoute roles={['admin']}>
                 <AppLayout role="admin"><DashboardMinistere /></AppLayout>
               </PrivateRoute>
             } />
-
             <Route path="/admin/*" element={
               <PrivateRoute roles={['admin']}>
                 <AppLayout role="admin"><DashboardAdmin /></AppLayout>
               </PrivateRoute>
             } />
-
-            {/* Assureur */}
-            <Route path="/assureur/*" element={
-              <PrivateRoute roles={['assureur']}>
-                <AppLayout role="assureur"><DashboardAssureur /></AppLayout>
-              </PrivateRoute>
-            } />
-
-            {/* Imagerie médicale */}
-            <Route path="/imagerie/*" element={
-              <PrivateRoute roles={['imagerie']}>
-                <AppLayout role="imagerie"><DashboardImagerie /></AppLayout>
-              </PrivateRoute>
-            } />
-
-            {/* Laboratoire */}
-            <Route path="/laboratoire/*" element={
-              <PrivateRoute roles={['laboratoire']}>
-                <AppLayout role="laboratoire"><DashboardLaboratoire /></AppLayout>
-              </PrivateRoute>
-            } />
-
-            {/* Médecin indépendant — DOIT être AVANT /medecin/* */}
-            <Route path="/medecin/independant/*" element={
-              <PrivateRoute roles={['medecin_independant','medecin_conseil','medecin_prive']}>
-                <AppLayout role="medecin_independant"><DashboardMedecinIndep /></AppLayout>
-              </PrivateRoute>
-            } />
-
-            {/* Cabinet Optique */}
-            <Route path="/optique/*" element={
-              <PrivateRoute roles={['optique','admin']}>
-                <DashboardOptique />
-              </PrivateRoute>
-            } />
-
-            {/* Ministère Santé — accès direct */}
             <Route path="/ministere/*" element={
               <PrivateRoute roles={['ministere','admin']}>
                 <AppLayout role="ministere"><DashboardMinistere /></AppLayout>
               </PrivateRoute>
             } />
 
-            {/* 404 */}
+            {/* ── Assureur ──────────────────────────────────────── */}
+            <Route path="/assureur/*" element={
+              <PrivateRoute roles={['assureur']}>
+                <AppLayout role="assureur"><DashboardAssureur /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Business Developer ────────────────────────────── */}
+            <Route path="/bd/*" element={
+              <PrivateRoute roles={['business_developer']}>
+                <AppLayout role="business_developer"><BusinessDeveloperDashboard /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Imagerie ──────────────────────────────────────── */}
+            <Route path="/imagerie/*" element={
+              <PrivateRoute roles={['imagerie']}>
+                <AppLayout role="imagerie"><DashboardImagerie /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Laboratoire ───────────────────────────────────── */}
+            <Route path="/laboratoire/*" element={
+              <PrivateRoute roles={['laboratoire']}>
+                <AppLayout role="laboratoire"><DashboardLaboratoire /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Médecin indépendant (AVANT /medecin/*) ────────── */}
+            <Route path="/medecin/independant/*" element={
+              <PrivateRoute roles={['medecin_independant','medecin_conseil','medecin_prive']}>
+                <AppLayout role="medecin_independant"><DashboardMedecinIndep /></AppLayout>
+              </PrivateRoute>
+            } />
+
+            {/* ── Cabinet Optique ───────────────────────────────── */}
+            <Route path="/optique/*" element={
+              <PrivateRoute roles={['optique','admin']}>
+                <DashboardOptique />
+              </PrivateRoute>
+            } />
+
+            {/* ── 404 ───────────────────────────────────────────── */}
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>
         </Suspense>
