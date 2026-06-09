@@ -441,8 +441,12 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
   try {
     const ref = 'RDV-'+Date.now().toString(36).toUpperCase();
-    // patient_id : priorité au body, sinon l'utilisateur connecté (si rôle patient)
-    const finalPatientId = patient_id || (req.user?.role === 'patient' ? req.user.id : null);
+    // patient_id : résoudre depuis table patients via user_id
+    let finalPatientId = patient_id || null;
+    if (!finalPatientId && req.user?.role === 'patient') {
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      finalPatientId = pRow.rows[0]?.id || null;
+    }
     // clinique_id : priorité au body → token → user.id si rôle clinique
     let finalCliniqueId = clinique_id || req.user?.clinique_id || null;
     if (!finalCliniqueId && req.user?.role === 'clinique') {
