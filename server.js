@@ -282,15 +282,29 @@ app.get('/api/cliniques', async (req, res) => {
 });
 app.get('/api/cliniques/stats', auth, async (req, res) => {
   try {
-    const cid = req.user?.clinique_id;
-    if (!cid) return res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0 } });
-    const [m,r,p] = await Promise.all([
-      db("SELECT COUNT(*) c FROM medecins WHERE clinique_id=$1 AND statut='Disponible'", [cid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE clinique_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE)", [cid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [cid]).catch(()=>({rows:[{c:0}]})),
+    // clinique_id dans le token OU user.id si le compte EST la clinique
+    const cid = req.user?.clinique_id || (req.user?.role === 'clinique' ? req.user?.id : null);
+    if (!cid) return res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } });
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Chercher aussi dans cliniques par user_id
+    const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 OR id=$1 LIMIT 1', [cid]).catch(()=>({rows:[]}));
+    const effectiveCid = clRow.rows[0]?.id || cid;
+
+    const [m, r, p, rj] = await Promise.all([
+      db("SELECT COUNT(*) c FROM medecins WHERE clinique_id=$1 AND statut='Disponible'", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')`, [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv=$2 AND statut NOT IN ('annule')`, [effectiveCid, today]).catch(()=>({rows:[{c:0}]})),
     ]);
-    res.json({ success:true, data:{ medecins_actifs:m.rows[0]?.c||0, rdv_ce_mois:r.rows[0]?.c||0, patients_mois:p.rows[0]?.c||0 } });
-  } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0 } }); }
+    res.json({ success:true, data:{
+      medecins_actifs: +m.rows[0]?.c||0,
+      rdv_ce_mois:     +r.rows[0]?.c||0,
+      patients_mois:   +p.rows[0]?.c||0,
+      rdv_aujourd_hui: +rj.rows[0]?.c||0,
+    }});
+  } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } }); }
 });
 
 // ── MÉDECINS ──────────────────────────────────────────────────────
@@ -395,9 +409,13 @@ app.get('/api/rendez-vous', auth, async (req, res) => {
     const p = [];
 
     // Filtrage selon le rôle
-    if (role === 'clinique' && cid) {
-      // Clinique : voit ses RDV + RDV de ses médecins
-      p.push(cid);
+    if (role === 'clinique') {
+      // clinique_id du token OU user.id si le compte EST la clinique
+      const effectiveCid = cid || uid;
+      // Chercher aussi via table cliniques (user_id)
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 OR id=$1 LIMIT 1', [effectiveCid]).catch(()=>({rows:[]}));
+      const realCid = clRow.rows[0]?.id || effectiveCid;
+      p.push(realCid);
       sql += ` AND (r.clinique_id=$${p.length} OR m.clinique_id=$${p.length})`;
     } else if (role === 'medecin' || role === 'medecin_independant') {
       // Médecin : voit ses propres RDV
@@ -425,8 +443,13 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
     const ref = 'RDV-'+Date.now().toString(36).toUpperCase();
     // patient_id : priorité au body, sinon l'utilisateur connecté (si rôle patient)
     const finalPatientId = patient_id || (req.user?.role === 'patient' ? req.user.id : null);
-    // clinique_id : priorité au body, sinon depuis le token (si rôle clinique)
-    const finalCliniqueId = clinique_id || req.user?.clinique_id || null;
+    // clinique_id : priorité au body → token → user.id si rôle clinique
+    let finalCliniqueId = clinique_id || req.user?.clinique_id || null;
+    if (!finalCliniqueId && req.user?.role === 'clinique') {
+      // Chercher l'id réel dans la table cliniques
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      finalCliniqueId = clRow.rows[0]?.id || req.user.id;
+    }
 
     // Récupérer le nom du patient si non fourni
     let finalPatientNom = patient_nom;
@@ -435,9 +458,20 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
       if (u.rows[0]) finalPatientNom = `${u.rows[0].prenom||''} ${u.rows[0].nom||''}`.trim();
     }
 
+    // Déterminer si medecin_id est un utilisateur indépendant
+    let finalMedecinId = medecin_id || null;
+    let finalMedecinIndepId = null;
+    if (medecin_id) {
+      const roleCheck = await db('SELECT role FROM utilisateurs WHERE id=$1', [medecin_id]).catch(()=>({rows:[]}));
+      if (roleCheck.rows[0]?.role === 'medecin_independant') {
+        finalMedecinIndepId = medecin_id;
+        finalMedecinId = null; // pas dans table medecins
+      }
+    }
+
     const r = await db(
-      'INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [uuid(), ref, finalCliniqueId, finalPatientId, finalPatientNom||null, medecin_id||null, medecin_nom||null, date_rdv, heure_rdv, motif||null, statut||'en_attente', assurance||null, notes||null, source||'dashboard']
+      'INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_independant_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+      [uuid(), ref, finalCliniqueId, finalPatientId, finalPatientNom||null, finalMedecinId, finalMedecinIndepId, medecin_nom||null, date_rdv, heure_rdv, motif||null, statut||'en_attente', assurance||null, notes||null, source||'dashboard']
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -1046,13 +1080,22 @@ app.delete('/api/cliniques/specialites/:id', auth, async (req, res) => {
 // GET /api/planning/stats
 app.get('/api/planning/stats', auth, async (req, res) => {
   try {
-    const mid   = req.user?.medecin_id || req.user?.id;
+    const uid   = req.user?.id;
+    const mid   = req.user?.medecin_id || uid;
+    const role  = req.user?.role;
     const today = new Date().toISOString().split('T')[0];
+
+    // Pour médecin indépendant : filtrer par medecin_id=uid OU medecin_independant_id=uid
+    const rdvFilter = role === 'medecin_independant'
+      ? `(medecin_id=$1 OR medecin_independant_id=$1)`
+      : `medecin_id=$1`;
+    const rdvId = role === 'medecin_independant' ? uid : mid;
+
     const [rdvJ, rdvM, cons, dispo] = await Promise.all([
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE medecin_id=$1 AND date_rdv=$2 AND statut NOT IN ('annule')", [mid, today]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE medecin_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')", [mid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM consultations WHERE medecin_id=$1", [mid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM disponibilites WHERE medecin_id=$1 AND statut='disponible' AND date>=CURRENT_DATE", [mid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE ${rdvFilter} AND date_rdv=$2 AND statut NOT IN ('annule')`, [rdvId, today]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE ${rdvFilter} AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')`, [rdvId]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM consultations WHERE medecin_id=$1", [uid]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM disponibilites WHERE medecin_id=$1 AND statut='disponible' AND date>=CURRENT_DATE", [uid]).catch(()=>({rows:[{c:0}]})),
     ]);
     res.json({ success:true, data:{
       rdv_aujourd_hui:     +rdvJ.rows[0]?.c || 0,
@@ -1067,11 +1110,42 @@ app.get('/api/planning/stats', auth, async (req, res) => {
 app.get('/api/planning/rdvs', auth, async (req, res) => {
   try {
     const { date, statut } = req.query;
-    const mid = req.user?.medecin_id || req.user?.id;
-    let sql = 'SELECT * FROM rendez_vous WHERE medecin_id=$1'; const p = [mid];
-    if (date)   { p.push(date);   sql += ` AND date_rdv=$${p.length}`; }
-    if (statut) { p.push(statut); sql += ` AND statut=$${p.length}`; }
-    sql += ' ORDER BY date_rdv, heure_rdv LIMIT 100';
+    const uid = req.user?.id;
+    const mid = req.user?.medecin_id;
+    const role = req.user?.role;
+
+    // Pour médecin indépendant : chercher par user_id OU medecin_id (table medecins)
+    // Pour médecin clinique : chercher par medecin_id (table medecins)
+    let sql, p;
+    if (role === 'medecin_independant') {
+      // RDV où medecin_id = user.id (UUID utilisateurs)
+      // OU medecin_independant_id = user.id
+      sql = `
+        SELECT r.*,
+               u.prenom||' '||u.nom AS patient_nom_complet,
+               u.telephone AS patient_tel
+        FROM rendez_vous r
+        LEFT JOIN utilisateurs u ON u.id=r.patient_id
+        WHERE (r.medecin_id=$1 OR r.medecin_independant_id=$1)
+      `;
+      p = [uid];
+    } else {
+      // Médecin rattaché clinique
+      const effectiveMid = mid || uid;
+      sql = `
+        SELECT r.*,
+               u.prenom||' '||u.nom AS patient_nom_complet,
+               u.telephone AS patient_tel
+        FROM rendez_vous r
+        LEFT JOIN utilisateurs u ON u.id=r.patient_id
+        WHERE r.medecin_id=$1
+      `;
+      p = [effectiveMid];
+    }
+
+    if (date)   { p.push(date);   sql += ` AND r.date_rdv=$${p.length}`; }
+    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
+    sql += ' ORDER BY r.date_rdv, r.heure_rdv LIMIT 100';
     const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
