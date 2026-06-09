@@ -34,7 +34,7 @@ const fetchPublic = async (path) => {
 };
 
 const pAPI = {
-  rdvs:       ()      => api.get("/rendez-vous").catch(()=>({data:{data:[]}})),
+  rdvs:       ()      => api.get("/rendez-vous").then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addRdv:     (d)     => api.post("/rendez-vous", d),
   cancelRdv:  (id)    => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
   ords:       ()      => api.get("/ordonnances").catch(()=>({data:{data:[]}})),
