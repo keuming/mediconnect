@@ -362,6 +362,37 @@ app.get('/api/patients', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+// GET /api/patients/rdvs — RDV du patient connecté
+app.get('/api/patients/rdvs', auth, async (req, res) => {
+  try {
+    const { statut, upcoming } = req.query;
+    let sql = `
+      SELECT r.*,
+             m.prenom||' '||m.nom AS medecin_nom_complet,
+             m.specialite AS medecin_specialite,
+             cl.nom AS clinique_nom, cl.adresse AS clinique_adresse, cl.telephone AS clinique_tel
+      FROM rendez_vous r
+      LEFT JOIN medecins m ON m.id=r.medecin_id
+      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
+      WHERE r.patient_id=$1
+    `;
+    const p = [req.user.id];
+    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
+    if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
+    sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+
+app.get('/api/patients/me', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
+    res.json({ success:true, data:r.rows[0]||null });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/patients/:id', auth, async (req, res) => {
   try { const r = await db('SELECT * FROM patients WHERE id=$1', [req.params.id]); res.json({ success:true, data:r.rows[0]||null }); }
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -792,29 +823,6 @@ app.get('/api/public/medecins-independants', async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
-// GET /api/patients/rdvs — RDV du patient connecté
-app.get('/api/patients/rdvs', auth, async (req, res) => {
-  try {
-    const { statut, upcoming } = req.query;
-    let sql = `
-      SELECT r.*,
-             m.prenom||' '||m.nom AS medecin_nom_complet,
-             m.specialite AS medecin_specialite,
-             cl.nom AS clinique_nom, cl.adresse AS clinique_adresse, cl.telephone AS clinique_tel
-      FROM rendez_vous r
-      LEFT JOIN medecins m ON m.id=r.medecin_id
-      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
-      WHERE r.patient_id=$1
-    `;
-    const p = [req.user.id];
-    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
-    if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
-    sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
-    const r = await db(sql, p);
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-
 // POST /api/patients/rdv — Patient prend un RDV (authentifié)
 app.post('/api/patients/rdv', auth, async (req, res) => {
   const { medecin_id, clinique_id, disponibilite_id, date_rdv, heure_rdv, motif, type_rdv } = req.body;
@@ -910,12 +918,7 @@ app.use((err, req, res, next) => {
 // ════════════════════════════════════════════════════════════════════
 
 // ── PATIENTS /me ─────────────────────────────────────────────────
-app.get('/api/patients/me', auth, async (req, res) => {
-  try {
-    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
-    res.json({ success:true, data:r.rows[0]||null });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
+
 
 // ── LIVREURS commandes ────────────────────────────────────────────
 app.get('/api/livreurs/commandes', auth, async (req, res) => {
