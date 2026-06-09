@@ -458,14 +458,21 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
       if (u.rows[0]) finalPatientNom = `${u.rows[0].prenom||''} ${u.rows[0].nom||''}`.trim();
     }
 
-    // Déterminer si medecin_id est un utilisateur indépendant
+    // Déterminer si medecin_id est un utilisateur indépendant ou un médecin de clinique
     let finalMedecinId = medecin_id || null;
     let finalMedecinIndepId = null;
     if (medecin_id) {
+      // Vérifier d'abord si c'est un utilisateur (médecin indépendant)
       const roleCheck = await db('SELECT role FROM utilisateurs WHERE id=$1', [medecin_id]).catch(()=>({rows:[]}));
       if (roleCheck.rows[0]?.role === 'medecin_independant') {
         finalMedecinIndepId = medecin_id;
-        finalMedecinId = null; // pas dans table medecins
+        finalMedecinId = null;
+      } else {
+        // C'est un médecin de clinique — récupérer sa clinique_id si pas fournie
+        if (!finalCliniqueId) {
+          const mRow = await db('SELECT clinique_id FROM medecins WHERE id=$1', [medecin_id]).catch(()=>({rows:[]}));
+          if (mRow.rows[0]?.clinique_id) finalCliniqueId = mRow.rows[0].clinique_id;
+        }
       }
     }
 
