@@ -1260,7 +1260,8 @@ app.delete('/api/planning/disponibilites/:id', auth, async (req, res) => {
 // GET /api/planning/mes-patients
 app.get('/api/planning/mes-patients', auth, async (req, res) => {
   try {
-    const mid = req.user?.medecin_id || req.user?.id;
+    const mid = req.user?.medecin_id || null;
+    const miId = req.user?.role === 'medecin_independant' ? req.user?.id : null;
     const r = await db(`
       SELECT DISTINCT p.*
       FROM patients p
@@ -1293,20 +1294,20 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
     const mid = req.user?.medecin_id || req.user?.id;
     const r = await db(
       `INSERT INTO consultations
-         (id,patient_id,medecin_id,rdv_id,diagnostic,traitement,notes,
-          tension_arterielle,temperature,poids,taille,pathologie,
+         (id,patient_id,medecin_id,medecin_independant_id,rdv_id,diagnostic,examen_clinique,note_finale,
+          ta,temperature,poids,taille,pathologie,
           age_patient,sexe_patient,gravite,pays_code)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CI')
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'CI')
        RETURNING *`,
-      [patient_id||null, mid, rdv_id||null, diagnostic,
+      [patient_id||null, mid, miId, rdv_id||null, diagnostic,
        traitement||null, notes||null, tension_arterielle||null,
        temperature||null, poids||null, taille||null,
        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere']
     );
     if (ordonnance?.medicaments) {
       await db(
-        'INSERT INTO ordonnances (id,patient_id,medecin_id,consultation_id,medicaments,posologie,duree) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6)',
-        [patient_id||null, mid, r.rows[0].id, ordonnance.medicaments, ordonnance.posologie||null, ordonnance.duree||null]
+        'INSERT INTO ordonnances (id,patient_id,medecin_id,consultation_id,medicament,posologie,duree) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6)',
+        [patient_id||null, mid, r.rows[0].id, ordonnance.medicaments||ordonnance.medicament, ordonnance.posologie||null, ordonnance.duree||null]
       ).catch(()=>{});
     }
     if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1", [rdv_id]).catch(()=>{});
