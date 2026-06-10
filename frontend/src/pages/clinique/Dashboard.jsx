@@ -1546,6 +1546,9 @@ function PageConsultation() {
   const [patient, setPatient] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});
+  const [lastConsult, setLastConsult] = useState(null);
+  const [showOrd, setShowOrd] = useState(false);
+  const [ordForm, setOrdForm] = useState({medicament:"",posologie:"",duree:""});
 
   const chercher = async () => {
     if(code.length<3){toast.error("Code invalide");return;}
@@ -1560,8 +1563,14 @@ function PageConsultation() {
 
   const addMut = useMutation({
     mutationFn: d=>api.post('/consultations',d),
-    onSuccess: ()=>{toast.success("✅ Consultation enregistrée !");setShowForm(false);setForm({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});qc.invalidateQueries(["cl-stats"]);},
+    onSuccess: (data)=>{toast.success("✅ Consultation enregistrée !");setShowForm(false);setLastConsult(data?.data||data);setShowOrd(true);setForm({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});qc.invalidateQueries(["cl-stats"]);},
     onError: ()=>toast.error("Erreur enregistrement"),
+  });
+
+  const addOrd = useMutation({
+    mutationFn: d => api.post('/ordonnances',d),
+    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setOrdForm({medicament:"",posologie:"",duree:""}); },
+    onError: ()=>toast.error("Erreur ordonnance"),
   });
 
   return (
@@ -1629,6 +1638,35 @@ function PageConsultation() {
                 addMut.mutate({patient_id:patient.id,...form,tension_arterielle:form.ta});
               }} style={{flex:2,padding:"10px",borderRadius:9,background:`linear-gradient(135deg,${C.green},${C.teal})`,border:"none",color:"#fff",cursor:addMut.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addMut.isPending?.65:1}}>
                 {addMut.isPending?"⏳…":"✅ Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showOrd&&patient&&(
+        <div onClick={()=>setShowOrd(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0E1620",border:"1px solid #1E2F42",borderRadius:16,padding:28,width:480,maxWidth:"95vw"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h2 style={{fontSize:16,fontWeight:700,color:"#F0F4F8",margin:0}}>💊 Ordonnance — {patient.prenom} {patient.nom}</h2>
+              <button onClick={()=>setShowOrd(false)} style={{background:"none",border:"none",color:"#8BA0B5",cursor:"pointer",fontSize:20}}>✕</button>
+            </div>
+            <div style={{background:"rgba(124,58,237,.08)",border:"1px solid rgba(124,58,237,.2)",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#8BA0B5"}}>
+              Consultation enregistrée ✅ — Voulez-vous ajouter une ordonnance ?
+            </div>
+            {[["Médicament(s) *","medicament","Paracétamol 500mg, Amoxicilline 500mg…"],["Posologie","posologie","1 cp matin et soir pendant 5 jours"],["Durée","duree","5 jours"]].map(([label,key,ph])=>(
+              <div key={key} style={{marginBottom:12}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                <input value={ordForm[key]} onChange={e=>setOrdForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
+                  style={{width:"100%",background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:9,padding:"10px 14px",color:"#F0F4F8",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <button onClick={()=>setShowOrd(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:"1.5px solid #1E2F42",color:"#8BA0B5",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Passer</button>
+              <button disabled={addOrd.isPending} onClick={()=>{
+                if(!ordForm.medicament){toast.error("Médicament requis");return;}
+                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,...ordForm});
+              }} style={{flex:2,padding:"10px",borderRadius:9,background:"linear-gradient(135deg,#7C3AED,#0D9488)",border:"none",color:"#fff",cursor:addOrd.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addOrd.isPending?.65:1}}>
+                {addOrd.isPending?"⏳…":"💊 Créer l'ordonnance"}
               </button>
             </div>
           </div>

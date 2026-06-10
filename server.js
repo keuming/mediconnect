@@ -658,11 +658,14 @@ app.get('/api/ordonnances', auth, async (req, res) => {
   } catch(e) { res.json({success:true,data:[]}); }
 });
 app.post('/api/ordonnances', auth, async (req, res) => {
-  const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id } = req.body;
-  if (!patient_id||!medicaments) return res.status(400).json({ success:false, message:'Patient et médicaments requis' });
+  const { patient_id, medicament, medicaments, posologie, duree, consultation_id } = req.body;
+  const drug = medicament || medicaments;
+  if (!patient_id || !drug) return res.status(400).json({ success:false, message:'Patient et médicament requis' });
   try {
-    const r = await db('INSERT INTO ordonnances (id,patient_id,clinique_id,medicaments,posologie,duree,notes_ord,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,medicaments,posologie||null,duree||null,notes_ord||null,consultation_id||null]);
+    const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
+    const mid = mRow.rows[0]?.id || null;
+    const r = await db('INSERT INTO ordonnances (id,patient_id,medecin_id,medicament,posologie,duree,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [uuid(),patient_id,mid,drug,posologie||null,duree||null,consultation_id||null]);
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
