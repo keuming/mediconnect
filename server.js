@@ -1266,7 +1266,11 @@ app.get('/api/planning/mes-patients', auth, async (req, res) => {
   try {
     const isIndep = req.user?.role === 'medecin_independant';
     const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
-    const miId = isIndep ? req.user?.id : null;
+    let miId = null;
+    if (isIndep) {
+      const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      miId = miRow.rows[0]?.id || null;
+    }
     const r = await db(`
       SELECT DISTINCT p.*
       FROM patients p
@@ -1298,7 +1302,11 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
     if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
     const isIndep = req.user?.role === 'medecin_independant';
     const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
-    const miId = isIndep ? req.user?.id : null;
+    let miId = null;
+    if (isIndep) {
+      const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      miId = miRow.rows[0]?.id || null;
+    }
     const r = await db(
       `INSERT INTO consultations
          (id,patient_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,diagnostic,examen_clinique,note_finale,
