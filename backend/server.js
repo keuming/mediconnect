@@ -357,8 +357,28 @@ medecinRouter('delete', '/:id', auth, async (req, res) => {
 const vd = d => d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
 app.get('/api/patients', auth, async (req, res) => {
   try {
-    const cid = req.user?.clinique_id;
-    const r = cid ? await db('SELECT * FROM patients WHERE clinique_id=$1 ORDER BY nom,prenom LIMIT 500', [cid]) : await db('SELECT * FROM patients ORDER BY nom LIMIT 500');
+    const role = req.user?.role, uid = req.user?.id;
+    let r;
+    if (role === 'clinique') {
+      // Clinique : patients ayant eu un RDV ou une consultation dans cette clinique
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const cid = clRow.rows[0]?.id || req.user?.clinique_id;
+      r = await db(`
+        SELECT DISTINCT p.*, u.prenom, u.nom, u.telephone, u.email
+        FROM patients p
+        LEFT JOIN utilisateurs u ON u.id=p.user_id
+        WHERE p.id IN (
+          SELECT DISTINCT patient_id FROM rendez_vous WHERE clinique_id=$1 AND patient_id IS NOT NULL
+          UNION
+          SELECT DISTINCT patient_id FROM consultations WHERE clinique_id=$1 AND patient_id IS NOT NULL
+        )
+        ORDER BY u.nom, u.prenom LIMIT 500
+      `, [cid]);
+    } else if (role === 'admin') {
+      r = await db('SELECT p.*, u.prenom, u.nom, u.telephone, u.email FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id ORDER BY u.nom LIMIT 500');
+    } else {
+      r = await db('SELECT p.*, u.prenom, u.nom, u.telephone, u.email FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id ORDER BY u.nom LIMIT 200');
+    }
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
