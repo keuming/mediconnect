@@ -638,7 +638,7 @@ app.post('/api/consultations', auth, async (req, res) => {
 app.get('/api/ordonnances', auth, async (req, res) => {
   try {
     const role = req.user?.role, uid = req.user?.id;
-    let sql = `SELECT o.*, u.prenom||' '||u.nom AS medecin_nom FROM ordonnances o LEFT JOIN medecins m ON m.id=o.medecin_id LEFT JOIN medecins_independants mi ON mi.id=o.medecin_independant_id LEFT JOIN utilisateurs u ON u.id=COALESCE(m.user_id, mi.user_id) WHERE 1=1`; const p = [];
+    let sql = `SELECT o.*, u.prenom||' '||u.nom AS medecin_nom FROM ordonnances o LEFT JOIN medecins_independants mi ON mi.id=o.medecin_independant_id LEFT JOIN utilisateurs u ON u.id=mi.user_id WHERE 1=1`; const p = [];
     if (role === 'patient') {
       const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
