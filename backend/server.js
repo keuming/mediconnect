@@ -324,7 +324,7 @@ app.get('/api/public/medecins', async (req, res) => {
   try {
     const { clinique_id, specialite } = req.query;
     let sql = 'SELECT * FROM medecins WHERE 1=1'; const p = [];
-    if (clinique_id) { p.push(clinique_id); sql += ` AND clinique_id=$${p.length}`; }
+    if (clinique_id) { p.push(clinique_id); sql += ` AND o.clinique_id=$${p.length}`; }
     if (specialite)  { p.push(specialite);  sql += ` AND specialite=$${p.length}`; }
     sql += ' ORDER BY nom,prenom';
     const r = await db(sql, p);
@@ -604,18 +604,18 @@ app.get('/api/consultations', auth, async (req, res) => {
     if (role === 'patient') {
       const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
-      p.push(pid); sql += ' AND patient_id=$' + p.length;
+      p.push(pid); sql += ' AND o.patient_id=$' + p.length;
     } else if (role === 'medecin_independant') {
       const mr = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
-      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND medecin_independant_id=$' + p.length;
+      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND o.medecin_independant_id=$' + p.length;
     } else if (role === 'medecin') {
-      p.push(uid); sql += ' AND medecin_id=$' + p.length;
+      p.push(uid); sql += ' AND o.medecin_id=$' + p.length;
     } else {
       const cr = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const cid = cr.rows[0]?.id||req.user?.clinique_id;
       if(cid){ p.push(cid); sql += ' AND clinique_id=$' + p.length; }
     }
-    sql += ' ORDER BY created_at DESC LIMIT 100';
+    sql += ' ORDER BY o.created_at DESC LIMIT 100';
     const r = await db(sql,p); res.json({success:true,data:r.rows});
   } catch(e) { res.json({success:true,data:[]}); }
 });
@@ -638,7 +638,7 @@ app.post('/api/consultations', auth, async (req, res) => {
 app.get('/api/ordonnances', auth, async (req, res) => {
   try {
     const role = req.user?.role, uid = req.user?.id;
-    let sql = 'SELECT * FROM ordonnances WHERE 1=1'; const p = [];
+    let sql = `SELECT o.*, u.prenom||' '||u.nom AS medecin_nom FROM ordonnances o LEFT JOIN medecins m ON m.id=o.medecin_id LEFT JOIN medecins_independants mi ON mi.id=o.medecin_independant_id LEFT JOIN utilisateurs u ON u.id=COALESCE(m.user_id, mi.user_id) WHERE 1=1`; const p = [];
     if (role === 'patient') {
       const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
