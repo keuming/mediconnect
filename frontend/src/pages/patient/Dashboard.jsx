@@ -19,7 +19,7 @@ const today=()=>new Date().toISOString().split("T")[0];
 const TARIFS={ abonnement_standard:300, abonnement_suivi:500 };
 
 // URL backend fixe — indépendant de la baseURL de services/api.js
-const BACKEND = 'https://mediconnect-fed6.vercel.app';
+const BACKEND = 'https://mediconnect-backend-v2.vercel.app';
 
 // Fetch public (sans auth) avec URL absolue
 const fetchPublic = async (path) => {
@@ -876,7 +876,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
             <div style={{fontSize:12,color:C.dim,marginBottom:12}}>La connexion au serveur peut être momentanément indisponible.</div>
             <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
               <button onClick={()=>{qc.invalidateQueries(["pub-cliniques"]);qc.refetchQueries(["pub-cliniques"]);}} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Réessayer</button>
-              <button onClick={()=>window.open("https://mediconnect-fed6.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
+              <button onClick={()=>window.open("https://mediconnect-backend-v2.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
             </div>
           </div>:(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
