@@ -1292,7 +1292,7 @@ app.get('/api/planning/mes-cliniques', auth, async (req, res) => {
 // POST /api/consultations/depuis-rdv
 app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
   try {
-    const { rdv_id, patient_id, diagnostic, traitement, notes,
+    const { rdv_id, patient_id, motif, diagnostic, traitement, notes,
             tension_arterielle, temperature, poids, taille,
             pathologie, age_patient, sexe_patient, gravite, ordonnance } = req.body;
     if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
