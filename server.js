@@ -1146,10 +1146,11 @@ app.get('/api/planning/rdvs', auth, async (req, res) => {
       const miId = miRow.rows[0]?.id;
       sql = `
         SELECT r.*,
-               pat.prenom||' '||pat.nom AS patient_nom_complet,
-               pat.telephone AS patient_tel
+               u.prenom||' '||u.nom AS patient_nom_complet,
+               u.telephone AS patient_tel
         FROM rendez_vous r
         LEFT JOIN patients pat ON pat.id=r.patient_id
+        LEFT JOIN utilisateurs u ON u.id=pat.user_id
         WHERE (r.medecin_independant_id=$1 OR r.medecin_id=$2)
       `;
       p = [miId||uid, uid];
