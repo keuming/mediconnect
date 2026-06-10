@@ -91,7 +91,8 @@ const NAV = {
   ],
   medecin_independant: [
     { path:'/medecin/independant',               icon:'🏠', label:'Tableau de bord' },
-    { path:'/medecin/independant/planning',      icon:'📅', label:'Mon planning' },
+    { path:'/medecin/independant/rdvs',          icon:'📅', label:'Mes RDV patients', badge:'NEW' },
+    { path:'/medecin/independant/planning',      icon:'🗓️', label:'Mon planning' },
     { path:'/medecin/independant/patients',      icon:'👤', label:'Mes patients' },
     { path:'/medecin/independant/facturation',   icon:'💰', label:'Facturation' },
     { path:'/medecin/independant/consultations', icon:'🩺', label:'Consultations' },
