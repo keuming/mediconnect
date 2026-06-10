@@ -28,7 +28,7 @@ const cAPI = {
   statutRdv:  (id,s)  => api.patch(`/rendez-vous/${id}/statut`,{statut:s}),
   deleteRdv:    (id) => api.delete(`/rendez-vous/${id}`),
   // DME - Dossiers patients
-  patients:     () => api.get("/patients"),
+  patients:     () => api.get("/patients").then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addPatient:   (d) => api.post("/patients", d),
   consultations:(pid) => api.get(`/consultations?patient_id=${pid}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addConsult:   (d) => api.post("/consultations", d),
