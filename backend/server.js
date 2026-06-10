@@ -605,8 +605,10 @@ app.post('/api/consultations', auth, async (req, res) => {
   try {
     const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
     const realCid = clRow.rows[0]?.id || req.user?.clinique_id || null;
+    const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
+    const realMid = mRow.rows[0]?.id || null;
     const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,motif,date_consult,diagnostic,examen_clinique,note_finale,ta,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [uuid(),patient_id,realCid,req.user?.id,motif||diagnostic,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
+      [uuid(),patient_id,realCid,realMid,motif||diagnostic,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
     if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1",[rdv_id]).catch(()=>{});
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
