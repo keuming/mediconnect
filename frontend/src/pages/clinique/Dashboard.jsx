@@ -1572,7 +1572,7 @@ function PageConsultation() {
 
   const addOrd = useMutation({
     mutationFn: d => api.post('/ordonnances',d),
-    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setOrdForm({medicament:"",posologie:"",duree:""}); },
+    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setLignes([{nom:"",qte:"",posologie:""}]); },
     onError: ()=>toast.error("Erreur ordonnance"),
   });
 
