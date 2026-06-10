@@ -600,22 +600,22 @@ app.delete('/api/rendez-vous/:id', auth, async (req, res) => {
 app.get('/api/consultations', auth, async (req, res) => {
   try {
     const role = req.user?.role, uid = req.user?.id;
-    let sql = 'SELECT * FROM consultations WHERE 1=1'; const p = [];
+    let sql = 'SELECT c.* FROM consultations c WHERE 1=1'; const p = [];
     if (role === 'patient') {
       const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
-      p.push(pid); sql += ' AND o.patient_id=$' + p.length;
+      p.push(pid); sql += ' AND c.patient_id=$' + p.length;
     } else if (role === 'medecin_independant') {
       const mr = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
-      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND o.medecin_independant_id=$' + p.length;
+      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND c.medecin_independant_id=$' + p.length;
     } else if (role === 'medecin') {
-      p.push(uid); sql += ' AND o.medecin_id=$' + p.length;
+      p.push(uid); sql += ' AND c.medecin_id=$' + p.length;
     } else {
       const cr = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const cid = cr.rows[0]?.id||req.user?.clinique_id;
-      if(cid){ p.push(cid); sql += ' AND clinique_id=$' + p.length; }
+      if(cid){ p.push(cid); sql += ' AND c.clinique_id=$' + p.length; }
     }
-    sql += ' ORDER BY o.created_at DESC LIMIT 100';
+    sql += ' ORDER BY c.created_at DESC LIMIT 100';
     const r = await db(sql,p); res.json({success:true,data:r.rows});
   } catch(e) { res.json({success:true,data:[]}); }
 });
