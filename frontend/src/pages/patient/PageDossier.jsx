@@ -14,7 +14,7 @@ const C = {
 const fmt     = n  => Number(n||0).toLocaleString('fr-CI');
 const fmtDate = d  => d ? new Date(d).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'}) : '—';
 const fmtShort= d  => d ? new Date(d).toLocaleDateString('fr-CI',{day:'numeric',month:'short',year:'numeric'}) : '—';
-const BACKEND = 'https://mediconnect-fed6.vercel.app';
+const BACKEND = 'https://mediconnect-backend-v2.vercel.app';
 const getToken = () => { try { const r=JSON.parse(localStorage.getItem('mediconnect-auth')||'{}'); return r?.state?.token||r?.token||''; } catch{ return ''; } };
 const fetchAuth = async (path, opts={}) => {
   const r = await fetch(`${BACKEND}/api${path}`, { ...opts, headers:{'Content-Type':'application/json','Authorization':`Bearer ${getToken()}`,...(opts.headers||{})} });

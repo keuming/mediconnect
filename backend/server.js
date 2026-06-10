@@ -405,8 +405,8 @@ app.post('/api/patients', auth, async (req, res) => {
   if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
   try {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
-    const r = await db('INSERT INTO patients (id,clinique_id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [uuid(), req.user?.clinique_id, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]);
+    const r = await db('INSERT INTO patients (id,user_id,code_secret,telephone,date_naissance,sexe,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+      [uuid(), req.user?.id, code, telephone||null, vd(date_naissance)||null, sexe||null, groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]);
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
