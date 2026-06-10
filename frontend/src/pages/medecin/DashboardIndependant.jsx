@@ -17,17 +17,17 @@ const JOURS_FR=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const TARIF_ABONNEMENT = 500; // FCFA/mois (suivi médical privé)
 
 const mAPI={
-  stats:      ()=>api.get("/planning/stats"),
-  dispos:     p =>api.get("/planning/disponibilites",{params:p}),
+  stats:      ()=>api.get("/planning/stats").then(r=>({data:{data:r.data||{}}})),
+  dispos:     p =>api.get("/planning/disponibilites",{params:p}).then(r=>({data:{data:r.data||[]}})),
   addDispo:   d =>api.post("/planning/disponibilites",d),
   delDispo:   id=>api.delete(`/planning/disponibilites/${id}`),
-  patients:   ()=>api.get("/planning/mes-patients"),
-  rdvs:       p =>api.get("/planning/rdvs",{params:p}),
-  consultations:()=>api.get("/consultations"),
+  patients:   ()=>api.get("/planning/mes-patients").then(r=>({data:{data:r.data||[]}})),
+  rdvs:       p =>api.get("/planning/rdvs",{params:p}).then(r=>({data:{data:r.data||[]}})),
+  consultations:()=>api.get("/consultations").then(r=>({data:{data:r.data||[]}})),
   addConsult: d =>api.post("/consultations/depuis-rdv",d),
   addOrd:     d =>api.post("/ordonnances",d),
   updRdv:     (id,d)=>api.put(`/rendez-vous/${id}`,d),
-  factures:   ()=>api.get("/factures"),
+  factures:   ()=>api.get("/factures").then(r=>({data:{data:r.data||[]}})),
   addFacture: d =>api.post("/factures",d),
   updFacture: (id,d)=>api.put(`/factures/${id}`,d),
   addPatient: d =>api.post("/patients",d),
@@ -853,7 +853,7 @@ function PageConsultations(){
   );
 }
 function PageOrdonnances(){
-  const {data,isLoading}=useQuery({queryKey:["mi-ords"],queryFn:()=>api.get("/ordonnances").then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["mi-ords"],queryFn:()=>api.get("/ordonnances").then(r=>({data:{data:r.data||[]}})).then(r=>r.data.data||[])});
   const ords=data||[];
   return(
     <div>
