@@ -362,6 +362,23 @@ app.get('/api/patients', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+// GET /api/patients/recherche — Recherche patient par code secret (pour consultation clinique)
+app.get('/api/patients/recherche', auth, async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).json({ success:false, message:'Code requis' });
+    const r = await db(`
+      SELECT p.*, u.prenom, u.nom, u.telephone, u.email
+      FROM patients p
+      LEFT JOIN utilisateurs u ON u.id=p.user_id
+      WHERE p.code_secret=$1
+      LIMIT 1
+    `, [code.toUpperCase()]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Patient introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // GET /api/patients/rdvs — RDV du patient connecté
 app.get('/api/patients/rdvs', auth, async (req, res) => {
   try {
