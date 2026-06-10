@@ -1210,7 +1210,9 @@ app.get('/api/planning/rdvs', auth, async (req, res) => {
 app.get('/api/planning/disponibilites', auth, async (req, res) => {
   try {
     const { mois, annee } = req.query;
-    const mid = req.user?.medecin_id || req.user?.id;
+    const isIndep = req.user?.role === 'medecin_independant';
+    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const miId = isIndep ? req.user?.id : null;
     const m = mois  || new Date().getMonth() + 1;
     const a = annee || new Date().getFullYear();
     const r = await db(`
@@ -1234,7 +1236,9 @@ app.post('/api/planning/disponibilites', auth, async (req, res) => {
     const { date, heure_debut, heure_fin, clinique_id, recurrent } = req.body;
     if (!date || !heure_debut || !heure_fin)
       return res.status(400).json({ success:false, message:'date, heure_debut et heure_fin requis' });
-    const mid = req.user?.medecin_id || req.user?.id;
+    const isIndep = req.user?.role === 'medecin_independant';
+    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const miId = isIndep ? req.user?.id : null;
     const exists = await db(
       'SELECT id FROM disponibilites WHERE medecin_id=$1 AND date=$2 AND heure_debut=$3',
       [mid, date, heure_debut]
@@ -1292,7 +1296,9 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
             tension_arterielle, temperature, poids, taille,
             pathologie, age_patient, sexe_patient, gravite, ordonnance } = req.body;
     if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
-    const mid = req.user?.medecin_id || req.user?.id;
+    const isIndep = req.user?.role === 'medecin_independant';
+    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const miId = isIndep ? req.user?.id : null;
     const r = await db(
       `INSERT INTO consultations
          (id,patient_id,medecin_id,medecin_independant_id,rdv_id,diagnostic,examen_clinique,note_finale,
