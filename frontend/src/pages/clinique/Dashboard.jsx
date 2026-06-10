@@ -30,7 +30,7 @@ const cAPI = {
   // DME - Dossiers patients
   patients:     () => api.get("/patients"),
   addPatient:   (d) => api.post("/patients", d),
-  consultations:(pid) => api.get(`/consultations?patient_id=${pid}`),
+  consultations:(pid) => api.get(`/consultations?patient_id=${pid}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addConsult:   (d) => api.post("/consultations", d),
   ordonnances:  (pid) => api.get(`/ordonnances?patient_id=${pid}`),
   addOrdonnance:(d) => api.post("/ordonnances", d),
