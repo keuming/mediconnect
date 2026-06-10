@@ -278,7 +278,7 @@ function PagePlanning(){
   const {data:rdvData}=useQuery({queryKey:["mi-rdvs-m"],queryFn:()=>mAPI.rdvs({}).then(r=>r.data.data||[])});
   const dispos=dispoData||[]; const rdvs=rdvData||[];
   const dayDispos=dispos.filter(d=>d.date===selectedDay);
-  const dayRdvs=rdvs.filter(r=>r.date_rdv===selectedDay&&r.statut!=="annule");
+  const dayRdvs=rdvs.filter(r=>r.date_rdv?.slice(0,10)===selectedDay&&r.statut!=="annule");
 
   const addDispoMut=useMutation({mutationFn:d=>mAPI.addDispo(d),onSuccess:()=>{toast.success("✅ Créneau publié sur rdv.mediconnect4africa.cloud !");qc.invalidateQueries(["mi-dispos"]);setShowAddDispo(false);},onError:e=>toast.error(e?.response?.data?.message||"Erreur")});
   const delDispoMut=useMutation({mutationFn:id=>mAPI.delDispo(id),onSuccess:()=>{toast.success("Créneau supprimé");qc.invalidateQueries(["mi-dispos"]);}});
