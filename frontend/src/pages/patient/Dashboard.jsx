@@ -37,7 +37,7 @@ const pAPI = {
   rdvs:       ()      => api.get("/rendez-vous").then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addRdv:     (d)     => api.post("/rendez-vous", d),
   cancelRdv:  (id)    => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
-  ords:       ()      => api.get("/ordonnances").catch(()=>({data:{data:[]}})),
+  ords:       ()      => api.get("/ordonnances").then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   consults:   ()      => api.get("/consultations").catch(()=>({data:{data:[]}})),
   // Routes publiques via fetch() direct — URL absolue garantie
   cliniques:  ()      => fetchPublic('/public/cliniques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
@@ -169,7 +169,7 @@ function PageHome(){
   const {user}=useAuthStore(); const nav=useNavigate();
   const [showRdv,setShowRdv]=useState(false);
   const {data:rdvData}=useQuery({queryKey:["pat-rdvs"],queryFn:()=>pAPI.rdvs().then(r=>r.data.data||[]),retry:1});
-  const {data:ordData}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),retry:1});
+  const {data:ordData}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0,retry:1});
   const {data:factData}=useQuery({queryKey:["pat-facts"],queryFn:()=>pAPI.factures().then(r=>r.data.data||[]),retry:1});
   const rdvs=rdvData||[]; const ords=ordData||[]; const factures=factData||[];
   const rdvsActifs=rdvs.filter(r=>!["annule","termine"].includes(r.statut));
@@ -492,7 +492,7 @@ function PageDossier(){ return <PageDossierDME/>; }
 
 
 function PageOrdonnances(){
-  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
   return(
     <div>
@@ -1097,7 +1097,7 @@ function PageRdvsV2(){
 //  ORDONNANCES V2 — téléchargement PDF
 // ════════════════════════════════════════════════════════════════════
 function PageOrdonnancesV2(){
-  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
 
   const handleDownload=(o)=>{
@@ -1241,7 +1241,7 @@ function PageCommandeMedicament(){
   const [notes,setNotes]=useState("");
   const [commande,setCommande]=useState(null);
 
-  const {data:mesOrds}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data:mesOrds}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const {data:mesCmds}=useQuery({queryKey:["pat-cmds"],queryFn:()=>pAPI.commandes().then(r=>r.data.data||[]).catch(()=>[])});
 
   const addMut=useMutation({
