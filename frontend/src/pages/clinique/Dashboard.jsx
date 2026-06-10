@@ -1540,30 +1540,100 @@ function PageStats() {
 //  PAGE CONSULTATION (simplifiée ici, complète dans le vrai fichier)
 // ════════════════════════════════════════════════════════════════════
 function PageConsultation() {
+  const qc = useQueryClient();
   const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
   const [patient, setPatient] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});
+
+  const chercher = async () => {
+    if(code.length<3){toast.error("Code invalide");return;}
+    setLoading(true);
+    try {
+      const r = await api.get(`/patients/recherche?code=${encodeURIComponent(code.toUpperCase())}`);
+      if(r.success&&r.data){setPatient(r.data);toast.success("Patient trouvé !");}
+      else toast.error("Patient introuvable");
+    } catch(e){toast.error("Erreur de recherche");}
+    setLoading(false);
+  };
+
+  const addMut = useMutation({
+    mutationFn: d=>api.post('/consultations',d),
+    onSuccess: ()=>{toast.success("✅ Consultation enregistrée !");setShowForm(false);setForm({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});qc.invalidateQueries(["cl-stats"]);},
+    onError: ()=>toast.error("Erreur enregistrement"),
+  });
+
   return (
     <div>
-      <PageHeader title="🩺 Consultation" subtitle="Accès par code patient ou recherche" />
-      <Panel style={{maxWidth:500,margin:"0 auto"}}>
+      <PageHeader title="🩺 Consultation" subtitle="Accès par code patient" />
+      <Panel style={{maxWidth:540,margin:"0 auto 20px"}}>
         <div style={{marginBottom:18}}>
           <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Code secret patient</label>
           <div style={{display:"flex",gap:10}}>
-            <input value={code} onChange={e=>setCode(e.target.value)} placeholder="MC-AB-1234"
+            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&chercher()} placeholder="MC-KJ-0001"
               style={{flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"11px 14px",color:C.text,fontSize:16,outline:"none",fontFamily:"monospace",letterSpacing:2}}
-              onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
-            <Btn onClick={()=>{ if(code.length<3){toast.error("Code invalide");return;} setPatient({nom:"Koné Adjoua",code,note:"Diabétique — allergie pénicilline"}); toast.success("Patient trouvé !"); }}>Accéder</Btn>
+              onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
+            <Btn loading={loading} onClick={chercher}>Rechercher</Btn>
           </div>
+          <div style={{fontSize:11,color:C.dim,marginTop:6}}>Code visible sur la carte MediConnect du patient (ex: MC-KJ-0001)</div>
         </div>
-        {patient && (
-          <div style={{background:`rgba(10,143,88,.08)`,border:`1px solid rgba(10,143,88,.2)`,borderRadius:12,padding:16}}>
-            <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{patient.nom}</div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Code : {patient.code}</div>
-            <div style={{fontSize:13,color:C.amber}}>{patient.note}</div>
-            <Btn style={{marginTop:14,width:"100%"}} onClick={()=>toast.success("Consultation démarrée !")}>Démarrer la consultation</Btn>
+        {patient&&(
+          <div style={{background:"rgba(10,143,88,.08)",border:"1px solid rgba(10,143,88,.2)",borderRadius:12,padding:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+              <div style={{width:44,height:44,background:`linear-gradient(135deg,${C.green},${C.teal})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:18}}>{patient.prenom?.[0]||"P"}</div>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:C.text}}>{patient.prenom||"—"} {patient.nom||"—"}</div>
+                <div style={{fontSize:12,color:C.muted}}>Code: {patient.code_secret} · {patient.groupe_sanguin||"—"} · {patient.telephone||"—"}</div>
+              </div>
+            </div>
+            {patient.allergies&&<div style={{fontSize:12,color:C.amber,marginBottom:8}}>⚠️ Allergies: {patient.allergies}</div>}
+            {patient.antecedents&&<div style={{fontSize:12,color:C.muted,marginBottom:8}}>📋 Antécédents: {patient.antecedents}</div>}
+            <Btn style={{width:"100%",marginTop:4}} onClick={()=>setShowForm(true)}>🩺 Démarrer la consultation</Btn>
           </div>
         )}
       </Panel>
+
+      {showForm&&patient&&(
+        <div onClick={()=>setShowForm(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:560,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <h2 style={{fontSize:17,fontWeight:700,color:C.text,margin:0}}>🩺 {patient.prenom} {patient.nom}</h2>
+              <button onClick={()=>setShowForm(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
+            </div>
+            {[["Motif *","motif","Raison de la consultation"],["Diagnostic *","diagnostic","Hypertension artérielle…"],["Traitement","traitement","Amlodipine 5mg…"]].map(([label,key,ph])=>(
+              <div key={key} style={{marginBottom:12}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+            ))}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:12}}>
+              {[["T.A.","ta","120/80"],["Temp","temperature","37"],["Poids","poids","70"],["Taille","taille","175"]].map(([label,key,ph])=>(
+                <div key={key}>
+                  <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                  <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
+                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Notes</label>
+              <textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Observations…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Annuler</button>
+              <button disabled={addMut.isPending} onClick={()=>{
+                if(!form.motif||!form.diagnostic){toast.error("Motif et diagnostic requis");return;}
+                addMut.mutate({patient_id:patient.id,...form,tension_arterielle:form.ta});
+              }} style={{flex:2,padding:"10px",borderRadius:9,background:`linear-gradient(135deg,${C.green},${C.teal})`,border:"none",color:"#fff",cursor:addMut.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addMut.isPending?.65:1}}>
+                {addMut.isPending?"⏳…":"✅ Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
