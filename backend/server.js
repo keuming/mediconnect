@@ -519,6 +519,33 @@ app.post('/api/rendez-vous', auth, async (req, res) => {
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+// PATCH /api/rendez-vous/:id/confirmer — confirmation rapide
+app.patch('/api/rendez-vous/:id/confirmer', auth, async (req, res) => {
+  try {
+    const r = await db(
+      "UPDATE rendez_vous SET statut='confirme', updated_at=NOW() WHERE id=$1 RETURNING *",
+      [req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
+    res.json({ success:true, data:r.rows[0], message:'RDV confirmé' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// PATCH /api/rendez-vous/:id/statut — changement de statut générique
+app.patch('/api/rendez-vous/:id/statut', auth, async (req, res) => {
+  const { statut } = req.body;
+  const valides = ['en_attente','confirme','en_cours','termine','annule'];
+  if (!valides.includes(statut)) return res.status(400).json({ success:false, message:'Statut invalide' });
+  try {
+    const r = await db(
+      "UPDATE rendez_vous SET statut=$1, updated_at=NOW() WHERE id=$2 RETURNING *",
+      [statut, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.put('/api/rendez-vous/:id', auth, async (req, res) => {
   const { statut, motif, heure_rdv, date_rdv, medecin_nom, patient_nom, notes } = req.body;
   try {
@@ -547,8 +574,11 @@ app.post('/api/consultations', auth, async (req, res) => {
   const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
   try {
-    const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,diagnostic,traitement,notes,tension_arterielle,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
+    const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
+    const realCid = clRow.rows[0]?.id || req.user?.clinique_id || null;
+    const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,examen_clinique,note_finale,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [uuid(),patient_id,realCid,req.user?.id,diagnostic,traitement||null,notes||null,temperature||null,poids||null,taille||null,rdv_id||null]);
+    if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1",[rdv_id]).catch(()=>{});
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
