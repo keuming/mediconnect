@@ -600,13 +600,13 @@ app.get('/api/consultations', auth, async (req, res) => {
   } catch(e) { res.json({success:true,data:[]}); }
 });
 app.post('/api/consultations', auth, async (req, res) => {
-  const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
+  const { patient_id, motif, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
   try {
     const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
     const realCid = clRow.rows[0]?.id || req.user?.clinique_id || null;
-    const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,examen_clinique,note_finale,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [uuid(),patient_id,realCid,req.user?.id,diagnostic,traitement||null,notes||null,temperature||null,poids||null,taille||null,rdv_id||null]);
+    const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,motif,date_consult,diagnostic,examen_clinique,note_finale,ta,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [uuid(),patient_id,realCid,req.user?.id,motif||diagnostic,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
     if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1",[rdv_id]).catch(()=>{});
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
