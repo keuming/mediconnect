@@ -1288,12 +1288,26 @@ app.delete('/api/planning/disponibilites/:id', auth, async (req, res) => {
 // GET /api/planning/mes-patients
 app.get('/api/planning/mes-patients', auth, async (req, res) => {
   try {
-    const isIndep = req.user?.role === 'medecin_independant';
-    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const role = req.user?.role;
+    const isIndep = role === 'medecin_independant';
+    const isClinique = role === 'clinique';
+    let mid = req.user?.medecin_id || null;
     let miId = null;
     if (isIndep) {
       const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
       miId = miRow.rows[0]?.id || null;
+      mid = null;
+    } else if (isClinique) {
+      mid = null;
+    }
+    let consultCliniqueId = null;
+    if (isClinique) {
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+      consultCliniqueId = clRow.rows[0]?.id || null;
+    } else if (!mid) {
+      // Médecin résident : chercher dans table medecins
+      const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      mid = mRow.rows[0]?.id || null;
     }
     const r = await db(`
       SELECT DISTINCT p.*
@@ -1324,21 +1338,35 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
             tension_arterielle, temperature, poids, taille,
             pathologie, age_patient, sexe_patient, gravite, ordonnance } = req.body;
     if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
-    const isIndep = req.user?.role === 'medecin_independant';
-    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const role = req.user?.role;
+    const isIndep = role === 'medecin_independant';
+    const isClinique = role === 'clinique';
+    let mid = req.user?.medecin_id || null;
     let miId = null;
     if (isIndep) {
       const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
       miId = miRow.rows[0]?.id || null;
+      mid = null;
+    } else if (isClinique) {
+      mid = null;
+    }
+    let consultCliniqueId = null;
+    if (isClinique) {
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+      consultCliniqueId = clRow.rows[0]?.id || null;
+    } else if (!mid) {
+      // Médecin résident : chercher dans table medecins
+      const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      mid = mRow.rows[0]?.id || null;
     }
     const r = await db(
       `INSERT INTO consultations
-         (id,patient_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,diagnostic,examen_clinique,note_finale,
+         (id,patient_id,clinique_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,diagnostic,examen_clinique,note_finale,
           ta,temperature,poids,taille,pathologie,
           age_patient,sexe_patient,gravite,pays_code)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'CI')
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,CURRENT_DATE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CI')
        RETURNING *`,
-      [patient_id||null, mid, miId, rdv_id||null, motif||diagnostic||'Consultation',
+      [patient_id||null, consultCliniqueId, mid, miId, rdv_id||null, motif||diagnostic||'Consultation',
        diagnostic, traitement||null, notes||null, tension_arterielle||null,
        temperature||null, poids||null, taille||null,
        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere']
