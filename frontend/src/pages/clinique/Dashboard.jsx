@@ -1548,7 +1548,10 @@ function PageConsultation() {
   const [form, setForm] = useState({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});
   const [lastConsult, setLastConsult] = useState(null);
   const [showOrd, setShowOrd] = useState(false);
-  const [ordForm, setOrdForm] = useState({medicament:"",posologie:"",duree:""});
+  const [lignes, setLignes] = useState([{nom:"",qte:"",posologie:""}]);
+  const addLigne = ()=>setLignes(l=>[...l,{nom:"",qte:"",posologie:""}]);
+  const delLigne = (i)=>setLignes(l=>l.filter((_,j)=>j!==i));
+  const updLigne = (i,k,v)=>setLignes(l=>l.map((row,j)=>j===i?{...row,[k]:v}:row));
 
   const chercher = async () => {
     if(code.length<3){toast.error("Code invalide");return;}
@@ -1653,18 +1656,35 @@ function PageConsultation() {
             <div style={{background:"rgba(124,58,237,.08)",border:"1px solid rgba(124,58,237,.2)",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#8BA0B5"}}>
               Consultation enregistrée ✅ — Voulez-vous ajouter une ordonnance ?
             </div>
-            {[["Médicament(s) *","medicament","Paracétamol 500mg, Amoxicilline 500mg…"],["Posologie","posologie","1 cp matin et soir pendant 5 jours"],["Durée","duree","5 jours"]].map(([label,key,ph])=>(
-              <div key={key} style={{marginBottom:12}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase",marginBottom:4}}>{label}</label>
-                <input value={ordForm[key]} onChange={e=>setOrdForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
-                  style={{width:"100%",background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:9,padding:"10px 14px",color:"#F0F4F8",fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            <div style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <label style={{fontSize:11,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase"}}>Médicaments *</label>
+                <button onClick={addLigne} style={{background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",borderRadius:6,padding:"4px 10px",color:"#A78BFA",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter un médicament</button>
               </div>
-            ))}
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr auto",gap:6,marginBottom:6}}>
+                {["Nom","Dosage","Posologie",""].map((h,i)=><div key={i} style={{fontSize:10,color:"#4E657A",fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+              </div>
+              {lignes.map((l,i)=>(
+                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr auto",gap:6,marginBottom:8,alignItems:"center"}}>
+                  <input value={l.nom} onChange={e=>updLigne(i,"nom",e.target.value)} placeholder={i===0?"Paracétamol":"Médicament..."}
+                    style={{background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:8,padding:"8px 10px",color:"#F0F4F8",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <input value={l.qte} onChange={e=>updLigne(i,"qte",e.target.value)} placeholder="500mg"
+                    style={{background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:8,padding:"8px 10px",color:"#F0F4F8",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <input value={l.posologie} onChange={e=>updLigne(i,"posologie",e.target.value)} placeholder="1 cp matin/soir"
+                    style={{background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:8,padding:"8px 10px",color:"#F0F4F8",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <button onClick={()=>delLigne(i)} style={{background:lignes.length>1?"rgba(225,29,72,.1)":"transparent",border:lignes.length>1?"1px solid rgba(225,29,72,.2)":"none",borderRadius:6,padding:"6px 8px",color:lignes.length>1?"#E11D48":"#4E657A",cursor:lignes.length>1?"pointer":"default",fontSize:14,fontFamily:"inherit"}}>
+                    {lignes.length>1?"✕":"—"}
+                  </button>
+                </div>
+              ))}
+            </div>
             <div style={{display:"flex",gap:10,marginTop:8}}>
               <button onClick={()=>setShowOrd(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:"1.5px solid #1E2F42",color:"#8BA0B5",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Passer</button>
               <button disabled={addOrd.isPending} onClick={()=>{
-                if(!ordForm.medicament){toast.error("Médicament requis");return;}
-                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,...ordForm});
+                const valides = lignes.filter(l=>l.nom.trim());
+                if(!valides.length){toast.error("Au moins un médicament requis");return;}
+                const medicament = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}`).join('\n');
+                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicament,posologie:valides[0]?.posologie||"",duree:""});
               }} style={{flex:2,padding:"10px",borderRadius:9,background:"linear-gradient(135deg,#7C3AED,#0D9488)",border:"none",color:"#fff",cursor:addOrd.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addOrd.isPending?.65:1}}>
                 {addOrd.isPending?"⏳…":"💊 Créer l'ordonnance"}
               </button>
