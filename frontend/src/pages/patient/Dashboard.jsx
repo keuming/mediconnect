@@ -42,7 +42,7 @@ const pAPI = {
   // Routes publiques via fetch() direct — URL absolue garantie
   cliniques:  ()      => fetchPublic('/public/cliniques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   medecins:   (cid)   => fetchPublic(`/public/medecins${cid?`?clinique_id=${cid}`:''}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
-  medecinsMI: ()      => fetchPublic('/public/medecins?independant=true').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  medecinsMI: ()      => fetchPublic('/public/medecins-independants').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures").catch(()=>({data:{data:[]}}))),
   addCommande:(d)     => api.post("/commandes", d),
   commandes:  ()      => api.get("/commandes").catch(()=>({data:{data:[]}})),
