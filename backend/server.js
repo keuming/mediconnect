@@ -1301,13 +1301,13 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
     const miId = isIndep ? req.user?.id : null;
     const r = await db(
       `INSERT INTO consultations
-         (id,patient_id,medecin_id,medecin_independant_id,rdv_id,diagnostic,examen_clinique,note_finale,
+         (id,patient_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,diagnostic,examen_clinique,note_finale,
           ta,temperature,poids,taille,pathologie,
           age_patient,sexe_patient,gravite,pays_code)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'CI')
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'CI')
        RETURNING *`,
-      [patient_id||null, mid, miId, rdv_id||null, diagnostic,
-       traitement||null, notes||null, tension_arterielle||null,
+      [patient_id||null, mid, miId, rdv_id||null, motif||diagnostic||'Consultation',
+       diagnostic, traitement||null, notes||null, tension_arterielle||null,
        temperature||null, poids||null, taille||null,
        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere']
     );
