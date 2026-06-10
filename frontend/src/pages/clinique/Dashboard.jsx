@@ -290,6 +290,8 @@ function PagePlanning() {
   const [showAdd, setShowAdd] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today());
   const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
+  const [rdvConsult, setRdvConsult] = useState(null);
+  const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
 
   const { data, isLoading } = useQuery({ queryKey:["cl-rdvs",selectedDate], queryFn:()=>cAPI.rdvs({ date:selectedDate }).then(r=>r.data.data||[]) });
   const rdvs = data||[];
@@ -297,6 +299,7 @@ function PagePlanning() {
   const addMut = useMutation({ mutationFn:d=>cAPI.addRdv(d), onSuccess:()=>{ toast.success("RDV ajouté !"); qc.invalidateQueries(["cl-rdvs"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
   const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateRdv(id,{statut}), onSuccess:()=>{ toast.success("RDV mis à jour"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); }, onError:()=>toast.error("Erreur") });
   const confirmerMut = useMutation({ mutationFn:id=>cAPI.confirmerRdv(id), onSuccess:()=>{ toast.success("✅ RDV confirmé !"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); }, onError:()=>toast.error("Erreur confirmation") });
+  const addConsRdv = useMutation({ mutationFn:d=>api.post('/consultations/depuis-rdv',d), onSuccess:()=>{ toast.success("✅ Consultation enregistrée !"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); setRdvConsult(null); }, onError:()=>toast.error("Erreur consultation") });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteRdv(id), onSuccess:()=>{ toast.success("RDV supprimé"); qc.invalidateQueries(["cl-rdvs"]); }, onError:()=>toast.error("Erreur") });
 
   const f = (k) => e => setForm(p=>({...p,[k]:e.target.value}));
@@ -367,6 +370,51 @@ function PagePlanning() {
           <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>addMut.mutate(form)}>Enregistrer le RDV</Btn>
         </div>
       </Modal>
+
+      {/* Modal consultation depuis RDV */}
+      {rdvConsult&&(
+        <div onClick={()=>setRdvConsult(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:'1px solid #1E2F42',borderRadius:16,padding:28,width:540,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <h2 style={{fontSize:17,fontWeight:700,color:'#F0F4F8',margin:0}}>🩺 {rdvConsult.patient_nom}</h2>
+              <button onClick={()=>setRdvConsult(null)} style={{background:'none',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:20}}>✕</button>
+            </div>
+            <div style={{background:'rgba(10,143,88,.08)',border:'1px solid rgba(10,143,88,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#8BA0B5'}}>
+              {new Date(rdvConsult.date_rdv).toLocaleDateString('fr-CI',{day:'numeric',month:'long'})} · {rdvConsult.heure_rdv?.slice(0,5)} · {rdvConsult.motif||'—'}
+            </div>
+            {[['Diagnostic *','diagnostic','Hypertension artérielle…'],['Traitement','traitement','Amlodipine 5mg…']].map(([label,key,ph])=>(
+              <div key={key} style={{marginBottom:12}}>
+                <label style={{display:'block',fontSize:11,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
+                <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
+                  style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+              </div>
+            ))}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:12}}>
+              {[['T.A.','tension_arterielle','120/80'],['Temp °C','temperature','37'],['Poids','poids','70'],['Taille','taille','175']].map(([label,key,ph])=>(
+                <div key={key}>
+                  <label style={{display:'block',fontSize:10,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
+                  <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
+                    style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'8px 10px',color:'#F0F4F8',fontSize:12,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>Notes</label>
+              <textarea value={rdvCForm.notes||''} onChange={e=>setRdvCForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Observations…"
+                style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:14,resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setRdvConsult(null)} style={{flex:1,padding:'10px',borderRadius:9,background:'transparent',border:'1.5px solid #1E2F42',color:'#8BA0B5',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'inherit'}}>Annuler</button>
+              <button disabled={addConsRdv.isPending} onClick={()=>{
+                if(!rdvCForm.diagnostic){toast.error('Diagnostic requis');return;}
+                addConsRdv.mutate({rdv_id:rdvConsult.id,patient_id:rdvConsult.patient_id,motif:rdvConsult.motif||rdvCForm.diagnostic,...rdvCForm});
+              }} style={{flex:2,padding:'10px',borderRadius:9,background:'linear-gradient(135deg,#0A8F58,#0D9488)',border:'none',color:'#fff',cursor:addConsRdv.isPending?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'inherit',opacity:addConsRdv.isPending?.65:1}}>
+                {addConsRdv.isPending?'⏳…':'✅ Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
