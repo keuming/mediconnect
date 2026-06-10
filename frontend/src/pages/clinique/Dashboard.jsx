@@ -21,7 +21,7 @@ const cAPI = {
   // Dashboard
   stats:        () => api.get("/cliniques/stats"),
   // RDV & Planning
-  rdvs:         (p) => api.get("/rendez-vous", { params: p }),
+  rdvs:         (p) => api.get("/rendez-vous", { params: p }).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addRdv:       (d) => api.post("/rendez-vous", d),
   updateRdv:    (id,d) => api.put(`/rendez-vous/${id}`, d),
   deleteRdv:    (id) => api.delete(`/rendez-vous/${id}`),
