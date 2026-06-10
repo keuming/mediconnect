@@ -1260,8 +1260,9 @@ app.delete('/api/planning/disponibilites/:id', auth, async (req, res) => {
 // GET /api/planning/mes-patients
 app.get('/api/planning/mes-patients', auth, async (req, res) => {
   try {
-    const mid = req.user?.medecin_id || null;
-    const miId = req.user?.role === 'medecin_independant' ? req.user?.id : null;
+    const isIndep = req.user?.role === 'medecin_independant';
+    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const miId = isIndep ? req.user?.id : null;
     const r = await db(`
       SELECT DISTINCT p.*
       FROM patients p
