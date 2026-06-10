@@ -27,6 +27,8 @@ const mAPI={
   addConsult: d =>api.post("/consultations/depuis-rdv",d),
   addOrd:     d =>api.post("/ordonnances",d),
   updRdv:     (id,d)=>api.put(`/rendez-vous/${id}`,d),
+  confirmerRdv:(id)=>api.patch(`/rendez-vous/${id}/confirmer`,{}),
+  statutRdv:  (id,s)=>api.patch(`/rendez-vous/${id}/statut`,{statut:s}),
   factures:   ()=>api.get("/factures").then(r=>({data:{data:r.data||[]}})),
   addFacture: d =>api.post("/factures",d),
   updFacture: (id,d)=>api.put(`/factures/${id}`,d),
@@ -283,7 +285,8 @@ function PagePlanning(){
   const addDispoMut=useMutation({mutationFn:d=>mAPI.addDispo(d),onSuccess:()=>{toast.success("✅ Créneau publié sur rdv.mediconnect4africa.cloud !");qc.invalidateQueries(["mi-dispos"]);setShowAddDispo(false);},onError:e=>toast.error(e?.response?.data?.message||"Erreur")});
   const delDispoMut=useMutation({mutationFn:id=>mAPI.delDispo(id),onSuccess:()=>{toast.success("Créneau supprimé");qc.invalidateQueries(["mi-dispos"]);}});
   const addConsMut=useMutation({mutationFn:d=>mAPI.addConsult(d),onSuccess:()=>{toast.success("✅ Consultation enregistrée !");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-stats"]);setShowConsult(false);setSelectedRdv(null);},onError:()=>toast.error("Erreur")});
-  const updRdvMut=useMutation({mutationFn:({id,...d})=>mAPI.updRdv(id,d),onSuccess:()=>{toast.success("RDV mis à jour");qc.invalidateQueries(["mi-rdvs-m"]);}});
+  const updRdvMut=useMutation({mutationFn:({id,...d})=>mAPI.updRdv(id,d),onSuccess:()=>{toast.success("RDV mis à jour");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-all-rdvs-page"]);}});
+  const confirmerMut=useMutation({mutationFn:id=>mAPI.confirmerRdv(id),onSuccess:()=>{toast.success("✅ RDV confirmé !");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-all-rdvs-page"]);},onError:()=>toast.error("Erreur confirmation")});
   const addRdvMut=useMutation({mutationFn:d=>api.post("/rendez-vous",d),onSuccess:()=>{toast.success("RDV ajouté !");qc.invalidateQueries(["mi-rdvs-m"]);setShowAddRdv(false);},onError:()=>toast.error("Erreur")});
 
   const navigMois=delta=>{let nm=mois+delta,na=annee;if(nm>12){nm=1;na++;}if(nm<1){nm=12;na--;}setMois(nm);setAnnee(na);};
@@ -362,7 +365,7 @@ function PagePlanning(){
                       <Badge color={{confirme:"green",en_attente:"amber",en_cours:"teal",termine:"gray"}[r.statut]||"gray"}>{r.statut}</Badge>
                     </div>
                     <div style={{display:"flex",gap:8}}>
-                      {r.statut==="en_attente"&&<Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>updRdvMut.mutate({id:r.id,statut:"confirme"})}>✓ Confirmer</Btn>}
+                      {r.statut==="en_attente"&&<Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>confirmerMut.mutate(r.id)}>✓ Confirmer</Btn>}
                       {["confirme","en_attente","en_cours"].includes(r.statut)&&<Btn variant="purple" style={{flex:2,padding:"6px",fontSize:11}} onClick={()=>{setSelectedRdv(r);setShowConsult(true);}}>🩺 Consulter + Facturer</Btn>}
                     </div>
                   </div>

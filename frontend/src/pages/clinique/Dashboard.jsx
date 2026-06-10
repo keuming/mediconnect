@@ -24,6 +24,8 @@ const cAPI = {
   rdvs:         (p) => api.get("/rendez-vous", { params: p }).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addRdv:       (d) => api.post("/rendez-vous", d),
   updateRdv:    (id,d) => api.put(`/rendez-vous/${id}`, d),
+  confirmerRdv:(id)    => api.patch(`/rendez-vous/${id}/confirmer`,{}),
+  statutRdv:  (id,s)  => api.patch(`/rendez-vous/${id}/statut`,{statut:s}),
   deleteRdv:    (id) => api.delete(`/rendez-vous/${id}`),
   // DME - Dossiers patients
   patients:     () => api.get("/patients"),
@@ -293,7 +295,8 @@ function PagePlanning() {
   const rdvs = data||[];
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addRdv(d), onSuccess:()=>{ toast.success("RDV ajouté !"); qc.invalidateQueries(["cl-rdvs"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
-  const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateRdv(id,{statut}), onSuccess:()=>{ toast.success("RDV mis à jour"); qc.invalidateQueries(["cl-rdvs"]); }, onError:()=>toast.error("Erreur") });
+  const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateRdv(id,{statut}), onSuccess:()=>{ toast.success("RDV mis à jour"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); }, onError:()=>toast.error("Erreur") });
+  const confirmerMut = useMutation({ mutationFn:id=>cAPI.confirmerRdv(id), onSuccess:()=>{ toast.success("✅ RDV confirmé !"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); }, onError:()=>toast.error("Erreur confirmation") });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteRdv(id), onSuccess:()=>{ toast.success("RDV supprimé"); qc.invalidateQueries(["cl-rdvs"]); }, onError:()=>toast.error("Erreur") });
 
   const f = (k) => e => setForm(p=>({...p,[k]:e.target.value}));
@@ -335,7 +338,7 @@ function PagePlanning() {
                 { key:"statut", label:"Statut", render:v=><Badge color={statutColor[v]||"gray"}>{v||"—"}</Badge> },
                 { key:"id", label:"Actions", render:(id,row)=>(
                   <div style={{display:"flex",gap:6}}>
-                    {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>updMut.mutate({id,statut:"confirme"})}>Confirmer</Btn>}
+                    {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>confirmerMut.mutate(id)}>Confirmer</Btn>}
                     {row.statut==="confirme" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_cours"})}>Démarrer</Btn>}
                     {row.statut==="en_cours" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.muted}} onClick={()=>updMut.mutate({id,statut:"termine"})}>Terminer</Btn>}
                     <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.red}} onClick={()=>window.confirm("Supprimer ce RDV ?")&&delMut.mutate(id)}>✕</Btn>
