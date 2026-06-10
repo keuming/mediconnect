@@ -814,7 +814,7 @@ app.get('/api/public/medecins-independants', async (req, res) => {
     const { specialite } = req.query;
     let sql = `
       SELECT u.id, u.prenom, u.nom, u.telephone, u.ville, u.pays_code,
-             mi.specialite, mi.tarif_consultation, mi.experience_ans, mi.bio, mi.note_moyenne,
+             mi.specialite, mi.tarif, mi.experience_ans, mi.note_moyenne,
              (SELECT COUNT(*) FROM disponibilites d
               WHERE d.medecin_id=u.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
       FROM utilisateurs u
