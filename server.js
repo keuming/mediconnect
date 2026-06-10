@@ -562,13 +562,25 @@ app.delete('/api/rendez-vous/:id', auth, async (req, res) => {
 // ── CONSULTATIONS ─────────────────────────────────────────────────
 app.get('/api/consultations', auth, async (req, res) => {
   try {
-    const { patient_id } = req.query; const cid = req.user?.clinique_id;
-    let sql='SELECT * FROM consultations WHERE 1=1'; const p=[];
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
-    else if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    sql+=' ORDER BY created_at DESC LIMIT 100';
-    const r = await db(sql,p); res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
+    const role = req.user?.role, uid = req.user?.id;
+    let sql = 'SELECT * FROM consultations WHERE 1=1'; const p = [];
+    if (role === 'patient') {
+      const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
+      p.push(pid); sql += ' AND patient_id=$' + p.length;
+    } else if (role === 'medecin_independant') {
+      const mr = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND medecin_independant_id=$' + p.length;
+    } else if (role === 'medecin') {
+      p.push(uid); sql += ' AND medecin_id=$' + p.length;
+    } else {
+      const cr = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const cid = cr.rows[0]?.id||req.user?.clinique_id;
+      if(cid){ p.push(cid); sql += ' AND clinique_id=$' + p.length; }
+    }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql,p); res.json({success:true,data:r.rows});
+  } catch(e) { res.json({success:true,data:[]}); }
 });
 app.post('/api/consultations', auth, async (req, res) => {
   const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
@@ -586,13 +598,25 @@ app.post('/api/consultations', auth, async (req, res) => {
 // ── ORDONNANCES ───────────────────────────────────────────────────
 app.get('/api/ordonnances', auth, async (req, res) => {
   try {
-    const { patient_id } = req.query; const cid = req.user?.clinique_id;
-    let sql='SELECT * FROM ordonnances WHERE 1=1'; const p=[];
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
-    else if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    sql+=' ORDER BY created_at DESC LIMIT 100';
-    const r = await db(sql,p); res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
+    const role = req.user?.role, uid = req.user?.id;
+    let sql = 'SELECT * FROM ordonnances WHERE 1=1'; const p = [];
+    if (role === 'patient') {
+      const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
+      p.push(pid); sql += ' AND patient_id=$' + p.length;
+    } else if (role === 'medecin_independant') {
+      const mr = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND medecin_independant_id=$' + p.length;
+    } else if (role === 'medecin') {
+      p.push(uid); sql += ' AND medecin_id=$' + p.length;
+    } else {
+      const cr = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const cid = cr.rows[0]?.id||req.user?.clinique_id;
+      if(cid){ p.push(cid); sql += ' AND clinique_id=$' + p.length; }
+    }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql,p); res.json({success:true,data:r.rows});
+  } catch(e) { res.json({success:true,data:[]}); }
 });
 app.post('/api/ordonnances', auth, async (req, res) => {
   const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id } = req.body;
