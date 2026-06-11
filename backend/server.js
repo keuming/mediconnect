@@ -1188,6 +1188,242 @@ app.patch('/api/pharmacie/commandes/:id/statut', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+
+// ════════════════════════════════════════════════════════════════════
+// WORKFLOW LIVRAISON — Publication, Acceptation, Suivi, Confirmation
+// ════════════════════════════════════════════════════════════════════
+
+// Générer code confirmation 6 chiffres
+const genCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Créer notification pour un utilisateur
+const createNotif = async (mission_id, destinataire, role_dest, type_notif, message) => {
+  await db(`INSERT INTO notifications_livraison (mission_id,destinataire,role_dest,type_notif,message)
+            VALUES ($1,$2,$3,$4,$5)`,
+    [mission_id, destinataire, role_dest, type_notif, message]).catch(()=>{});
+};
+
+// POST /api/livraison/publier — pharmacie publie une mission après paiement confirmé
+app.post('/api/livraison/publier', auth, async (req, res) => {
+  const { commande_id, adresse_retrait, adresse_livraison, ville, quartier, notes_patient } = req.body;
+  if (!commande_id) return res.status(400).json({ success:false, message:'commande_id requis' });
+  try {
+    // Vérifier que la commande est payée
+    const cmd = await db('SELECT * FROM commandes_pharmacie WHERE id=$1',[commande_id]);
+    if (!cmd.rows.length) return res.status(404).json({ success:false, message:'Commande introuvable' });
+
+    const ref = 'LIV-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const code = genCode();
+
+    const mission = await db(`
+      INSERT INTO missions_livraison
+        (reference, commande_id, patient_id, pharmacie_id, adresse_retrait, adresse_livraison,
+         ville, quartier, notes_patient, code_confirmation, statut)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'publiee') RETURNING *
+    `, [ref, commande_id, cmd.rows[0].patient_id, req.user.id,
+        adresse_retrait||'Pharmacie partenaire', adresse_livraison||'Adresse patient',
+        ville||'Abidjan', quartier||null, notes_patient||null, code]);
+
+    // Notifier tous les livreurs disponibles
+    const livreurs = await db("SELECT id FROM utilisateurs WHERE role='livreur' AND is_active=true").catch(()=>({rows:[]}));
+    for (const l of livreurs.rows) {
+      await createNotif(mission.rows[0].id, l.id, 'livreur', 'mission_publiee',
+        `🛵 Nouvelle mission disponible — ${ref} — 1500 FCFA — ${ville||'Abidjan'}`);
+    }
+
+    res.status(201).json({ success:true, data:mission.rows[0], message:'Mission publiée — livreurs notifiés' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/livraison/missions — livreur voit les missions disponibles
+app.get('/api/livraison/missions', auth, async (req, res) => {
+  try {
+    const { statut } = req.query;
+    const uid = req.user.id;
+    const role = req.user.role;
+    let sql, params = [];
+
+    if (role === 'livreur') {
+      if (statut === 'publiee') {
+        // Toutes les missions publiées (non encore acceptées)
+        sql = `
+          SELECT m.*, cp.reference AS cmd_ref, cp.montant_total,
+                 ph.prenom AS pharmacie_nom, ph.telephone AS pharmacie_tel,
+                 u.prenom AS patient_prenom, u.nom AS patient_nom
+          FROM missions_livraison m
+          LEFT JOIN commandes_pharmacie cp ON cp.id=m.commande_id
+          LEFT JOIN utilisateurs ph ON ph.id=m.pharmacie_id
+          LEFT JOIN patients p ON p.id=m.patient_id
+          LEFT JOIN utilisateurs u ON u.id=p.user_id
+          WHERE m.statut='publiee'
+          ORDER BY m.created_at DESC LIMIT 50
+        `;
+      } else {
+        // Missions du livreur connecté
+        sql = `
+          SELECT m.*, cp.reference AS cmd_ref, cp.montant_total,
+                 ph.prenom AS pharmacie_nom, ph.telephone AS pharmacie_tel,
+                 u.prenom AS patient_prenom, u.nom AS patient_nom, u.telephone AS patient_tel
+          FROM missions_livraison m
+          LEFT JOIN commandes_pharmacie cp ON cp.id=m.commande_id
+          LEFT JOIN utilisateurs ph ON ph.id=m.pharmacie_id
+          LEFT JOIN patients p ON p.id=m.patient_id
+          LEFT JOIN utilisateurs u ON u.id=p.user_id
+          WHERE m.livreur_id=$1
+        `;
+        params = [uid];
+        if (statut) { params.push(statut); sql += ` AND m.statut=$${params.length}`; }
+        sql += ' ORDER BY m.updated_at DESC LIMIT 50';
+      }
+    } else if (role === 'pharmacie') {
+      sql = `
+        SELECT m.*, u.prenom AS patient_prenom, u.nom AS patient_nom,
+               lu.prenom AS livreur_prenom, lu.nom AS livreur_nom, lu.telephone AS livreur_tel
+        FROM missions_livraison m
+        LEFT JOIN patients p ON p.id=m.patient_id
+        LEFT JOIN utilisateurs u ON u.id=p.user_id
+        LEFT JOIN utilisateurs lu ON lu.id=m.livreur_id
+        WHERE m.pharmacie_id=$1
+      `;
+      params = [uid];
+      if (statut) { params.push(statut); sql += ` AND m.statut=$${params.length}`; }
+      sql += ' ORDER BY m.updated_at DESC LIMIT 50';
+    } else {
+      // Patient
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const pid = pRow.rows[0]?.id;
+      sql = `
+        SELECT m.*, lu.prenom AS livreur_prenom, lu.nom AS livreur_nom, lu.telephone AS livreur_tel,
+               ph.prenom AS pharmacie_nom
+        FROM missions_livraison m
+        LEFT JOIN utilisateurs lu ON lu.id=m.livreur_id
+        LEFT JOIN utilisateurs ph ON ph.id=m.pharmacie_id
+        WHERE m.patient_id=$1
+      `;
+      params = [pid];
+      sql += ' ORDER BY m.updated_at DESC LIMIT 20';
+    }
+
+    const r = await db(sql, params);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/livraison/missions/:id/accepter — livreur accepte une mission
+app.post('/api/livraison/missions/:id/accepter', auth, async (req, res) => {
+  const uid = req.user.id;
+  try {
+    // Vérifier que la mission est encore disponible (transaction)
+    const check = await db("SELECT * FROM missions_livraison WHERE id=$1 AND statut='publiee' FOR UPDATE",[req.params.id]);
+    if (!check.rows.length) return res.status(409).json({ success:false, message:'Mission déjà prise ou introuvable' });
+
+    const mission = await db(`
+      UPDATE missions_livraison
+      SET statut='acceptee', livreur_id=$1, date_acceptation=NOW(), updated_at=NOW()
+      WHERE id=$2 RETURNING *
+    `, [uid, req.params.id]);
+
+    const m = mission.rows[0];
+
+    // Notifier pharmacie
+    if (m.pharmacie_id) {
+      await createNotif(m.id, m.pharmacie_id, 'pharmacie', 'mission_acceptee',
+        `✅ Livreur en route — Mission ${m.reference} acceptée`);
+    }
+    // Notifier patient
+    if (m.patient_id) {
+      const pRow = await db('SELECT user_id FROM patients WHERE id=$1',[m.patient_id]).catch(()=>({rows:[]}));
+      if (pRow.rows[0]) await createNotif(m.id, pRow.rows[0].user_id, 'patient', 'mission_acceptee',
+        `🛵 Un livreur a accepté votre mission — Il viendra récupérer vos médicaments`);
+    }
+
+    res.json({ success:true, data:m, message:'Mission acceptée !' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// PATCH /api/livraison/missions/:id/statut — mise à jour statut par livreur
+app.patch('/api/livraison/missions/:id/statut', auth, async (req, res) => {
+  const { statut, notes } = req.body;
+  const uid = req.user.id;
+  const VALID = ['retrait_confirme','en_route','livree','echouee'];
+  if (!VALID.includes(statut)) return res.status(400).json({ success:false, message:'Statut invalide' });
+  try {
+    let extra = '';
+    if (statut === 'retrait_confirme') extra = ', date_retrait=NOW()';
+    if (statut === 'livree') extra = ', date_livraison=NOW()';
+
+    const mission = await db(`
+      UPDATE missions_livraison
+      SET statut=$1, notes_livreur=COALESCE($2, notes_livreur)${extra}, updated_at=NOW()
+      WHERE id=$3 AND livreur_id=$4 RETURNING *
+    `, [statut, notes||null, req.params.id, uid]);
+
+    if (!mission.rows.length) return res.status(404).json({ success:false, message:'Mission introuvable' });
+    const m = mission.rows[0];
+
+    // Notifier patient selon statut
+    const pRow = await db('SELECT user_id FROM patients WHERE id=$1',[m.patient_id]).catch(()=>({rows:[]}));
+    const patientUserId = pRow.rows[0]?.user_id;
+
+    const MESSAGES = {
+      retrait_confirme: '📦 Le livreur a retiré vos médicaments à la pharmacie — En route vers vous !',
+      en_route:         '🛵 Votre livreur est en chemin — Préparez-vous à recevoir votre commande',
+      livree:           '✅ Médicaments livrés ! Bon rétablissement 🌿',
+      echouee:          '⚠️ Livraison échouée — Contactez la pharmacie',
+    };
+    if (patientUserId) {
+      await createNotif(m.id, patientUserId, 'patient', statut, MESSAGES[statut]);
+    }
+    // Notifier pharmacie si livraison terminée
+    if (['livree','echouee'].includes(statut) && m.pharmacie_id) {
+      await createNotif(m.id, m.pharmacie_id, 'pharmacie', statut,
+        statut === 'livree' ? `✅ Mission ${m.reference} livrée avec succès` : `⚠️ Mission ${m.reference} échouée`);
+    }
+
+    // Si livré → mettre à jour statut commande pharmacie
+    if (statut === 'livree') {
+      await db("UPDATE commandes_pharmacie SET statut='livre' WHERE id=$1",[m.commande_id]).catch(()=>{});
+    }
+
+    res.json({ success:true, data:m });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// POST /api/livraison/missions/:id/confirmer-livraison — patient confirme réception (code)
+app.post('/api/livraison/missions/:id/confirmer-livraison', auth, async (req, res) => {
+  const { code } = req.body;
+  try {
+    const m = await db('SELECT * FROM missions_livraison WHERE id=$1',[req.params.id]);
+    if (!m.rows.length) return res.status(404).json({ success:false, message:'Mission introuvable' });
+    if (m.rows[0].code_confirmation !== code) return res.status(400).json({ success:false, message:'Code incorrect' });
+    await db("UPDATE missions_livraison SET statut='livree', date_livraison=NOW() WHERE id=$1",[req.params.id]);
+    await db("UPDATE commandes_pharmacie SET statut='livre' WHERE id=$1",[m.rows[0].commande_id]).catch(()=>{});
+    res.json({ success:true, message:'Livraison confirmée !' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/livraison/notifications — notifications non lues
+app.get('/api/livraison/notifications', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT n.*, m.reference AS mission_ref
+      FROM notifications_livraison n
+      LEFT JOIN missions_livraison m ON m.id=n.mission_id
+      WHERE n.destinataire=$1 AND n.lu=false
+      ORDER BY n.created_at DESC LIMIT 20
+    `, [req.user.id]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// PATCH /api/livraison/notifications/lire — marquer comme lues
+app.patch('/api/livraison/notifications/lire', auth, async (req, res) => {
+  try {
+    await db("UPDATE notifications_livraison SET lu=true WHERE destinataire=$1",[req.user.id]);
+    res.json({ success:true });
+  } catch(e) { res.json({ success:true }); }
+});
+
 // ── PHARMACIE commandes (ancienne route — conservée pour compatibilité) ───
 app.get('/api/pharmacie/commandes-legacy', auth, async (req, res) => {
   try {
