@@ -493,6 +493,14 @@ function PageRecherche(){
     />
   )}
 
+      {ordoPharmacie&&(
+        <ModalEnvoiPharmacie
+          ordonnance={ordoPharmacie}
+          onClose={()=>setOrdoPharmacie(null)}
+          onSuccess={()=>setOrdoPharmacie(null)}
+        />
+      )}
+
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -504,6 +512,7 @@ function PageDossier(){ return <PageDossierDME/>; }
 function PageOrdonnances(){
   const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
+  const [ordoPharmacie, setOrdoPharmacie] = useState(null);
   return(
     <div>
       <PageHeader title="💊 Mes ordonnances" subtitle={`${ords.filter(o=>o.statut==="active").length} active(s)`}/>
@@ -524,7 +533,7 @@ function PageOrdonnances(){
               {o.duree&&<div style={{fontSize:12,color:C.muted}}>⏱️ {o.duree}</div>}
             </div>
             <div style={{display:"flex",gap:10}}>
-              <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>toast.success("Envoyée à la pharmacie !")}>💊 Pharmacie</Btn>
+              <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>setOrdoPharmacie(o)}>💊 Pharmacie</Btn>
               <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>toast.success("PDF généré !")}>📄 PDF</Btn>
             </div>
           </div>
