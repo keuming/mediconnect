@@ -1103,40 +1103,144 @@ function PageOrdonnancesV2(){
   const u = useAuthStore(s=>s.user);
   const handleDownload=(o)=>{
     const genPDF = async () => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-      document.head.appendChild(s);
-      await new Promise(r => s.onload = r);
+      if(!window.jspdf){
+        await new Promise((res,rej)=>{
+          const s=document.createElement('script');
+          s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+          s.onload=res; s.onerror=rej; document.head.appendChild(s);
+        });
+      }
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      const W = doc.internal.pageSize.getWidth();
-      doc.setFillColor(10,143,88); doc.rect(0,0,W,28,'F');
-      doc.setTextColor(255,255,255); doc.setFontSize(16); doc.setFont("helvetica","bold");
-      doc.text("ORDONNANCE MÉDICALE", 14, 18);
+      const doc = new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+      const W=210, margin=14;
+
+      // ── Header vert ──────────────────────────────────
+      doc.setFillColor(10,143,88); doc.rect(0,0,W,36,'F');
+      doc.setFillColor(255,255,255); doc.roundedRect(margin,8,14,14,2,2,'F');
+      doc.setTextColor(10,143,88); doc.setFontSize(16); doc.setFont("helvetica","bold");
+      doc.text("+",margin+4,19);
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(17); doc.setFont("helvetica","bold");
+      doc.text("ORDONNANCE MÉDICALE",margin+20,16);
       doc.setFontSize(9); doc.setFont("helvetica","normal");
-      doc.text("MediConnect Africa", W-14, 18, {align:"right"});
-      doc.setTextColor(0,0,0); doc.setFontSize(11); doc.setFont("helvetica","bold");
-      doc.text("Patient", 14, 40);
-      doc.setFontSize(10); doc.setFont("helvetica","normal");
-      doc.text(`${u?.prenom||""} ${u?.nom||""}`, 14, 47);
-      doc.text(`Date : ${new Date(o.created_at).toLocaleDateString("fr-CI")}`, 14, 54);
-      doc.text(`Réf  : ORD-${o.id?.slice(0,8).toUpperCase()}`, 14, 61);
-      doc.setDrawColor(10,143,88); doc.setLineWidth(0.5); doc.line(14,66,W-14,66);
-      doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.text("Prescription", 14, 75);
-      const meds = (o.medicament||"—").split("\n");
-      let y = 83;
-      meds.forEach((m,i) => {
-        doc.setFillColor(240,249,244); doc.rect(14,y-4,W-28,9,'F');
-        doc.setFontSize(10); doc.setFont("helvetica","bold");
-        doc.text(`${i+1}. ${m}`, 18, y+1);
-        y += 12;
+      doc.text("MediConnect Africa — Côte d'Ivoire",margin+20,22);
+      doc.text(`N° ORD-${o.id?.slice(0,8).toUpperCase()}`,W-margin,14,{align:"right"});
+      doc.text(`Émis le ${new Date(o.created_at).toLocaleDateString("fr-CI",{day:"2-digit",month:"long",year:"numeric"})}`,W-margin,20,{align:"right"});
+
+      // ── Médecin + Patient ──────────────────────────────
+      const hw = (W-2*margin)/2-3;
+      doc.setFillColor(245,248,250); doc.rect(margin,42,hw,36,'F');
+      doc.setFillColor(235,248,240); doc.rect(margin+hw+6,42,hw,36,'F');
+
+      doc.setTextColor(10,143,88); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      doc.text("PRESCRIPTEUR",margin+3,49);
+      doc.text("PATIENT",margin+hw+9,49);
+
+      doc.setTextColor(20,20,20); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text(`Dr. ${o.medecin_nom||"Médecin"}`,margin+3,56);
+      doc.text(`${u?.prenom||""} ${u?.nom||""}`,margin+hw+9,56);
+
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(80,80,80);
+      doc.text("Spécialité : Médecine générale",margin+3,62);
+      doc.text(`Tél : ${u?.telephone||"—"}`,margin+hw+9,62);
+      doc.text("N° Ordre : MC-CI-2024",margin+3,67);
+      doc.text(`Assurance : ${o.assurance||"—"}`,margin+hw+9,67);
+      doc.text("Polyclinique MediConnect",margin+3,72);
+
+      // ── Diagnostic ────────────────────────────────────
+      let y=86;
+      doc.setFillColor(232,245,238); doc.setDrawColor(10,143,88); doc.setLineWidth(0.4);
+      doc.rect(margin,y,W-2*margin,12,'FD');
+      doc.setTextColor(10,143,88); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      doc.text("DIAGNOSTIC",margin+3,y+5);
+      doc.setTextColor(20,20,20); doc.setFontSize(9); doc.setFont("helvetica","normal");
+      const diagTxt = o.diagnostic||"Voir prescription";
+      doc.text(doc.splitTextToSize(diagTxt,W-2*margin-40),margin+35,y+5);
+      y+=18;
+
+      // ── Titre tableau ─────────────────────────────────
+      doc.setTextColor(10,143,88); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text("PRESCRIPTION MÉDICAMENTEUSE",margin,y); y+=5;
+
+      // En-tête tableau
+      const TH=8;
+      const cols=[
+        {label:"N°",x:margin,w:8},
+        {label:"MÉDICAMENT / DOSAGE",x:margin+8,w:80},
+        {label:"FORME",x:margin+88,w:22},
+        {label:"POSOLOGIE",x:margin+110,w:48},
+        {label:"PRIX FCFA",x:margin+158,w:36},
+      ];
+      doc.setFillColor(10,143,88); doc.rect(margin,y,W-2*margin,TH,'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      cols.forEach(col=>doc.text(col.label,col.x+2,y+5.5));
+      y+=TH;
+
+      // Lignes médicaments
+      const meds=(o.medicament||"—").split("\n").filter(m=>m.trim());
+      meds.forEach((med,i)=>{
+        const rowH=10;
+        doc.setFillColor(i%2===0?248:255,i%2===0?252:255,i%2===0?249:255);
+        doc.rect(margin,y,W-2*margin,rowH,'F');
+        doc.setDrawColor(190,220,200); doc.setLineWidth(0.2);
+        doc.rect(margin,y,W-2*margin,rowH,'S');
+        // Séparateurs colonnes
+        cols.slice(1).forEach(col=>{doc.line(col.x,y,col.x,y+rowH);});
+
+        doc.setTextColor(20,20,20); doc.setFontSize(9); doc.setFont("helvetica","bold");
+        doc.text(`${i+1}`,margin+3,y+7);
+        const parts=med.split(' — ');
+        doc.setFont("helvetica","normal");
+        doc.text(doc.splitTextToSize(parts[0]||med,76),margin+10,y+7);
+        // Forme galénique
+        const formeMatch=med.match(/\(([^)]+)\)/);
+        if(formeMatch) doc.text(formeMatch[1],margin+90,y+7);
+        // Posologie
+        const posol=parts[1]||o.posologie||"";
+        doc.text(doc.splitTextToSize(posol,45),margin+112,y+7);
+        // Ligne prix
+        doc.setDrawColor(150,150,150); doc.line(margin+160,y+8,margin+192,y+8);
+        y+=rowH;
       });
-      if(o.posologie){ doc.setFont("helvetica","normal"); doc.text(`Posologie : ${o.posologie}`, 14, y+4); y+=10; }
-      if(o.duree){ doc.text(`Durée : ${o.duree}`, 14, y+4); y+=10; }
-      doc.setDrawColor(10,143,88); doc.line(14,270,W-14,270);
-      doc.setFontSize(8); doc.setTextColor(150,150,150);
-      doc.text("MediConnect Africa — Document officiel", 14, 276);
-      doc.text("Signature : _______________", W-14, 276, {align:"right"});
+
+      // Total
+      y+=2;
+      doc.setFillColor(230,245,235); doc.rect(margin,y,W-2*margin,9,'F');
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.5);
+      doc.rect(margin,y,W-2*margin,9,'S');
+      doc.setTextColor(10,143,88); doc.setFontSize(9); doc.setFont("helvetica","bold");
+      doc.text("TOTAL",margin+4,y+6);
+      doc.line(margin+158,y+7,margin+194,y+7);
+      y+=16;
+
+      // Instructions
+      if(o.posologie||o.duree){
+        doc.setFillColor(255,251,230); doc.setDrawColor(217,119,6); doc.setLineWidth(0.3);
+        doc.rect(margin,y,W-2*margin,14,'FD');
+        doc.setTextColor(160,90,0); doc.setFontSize(8); doc.setFont("helvetica","bold");
+        doc.text("INSTRUCTIONS",margin+3,y+6);
+        doc.setFont("helvetica","normal");
+        const instr=[o.posologie&&`Posologie : ${o.posologie}`,o.duree&&`Durée : ${o.duree}`].filter(Boolean).join("   •   ");
+        doc.text(doc.splitTextToSize(instr,W-2*margin-30),margin+32,y+6);
+        y+=20;
+      }
+
+      // Signature + QR
+      y=Math.max(y,240);
+      doc.setDrawColor(180,180,180); doc.setLineWidth(0.3);
+      doc.rect(margin,y,80,28,'S');
+      doc.rect(margin+84,y,80,28,'S');
+      doc.setFillColor(245,245,245); doc.rect(W-margin-24,y,24,24,'F');
+      doc.setTextColor(100,100,100); doc.setFontSize(7); doc.setFont("helvetica","normal");
+      doc.text("Cachet & Signature médecin",margin+3,y+6);
+      doc.text("Visa pharmacien",margin+87,y+6);
+      doc.text("Vérif. QR",W-margin-20,y+10); doc.text(`ORD-${o.id?.slice(0,6).toUpperCase()}`,W-margin-22,y+15);
+
+      // Footer
+      doc.setFillColor(10,143,88); doc.rect(0,285,W,12,'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","normal");
+      doc.text("MediConnect Africa • mediconnect4africa.cloud • Document médical officiel",W/2,291,{align:"center"});
+
       doc.save(`ordonnance_${o.id?.slice(0,8)}.pdf`);
     };
     genPDF(); return;
