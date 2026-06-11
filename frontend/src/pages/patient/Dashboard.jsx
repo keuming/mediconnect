@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ModalEnvoiPharmacie, PageMesCommandesPharmacie } from "../shared/PagePharmacie";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -180,6 +181,7 @@ function PageHome(){
   const modules=[
     {icon:"📋",label:"Mon dossier",path:"dossier",color:C.teal,desc:"Infos & historique"},
     {icon:"📅",label:"Mes RDV",path:"rdvs",color:C.blue,desc:`${rdvsActifs.length} actif(s)`},
+    {icon:"🏪",label:"Pharmacie",path:"pharmacie",color:C.teal,desc:"Mes commandes"},
     {icon:"💊",label:"Ordonnances",path:"ordonnances",color:C.green,desc:`${ordsActives.length} active(s)`},
     {icon:"🩺",label:"Consultations",path:"consultations",color:C.purple,desc:"Historique"},
     {icon:"💰",label:"Mes factures",path:"factures",color:C.amber,desc:`${facImpayees.length} impayée(s)`},
@@ -483,6 +485,14 @@ function PageRecherche(){
       </Modal>
     </div>
   );
+  {ordoPharmacie&&(
+    <ModalEnvoiPharmacie
+      ordonnance={ordoPharmacie}
+      onClose={()=>setOrdoPharmacie(null)}
+      onSuccess={()=>setOrdoPharmacie(null)}
+    />
+  )}
+
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1099,6 +1109,7 @@ function PageRdvsV2(){
 function PageOrdonnancesV2(){
   const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
+  const [ordoPharmacie, setOrdoPharmacie] = useState(null);
 
   const u = useAuthStore(s=>s.user);
   const handleDownload=(o)=>{
@@ -1285,7 +1296,7 @@ function PageOrdonnancesV2(){
             <div style={{display:"flex",gap:8}}>
               <Btn style={{flex:2,padding:"8px",fontSize:12}} onClick={()=>handleDownload(o)}>📥 Télécharger</Btn>
               <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>handleShare(o)}>📤 Partager</Btn>
-              <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>toast.success("Envoyée à la pharmacie ! 💊")}>💊 Pharmacie</Btn>
+              <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>setOrdoPharmacie(o)}>💊 Pharmacie</Btn>
             </div>
           </div>
         ))
@@ -1820,6 +1831,7 @@ export default function Dashboard(){
       <Route path="rdvs"              element={<PageRdvsV2/>}/>
       <Route path="rdv"               element={<PageRdvsV2/>}/>
       <Route path="ordonnances"       element={<PageOrdonnancesV2/>}/>
+      <Route path="pharmacie"         element={<PageMesCommandesPharmacie/>}/>
       <Route path="consultations"     element={<PageConsultations/>}/>
       <Route path="factures"          element={<PageFactures/>}/>
       <Route path="facturation"       element={<PageFactures/>}/>
