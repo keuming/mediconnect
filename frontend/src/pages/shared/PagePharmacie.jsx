@@ -38,6 +38,30 @@ export function ModalEnvoiPharmacie({ ordonnance, onClose, onSuccess }) {
   const [pharmacieId, setPharmacieId] = useState(null);
   const [pharmacieNom, setPharmacieNom] = useState("");
   const [notes, setNotes] = useState("");
+  const [gps, setGps] = useState(null); // {lat, lng, adresse}
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState("");
+
+  const demanderGPS = () => {
+    if (!navigator.geolocation) { setGpsError("Géolocalisation non supportée"); return; }
+    setGpsLoading(true); setGpsError("");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        // Reverse geocoding via nominatim (gratuit)
+        let adresse = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+          const d = await r.json();
+          adresse = d.display_name?.split(",").slice(0,3).join(",") || adresse;
+        } catch(e) {}
+        setGps({ lat, lng, adresse });
+        setGpsLoading(false);
+      },
+      (err) => { setGpsError("Position refusée — entrez l'adresse manuellement"); setGpsLoading(false); },
+      { timeout:10000, maximumAge:60000 }
+    );
+  };
   const qc = useQueryClient();
 
   const { data: pharmacies, isLoading } = useQuery({
@@ -136,6 +160,37 @@ export function ModalEnvoiPharmacie({ ordonnance, onClose, onSuccess }) {
                 </div>
               )}
 
+              {/* Géolocalisation */}
+              <div style={{ marginBottom:16 }}>
+                <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted,
+                  textTransform:"uppercase", marginBottom:8 }}>📍 Votre position de livraison</label>
+                {!gps ? (
+                  <div>
+                    <button onClick={demanderGPS} disabled={gpsLoading}
+                      style={{ width:"100%", padding:"11px", borderRadius:10,
+                        background:gpsLoading?"rgba(13,148,136,.1)":`linear-gradient(135deg,${C.teal},${C.blue})`,
+                        border:`1.5px solid ${C.teal}`, color:gpsLoading?C.muted:"#fff",
+                        cursor:gpsLoading?"not-allowed":"pointer", fontSize:13, fontWeight:700, fontFamily:"inherit" }}>
+                      {gpsLoading ? "⏳ Localisation en cours…" : "📍 Partager ma position GPS"}
+                    </button>
+                    {gpsError && <div style={{ fontSize:11, color:C.amber, marginTop:6 }}>{gpsError}</div>}
+                    <div style={{ fontSize:10, color:C.dim, marginTop:4 }}>
+                      Permet au livreur de vous retrouver facilement
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ background:"rgba(13,148,136,.08)", border:"1px solid rgba(13,148,136,.2)",
+                    borderRadius:9, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:C.teal }}>✅ Position partagée</div>
+                      <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{gps.adresse}</div>
+                    </div>
+                    <button onClick={()=>setGps(null)} style={{ background:"none", border:"none",
+                      color:C.dim, cursor:"pointer", fontSize:16 }}>✕</button>
+                  </div>
+                )}
+              </div>
+
               <div style={{ marginBottom:16 }}>
                 <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted,
                   textTransform:"uppercase", marginBottom:6 }}>Notes pour la pharmacie</label>
@@ -191,6 +246,9 @@ export function ModalEnvoiPharmacie({ ordonnance, onClose, onSuccess }) {
                   ordonnance_id: ordonnance.id,
                   pharmacie_id: pharmacieId,
                   notes_patient: notes || null,
+                  lat_patient: gps?.lat || null,
+                  lng_patient: gps?.lng || null,
+                  adresse_patient: gps?.adresse || null,
                 })} style={{ flex:2, padding:"11px", borderRadius:9,
                   background:`linear-gradient(135deg,${C.green},${C.teal})`,
                   border:"none", color:"#fff", cursor:envoyerMut.isPending?"not-allowed":"pointer",

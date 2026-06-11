@@ -1066,11 +1066,12 @@ app.post('/api/pharmacie/commander', auth, async (req, res) => {
     if (!patientId) return res.status(400).json({ success:false, message:'Profil patient introuvable' });
 
     const ref = 'CMD-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const { lat_patient, lng_patient, adresse_patient } = req.body;
     // Créer la commande
     const cmd = await db(`
-      INSERT INTO commandes_pharmacie (reference, ordonnance_id, patient_id, pharmacie_id, statut, notes_patient)
-      VALUES ($1, $2, $3, $4, 'en_attente', $5) RETURNING *
-    `, [ref, ordonnance_id, patientId, pharmacie_id, notes_patient||null]);
+      INSERT INTO commandes_pharmacie (reference, ordonnance_id, patient_id, pharmacie_id, statut, notes_patient, lat_patient, lng_patient, adresse_patient)
+      VALUES ($1, $2, $3, $4, 'en_attente', $5, $6, $7, $8) RETURNING *
+    `, [ref, ordonnance_id, patientId, pharmacie_id, notes_patient||null, lat_patient||null, lng_patient||null, adresse_patient||null]);
 
     // Copier les lignes de l'ordonnance
     const ord = await db('SELECT medicament FROM ordonnances WHERE id=$1',[ordonnance_id]).catch(()=>({rows:[]}));
@@ -1114,7 +1115,7 @@ app.get('/api/pharmacie/commandes', auth, async (req, res) => {
     const { statut } = req.query;
     const pharmaId = req.user.id;
     let sql = `
-      SELECT c.*,
+      SELECT c.*, c.lat_patient, c.lng_patient, c.adresse_patient,
              u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact,
              o.medicament AS ordonnance_medicaments
       FROM commandes_pharmacie c
@@ -1215,14 +1216,19 @@ app.post('/api/livraison/publier', auth, async (req, res) => {
     const ref = 'LIV-' + Math.random().toString(36).slice(2,8).toUpperCase();
     const code = genCode();
 
+    // Récupérer les coordonnées GPS du patient depuis la commande
+    const gpsLat = cmd.rows[0].lat_patient || null;
+    const gpsLng = cmd.rows[0].lng_patient || null;
+    const gpsAdresse = cmd.rows[0].adresse_patient || adresse_livraison || 'Adresse patient';
+
     const mission = await db(`
       INSERT INTO missions_livraison
         (reference, commande_id, patient_id, pharmacie_id, adresse_retrait, adresse_livraison,
-         ville, quartier, notes_patient, code_confirmation, statut)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'publiee') RETURNING *
+         ville, quartier, notes_patient, code_confirmation, statut, lat_livraison, lng_livraison)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'publiee',$11,$12) RETURNING *
     `, [ref, commande_id, cmd.rows[0].patient_id, req.user.id,
-        adresse_retrait||'Pharmacie partenaire', adresse_livraison||'Adresse patient',
-        ville||'Abidjan', quartier||null, notes_patient||null, code]);
+        adresse_retrait||'Pharmacie partenaire', gpsAdresse,
+        ville||'Abidjan', quartier||null, notes_patient||null, code, gpsLat, gpsLng]);
 
     // Notifier tous les livreurs disponibles
     const livreurs = await db("SELECT id FROM utilisateurs WHERE role='livreur' AND is_active=true").catch(()=>({rows:[]}));

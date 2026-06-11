@@ -444,7 +444,7 @@ export function PageMissionsLivreur() {
 // PAGE PHARMACIE — Publier mission + suivi livreurs
 // ════════════════════════════════════════════════════════════════════
 export function PageLivraisonPharmacie() {
-  const [showPublier, setShowPublier] = useState(null); // commande_id
+  const [showPublier, setShowPublier] = useState(null); // objet commande complet
   const [adresseLiv, setAdresseLiv] = useState("");
   const [quartier, setQuartier] = useState("");
   const qc = useQueryClient();
@@ -501,7 +501,7 @@ export function PageLivraisonPharmacie() {
                 <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{cmd.reference}</div>
                 <div style={{ fontSize:11, color:C.muted }}>{cmd.patient_nom} · {fmt(cmd.montant_total)} FCFA</div>
               </div>
-              <button onClick={() => setShowPublier(cmd.id)}
+              <button onClick={() => { setShowPublier(cmd); setAdresseLiv(cmd.adresse_patient||""); setQuartier(""); }}
                 style={{ padding:"8px 16px", borderRadius:9,
                   background:`linear-gradient(135deg,${C.green},${C.teal})`,
                   border:"none", color:"#fff", cursor:"pointer",
@@ -557,9 +557,37 @@ export function PageLivraisonPharmacie() {
               Frais de livraison : <strong style={{color:C.text}}>2 000 FCFA</strong>
               (1 500 livreur + 500 MediConnect) — à payer par le patient
             </div>
+
+            {/* Position GPS patient */}
+            {showPublier?.lat_patient && (
+              <div style={{ background:"rgba(13,148,136,.08)", border:"1px solid rgba(13,148,136,.25)",
+                borderRadius:10, padding:"12px 14px", marginBottom:16 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:C.teal, marginBottom:6 }}>
+                  📍 Position GPS du patient (partagée lors de la commande)
+                </div>
+                <div style={{ fontSize:12, color:C.text, marginBottom:8 }}>
+                  {showPublier.adresse_patient || `${showPublier.lat_patient}, ${showPublier.lng_patient}`}
+                </div>
+                <a href={`https://www.google.com/maps?q=${showPublier.lat_patient},${showPublier.lng_patient}`}
+                  target="_blank" rel="noreferrer"
+                  style={{ fontSize:11, color:C.teal, fontWeight:700, textDecoration:"none" }}>
+                  🗺️ Voir sur Google Maps →
+                </a>
+                <div style={{ fontSize:10, color:C.dim, marginTop:4 }}>
+                  Coordonnées: {Number(showPublier.lat_patient).toFixed(6)}, {Number(showPublier.lng_patient).toFixed(6)}
+                </div>
+              </div>
+            )}
+            {!showPublier?.lat_patient && (
+              <div style={{ background:"rgba(217,119,6,.07)", border:"1px solid rgba(217,119,6,.2)",
+                borderRadius:8, padding:"10px 14px", marginBottom:16, fontSize:11, color:C.amber }}>
+                ⚠️ Le patient n'a pas partagé sa position GPS — entrez l'adresse manuellement
+              </div>
+            )}
+
             <div style={{ marginBottom:12 }}>
               <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted,
-                textTransform:"uppercase", marginBottom:6 }}>Adresse de livraison patient</label>
+                textTransform:"uppercase", marginBottom:6 }}>Adresse de livraison</label>
               <input value={adresseLiv} onChange={e=>setAdresseLiv(e.target.value)}
                 placeholder="Ex: Cocody, Angré 8ème tranche…"
                 style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`,
@@ -582,7 +610,7 @@ export function PageLivraisonPharmacie() {
                   fontSize:13, fontWeight:700, fontFamily:"inherit" }}>Annuler</button>
               <button disabled={publierMut.isPending}
                 onClick={() => publierMut.mutate({
-                  commande_id: showPublier,
+                  commande_id: showPublier?.id || showPublier,
                   adresse_retrait: "Pharmacie partenaire MediConnect",
                   adresse_livraison: adresseLiv,
                   ville: "Abidjan",
