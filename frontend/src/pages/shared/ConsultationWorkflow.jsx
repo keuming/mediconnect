@@ -119,6 +119,7 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
   const qc = useQueryClient();
   const [step, setStep] = useState(1); // 1=consultation, 2=ordonnance, 3=résumé
   const [consult, setConsult] = useState(null); // consultation créée
+  const [lastOrd, setLastOrd] = useState(null); // ordonnance créée
 
   // ── Formulaire consultation ──────────────────────────────────────
   const [form, setForm] = useState({
@@ -175,10 +176,10 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
     onSuccess: (data) => {
       const ord = data?.data || data;
       toast.success("💊 Ordonnance créée !");
+      setLastOrd(ord);
       setStep(3);
       qc.invalidateQueries(["mi-ords"]);
       qc.invalidateQueries(["cl-ords"]);
-      if(onSuccess) onSuccess({ consultation: consult, ordonnance: ord });
     },
     onError: () => toast.error("Erreur ordonnance"),
   });
@@ -225,13 +226,15 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
   };
 
   const handleSkipOrd = () => {
+    setLastOrd(null);
     setStep(3);
-    if(onSuccess) onSuccess({ consultation: consult, ordonnance: null });
   };
 
   const handleClose = () => {
+    if(onSuccess && consult) onSuccess({ consultation: consult, ordonnance: lastOrd });
     setStep(1);
     setConsult(null);
+    setLastOrd(null);
     setForm({ motif:"", anamnese:"", ta:"", fc:"", spo2:"", temperature:"", glycemie:"",
       poids:"", taille:"", examen_clinique:"", diagnostic:"", code_cim10:"", cim10_label:"",
       traitement:"", note_finale:"", gravite:"modere", orientation:"Traitement ambulatoire", pathologie:"" });
@@ -513,53 +516,146 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
             </div>
           )}
 
-          {/* ═══ ÉTAPE 3 — RÉSUMÉ ═══════════════════════════════════════════ */}
+          {/* ═══ ÉTAPE 3 — RÉSUMÉ + IMPRESSION ══════════════════════════════ */}
           {step===3 && (
-            <div style={{ textAlign:"center", padding:"20px 0" }}>
-              <div style={{ width:72, height:72,
-                background:`linear-gradient(135deg,${C.green},${C.teal})`,
-                borderRadius:"50%", display:"flex", alignItems:"center",
-                justifyContent:"center", fontSize:32, margin:"0 auto 16px",
-                boxShadow:`0 16px 40px rgba(10,143,88,.4)` }}>✅</div>
-              <div style={{ fontSize:20, fontWeight:800, color:C.text, marginBottom:8 }}>
-                Consultation complète
-              </div>
-              <div style={{ fontSize:14, color:C.muted, marginBottom:20 }}>
-                {patientNom} — {new Date().toLocaleDateString("fr-CI", { day:"numeric", month:"long", year:"numeric" })}
+            <div>
+              {/* Header succès */}
+              <div style={{ textAlign:"center", marginBottom:20 }}>
+                <div style={{ width:64, height:64,
+                  background:`linear-gradient(135deg,${C.green},${C.teal})`,
+                  borderRadius:"50%", display:"flex", alignItems:"center",
+                  justifyContent:"center", fontSize:28, margin:"0 auto 12px",
+                  boxShadow:`0 12px 32px rgba(10,143,88,.35)` }}>✅</div>
+                <div style={{ fontSize:18, fontWeight:800, color:C.text, marginBottom:4 }}>
+                  Consultation complète
+                </div>
+                <div style={{ fontSize:13, color:C.muted }}>
+                  {patientNom} — {new Date().toLocaleDateString("fr-CI",{day:"numeric",month:"long",year:"numeric"})}
+                </div>
               </div>
 
-              {/* Résumé */}
+              {/* Ordonnance récapitulatif */}
+              {lastOrd && (
+                <div id="ordonnance-print" style={{ background:"#fff", border:`2px solid ${C.green}`,
+                  borderRadius:12, padding:20, marginBottom:16, color:"#000" }}>
+                  {/* En-tête ordonnance */}
+                  <div style={{ display:"flex", justifyContent:"space-between",
+                    borderBottom:"2px solid #0A8F58", paddingBottom:12, marginBottom:12 }}>
+                    <div>
+                      <div style={{ fontSize:16, fontWeight:800, color:"#0A8F58" }}>
+                        ORDONNANCE MÉDICALE
+                      </div>
+                      <div style={{ fontSize:12, color:"#666" }}>
+                        MediConnect Africa — {role==="clinique"?"Polyclinique":"Cabinet privé"}
+                      </div>
+                    </div>
+                    <div style={{ textAlign:"right", fontSize:11, color:"#666" }}>
+                      <div>Réf: {lastOrd.id?.slice(0,8).toUpperCase()}</div>
+                      <div>{new Date().toLocaleDateString("fr-CI")}</div>
+                    </div>
+                  </div>
+                  {/* Patient */}
+                  <div style={{ background:"#f0f9f4", borderRadius:8, padding:"8px 12px",
+                    marginBottom:12, fontSize:12 }}>
+                    <strong>Patient :</strong> {patientNom}
+                    {form.poids && ` · Poids : ${form.poids}kg`}
+                    {form.temperature && ` · Temp : ${form.temperature}°C`}
+                  </div>
+                  {/* Diagnostic */}
+                  <div style={{ marginBottom:12, fontSize:13 }}>
+                    <strong>Diagnostic :</strong> {form.diagnostic}
+                    {form.code_cim10 && <span style={{ color:"#0A8F58" }}> ({form.code_cim10})</span>}
+                  </div>
+                  {/* Médicaments */}
+                  <div style={{ marginBottom:12 }}>
+                    <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase",
+                      color:"#666", marginBottom:8 }}>Prescription :</div>
+                    {lastOrd.medicament?.split("\n").map((m,i)=>(
+                      <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:8,
+                        padding:"6px 0", borderBottom:"1px solid #eee" }}>
+                        <span style={{ background:"#0A8F58", color:"#fff", borderRadius:"50%",
+                          width:20, height:20, display:"flex", alignItems:"center",
+                          justifyContent:"center", fontSize:11, fontWeight:700, flexShrink:0 }}>
+                          {i+1}
+                        </span>
+                        <span style={{ fontSize:13 }}>{m}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Instructions */}
+                  {form.traitement && (
+                    <div style={{ background:"#fff8e1", borderRadius:6, padding:"8px 10px",
+                      fontSize:12, color:"#666", marginBottom:8 }}>
+                      <strong>Instructions :</strong> {form.traitement}
+                    </div>
+                  )}
+                  {/* Signature */}
+                  <div style={{ display:"flex", justifyContent:"space-between",
+                    marginTop:16, paddingTop:12, borderTop:"1px dashed #ccc",
+                    fontSize:11, color:"#999" }}>
+                    <div>Document généré par MediConnect Africa</div>
+                    <div>Signature médecin : _______________</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Résumé consultation */}
               <div style={{ background:C.input, border:`1px solid ${C.border}`,
-                borderRadius:12, padding:16, textAlign:"left", marginBottom:20 }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                borderRadius:12, padding:14, marginBottom:16 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:C.muted,
+                  textTransform:"uppercase", marginBottom:10 }}>Résumé consultation</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                   {[
-                    ["Motif", form.motif],
-                    ["Diagnostic", form.diagnostic],
-                    ["Code CIM-10", form.code_cim10||"—"],
-                    ["Gravité", form.gravite],
-                    ["Orientation", form.orientation],
-                    ["TA", form.ta||"—"],
-                    ["Temp.", form.temperature ? form.temperature+"°C" : "—"],
-                    ["Poids", form.poids ? form.poids+"kg" : "—"],
+                    ["Motif",form.motif],["Diagnostic",form.diagnostic],
+                    ["CIM-10",form.code_cim10||"—"],["Gravité",form.gravite],
+                    ["TA",form.ta||"—"],["Temp.",form.temperature?form.temperature+"°C":"—"],
                   ].map(([k,v])=>(
-                    <div key={k} style={{ background:C.hover, borderRadius:8, padding:"8px 12px" }}>
+                    <div key={k} style={{ background:C.hover, borderRadius:8, padding:"7px 10px" }}>
                       <div style={{ fontSize:10, color:C.dim, fontWeight:700,
                         textTransform:"uppercase", marginBottom:2 }}>{k}</div>
-                      <div style={{ fontSize:13, color:C.text, fontWeight:600 }}>{v||"—"}</div>
+                      <div style={{ fontSize:12, color:C.text, fontWeight:600 }}>{v||"—"}</div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
-                <button onClick={handleClose} style={{
-                  padding:"11px 24px", borderRadius:9,
-                  background:`linear-gradient(135deg,${C.green},${C.teal})`,
-                  border:"none", color:"#fff", cursor:"pointer",
-                  fontSize:13, fontWeight:700, fontFamily:"inherit" }}>
-                  ✓ Terminer
-                </button>
-              </div>
+              {/* Boutons actions */}
+              {lastOrd && (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+                  <button onClick={()=>window.print()} style={{
+                    padding:"10px", borderRadius:9, border:`1.5px solid ${C.border}`,
+                    background:C.hover, color:C.text, cursor:"pointer",
+                    fontSize:12, fontWeight:700, fontFamily:"inherit" }}>
+                    🖨️ Imprimer
+                  </button>
+                  <button onClick={()=>{
+                    const txt = `ORDONNANCE MÉDICALE\nPatient: ${patientNom}\nDiagnostic: ${form.diagnostic}\n\nPrescription:\n${lastOrd.medicament||""}\n\nMediConnect Africa`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`,'_blank');
+                  }} style={{
+                    padding:"10px", borderRadius:9, border:"1.5px solid #25D366",
+                    background:"rgba(37,211,102,.1)", color:"#25D366", cursor:"pointer",
+                    fontSize:12, fontWeight:700, fontFamily:"inherit" }}>
+                    💬 WhatsApp
+                  </button>
+                  <button onClick={()=>{
+                    const txt = `ORDONNANCE MÉDICALE\nPatient: ${patientNom}\nDiagnostic: ${form.diagnostic}\n\nPrescription:\n${lastOrd.medicament||""}\n\nMediConnect Africa`;
+                    window.location.href = `mailto:?subject=Ordonnance MediConnect&body=${encodeURIComponent(txt)}`;
+                  }} style={{
+                    padding:"10px", borderRadius:9, border:`1.5px solid ${C.blue}`,
+                    background:`rgba(37,99,235,.1)`, color:C.blue, cursor:"pointer",
+                    fontSize:12, fontWeight:700, fontFamily:"inherit" }}>
+                    📧 Email
+                  </button>
+                </div>
+              )}
+
+              <button onClick={handleClose} style={{
+                width:"100%", padding:"11px", borderRadius:9,
+                background:`linear-gradient(135deg,${C.green},${C.teal})`,
+                border:"none", color:"#fff", cursor:"pointer",
+                fontSize:13, fontWeight:700, fontFamily:"inherit" }}>
+                ✓ Terminer & Fermer
+              </button>
             </div>
           )}
         </div>
