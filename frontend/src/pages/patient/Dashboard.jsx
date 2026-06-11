@@ -262,7 +262,7 @@ function PageHome(){
               <div key={o.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
                 <div style={{width:3,background:o.statut==="active"?C.green:C.dim,borderRadius:2,alignSelf:"stretch",flexShrink:0}}/>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicaments?.slice(0,45)||"—"}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicament?.slice(0,45)||"—"}</div>
                   <div style={{fontSize:11,color:C.muted}}>{o.duree||"—"} · {fmtDate(o.created_at)}</div>
                 </div>
                 <Badge color={o.statut==="active"?"green":"gray"}>{o.statut}</Badge>
@@ -509,7 +509,7 @@ function PageOrdonnances(){
               <Badge color={o.statut==="active"?"green":"gray"}>{o.statut==="active"?"Active":"Terminée"}</Badge>
             </div>
             <div style={{background:C.hover,borderRadius:10,padding:14,marginBottom:12}}>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicaments||"—"}</div>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicament||"—"}</div>
               {o.posologie&&<div style={{fontSize:12,color:C.muted,marginBottom:3}}>📋 {o.posologie}</div>}
               {o.duree&&<div style={{fontSize:12,color:C.muted}}>⏱️ {o.duree}</div>}
             </div>
@@ -1102,7 +1102,45 @@ function PageOrdonnancesV2(){
 
   const handleDownload=(o)=>{
     const u=useAuthStore.getState().user;
-    const txt=`ORDONNANCE MÉDICALE\n${"=".repeat(30)}\nPatient : ${u?.prenom||""} ${u?.nom||""}\nDate    : ${new Date(o.created_at).toLocaleDateString("fr-CI")}\nMédecin : Dr. ${o.medecin_nom||"—"}\n\nPRESCRIPTION :\n${o.medicaments||"—"}\n\nPosologie : ${o.posologie||"—"}\nDurée     : ${o.duree||"—"}\n${o.notes_ord?"Notes : "+o.notes_ord+"\n":""}\nMediConnect Africa — Document médical officiel`;
+    const genPDF = async () => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      document.head.appendChild(s);
+      await new Promise(r => s.onload = r);
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const W = doc.internal.pageSize.getWidth();
+      doc.setFillColor(10,143,88); doc.rect(0,0,W,28,'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(16); doc.setFont("helvetica","bold");
+      doc.text("ORDONNANCE MÉDICALE", 14, 18);
+      doc.setFontSize(9); doc.setFont("helvetica","normal");
+      doc.text("MediConnect Africa", W-14, 18, {align:"right"});
+      doc.setTextColor(0,0,0); doc.setFontSize(11); doc.setFont("helvetica","bold");
+      doc.text("Patient", 14, 40);
+      doc.setFontSize(10); doc.setFont("helvetica","normal");
+      doc.text(`${u?.prenom||""} ${u?.nom||""}`, 14, 47);
+      doc.text(`Date : ${new Date(o.created_at).toLocaleDateString("fr-CI")}`, 14, 54);
+      doc.text(`Réf  : ORD-${o.id?.slice(0,8).toUpperCase()}`, 14, 61);
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.5); doc.line(14,66,W-14,66);
+      doc.setFontSize(11); doc.setFont("helvetica","bold"); doc.text("Prescription", 14, 75);
+      const meds = (o.medicament||"—").split("\n");
+      let y = 83;
+      meds.forEach((m,i) => {
+        doc.setFillColor(240,249,244); doc.rect(14,y-4,W-28,9,'F');
+        doc.setFontSize(10); doc.setFont("helvetica","bold");
+        doc.text(`${i+1}. ${m}`, 18, y+1);
+        y += 12;
+      });
+      if(o.posologie){ doc.setFont("helvetica","normal"); doc.text(`Posologie : ${o.posologie}`, 14, y+4); y+=10; }
+      if(o.duree){ doc.text(`Durée : ${o.duree}`, 14, y+4); y+=10; }
+      doc.setDrawColor(10,143,88); doc.line(14,270,W-14,270);
+      doc.setFontSize(8); doc.setTextColor(150,150,150);
+      doc.text("MediConnect Africa — Document officiel", 14, 276);
+      doc.text("Signature : _______________", W-14, 276, {align:"right"});
+      doc.save(`ordonnance_${o.id?.slice(0,8)}.pdf`);
+    };
+    genPDF(); return;
+    const txt = ""
     const blob=new Blob([txt],{type:"text/plain;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -1113,8 +1151,8 @@ function PageOrdonnancesV2(){
   };
 
   const handleShare=(o)=>{
-    if(navigator.share){navigator.share({title:"Ordonnance MediConnect",text:o.medicaments||""}).catch(()=>{});}
-    else{navigator.clipboard.writeText(o.medicaments||"").then(()=>toast.success("Copié !"));}
+    if(navigator.share){navigator.share({title:"Ordonnance MediConnect",text:o.medicament||""}).catch(()=>{});}
+    else{navigator.clipboard.writeText(o.medicament||"").then(()=>toast.success("Copié !"));}
   };
 
   return(
@@ -1135,7 +1173,7 @@ function PageOrdonnancesV2(){
               <Badge color={o.statut==="active"?"green":"gray"}>{o.statut==="active"?"Active":"Terminée"}</Badge>
             </div>
             <div style={{background:C.hover,borderRadius:10,padding:14,marginBottom:12}}>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicaments||"—"}</div>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicament||"—"}</div>
               {o.posologie&&<div style={{fontSize:12,color:C.muted,marginBottom:3}}>📋 {o.posologie}</div>}
               {o.duree&&<div style={{fontSize:12,color:C.muted}}>⏱️ {o.duree}</div>}
               {o.notes_ord&&<div style={{fontSize:12,color:C.dim,fontStyle:"italic",marginTop:8,borderTop:`1px solid ${C.border}`,paddingTop:8}}>💬 {o.notes_ord}</div>}
@@ -1303,7 +1341,7 @@ function PageCommandeMedicament(){
               {mesOrds.filter(o=>o.statut==="active").map(o=>(
                 <button key={o.id} onClick={()=>{setOrdonnanceId(o.id);setOrdFile({name:`ordonnance_${o.id.slice(-6)}.pdf`});}}
                   style={{width:"100%",background:ordonnanceId===o.id?"rgba(10,143,88,.12)":C.hover,border:`1.5px solid ${ordonnanceId===o.id?C.green:C.border}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",marginBottom:8}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicaments?.slice(0,60)||"Ordonnance"}…</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicament?.slice(0,60)||"Ordonnance"}…</div>
                   <div style={{fontSize:11,color:C.muted}}>Dr. {o.medecin_nom||"—"} · {new Date(o.created_at).toLocaleDateString("fr-CI")}</div>
                 </button>
               ))}
