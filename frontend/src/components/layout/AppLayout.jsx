@@ -14,6 +14,7 @@ const NAV = {
     { path:'/patient/rdvs',            icon:'📅', label:'Mes RDV' },
     { path:'/patient/dossier',         icon:'📋', label:'Mon dossier' },
     { path:'/patient/ordonnances',     icon:'💊', label:'Ordonnances' },
+    { path:'/patient/pharmacie',        icon:'🏪', label:'Pharmacie', badge:'NEW' },
     { path:'/patient/consultations',   icon:'🩺', label:'Consultations' },
     { path:'/patient/factures',        icon:'🧾', label:'Mes factures' },
     { path:'/patient/commandes',       icon:'🛵', label:'Commander médicaments', badge:'NEW' },
