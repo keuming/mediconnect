@@ -1100,8 +1100,8 @@ function PageOrdonnancesV2(){
   const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
 
+  const u = useAuthStore(s=>s.user);
   const handleDownload=(o)=>{
-    const u=useAuthStore.getState().user;
     const genPDF = async () => {
       const s = document.createElement('script');
       s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
