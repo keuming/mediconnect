@@ -242,12 +242,12 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
   if (!open) return null;
 
   return (
-    <div onClick={handleClose} style={{
+    <div style={{
       position:"fixed", inset:0, background:"rgba(0,0,0,.8)",
       display:"flex", alignItems:"flex-start", justifyContent:"center",
       zIndex:1000, padding:"16px", overflowY:"auto"
     }}>
-      <div onClick={e=>e.stopPropagation()} style={{
+      <div style={{
         background:C.card, border:`1px solid ${C.border}`, borderRadius:18,
         width:"100%", maxWidth:680, marginTop:20, marginBottom:20,
       }}>
@@ -438,17 +438,17 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
 
               {lignes.map((l,i)=>(
                 <div key={i} style={{ display:"grid",
-                  gridTemplateColumns:"2fr 1fr 1fr 2fr 1fr auto",
-                  gap:6, marginBottom:8, alignItems:"center" }}>
+                  gridTemplateColumns:"minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,2fr) minmax(0,1fr) auto",
+                  gap:4, marginBottom:8, alignItems:"center" }}>
                   <input value={l.nom} onChange={e=>updLigne(i,"nom",e.target.value)}
                     placeholder="Amoxicilline"
-                    style={{ background:C.hover, border:`1.5px solid ${C.border}`,
-                      borderRadius:8, padding:"8px 10px", color:C.text, fontSize:12,
+                    style={{ width:"100%", minWidth:0, background:C.hover, border:`1.5px solid ${C.border}`,
+                      borderRadius:8, padding:"7px 8px", color:C.text, fontSize:11,
                       outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
                   <input value={l.dosage} onChange={e=>updLigne(i,"dosage",e.target.value)}
                     placeholder="500mg"
-                    style={{ background:C.hover, border:`1.5px solid ${C.border}`,
-                      borderRadius:8, padding:"8px 10px", color:C.text, fontSize:12,
+                    style={{ width:"100%", minWidth:0, background:C.hover, border:`1.5px solid ${C.border}`,
+                      borderRadius:8, padding:"7px 8px", color:C.text, fontSize:11,
                       outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
                   <select value={l.forme} onChange={e=>updLigne(i,"forme",e.target.value)}
                     style={{ background:C.hover, border:`1.5px solid ${C.border}`,
@@ -461,13 +461,13 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
                   </select>
                   <input value={l.posologie} onChange={e=>updLigne(i,"posologie",e.target.value)}
                     placeholder="1cp matin/soir"
-                    style={{ background:C.hover, border:`1.5px solid ${C.border}`,
-                      borderRadius:8, padding:"8px 10px", color:C.text, fontSize:12,
+                    style={{ width:"100%", minWidth:0, background:C.hover, border:`1.5px solid ${C.border}`,
+                      borderRadius:8, padding:"7px 8px", color:C.text, fontSize:11,
                       outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
                   <input value={l.duree} onChange={e=>updLigne(i,"duree",e.target.value)}
                     placeholder="5 jours"
-                    style={{ background:C.hover, border:`1.5px solid ${C.border}`,
-                      borderRadius:8, padding:"8px 10px", color:C.text, fontSize:12,
+                    style={{ width:"100%", minWidth:0, background:C.hover, border:`1.5px solid ${C.border}`,
+                      borderRadius:8, padding:"7px 8px", color:C.text, fontSize:11,
                       outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}/>
                   <button onClick={()=>delLigne(i)}
                     style={{ background: lignes.length>1?"rgba(225,29,72,.1)":"transparent",
