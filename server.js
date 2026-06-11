@@ -1038,8 +1038,158 @@ app.get('/api/livreurs/commandes', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
-// ── PHARMACIE commandes ───────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+// WORKFLOW PHARMACIE — Ordonnances, Devis, Paiement
+// ════════════════════════════════════════════════════════════════════
+
+// GET /api/pharmacie/liste — liste des pharmacies pour le patient
+app.get('/api/pharmacie/liste', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT u.id, u.prenom AS nom, u.telephone, u.ville, u.pays_code
+      FROM utilisateurs u
+      WHERE u.role='pharmacie' AND u.is_active=true
+      ORDER BY u.ville, u.prenom LIMIT 50
+    `);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/pharmacie/commander — patient envoie ordonnance à une pharmacie
+app.post('/api/pharmacie/commander', auth, async (req, res) => {
+  const { ordonnance_id, pharmacie_id, notes_patient } = req.body;
+  if (!ordonnance_id || !pharmacie_id) return res.status(400).json({ success:false, message:'Ordonnance et pharmacie requis' });
+  try {
+    // Récupérer patient_id depuis table patients
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.status(400).json({ success:false, message:'Profil patient introuvable' });
+
+    const ref = 'CMD-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    // Créer la commande
+    const cmd = await db(`
+      INSERT INTO commandes_pharmacie (reference, ordonnance_id, patient_id, pharmacie_id, statut, notes_patient)
+      VALUES ($1, $2, $3, $4, 'en_attente', $5) RETURNING *
+    `, [ref, ordonnance_id, patientId, pharmacie_id, notes_patient||null]);
+
+    // Copier les lignes de l'ordonnance
+    const ord = await db('SELECT medicament FROM ordonnances WHERE id=$1',[ordonnance_id]).catch(()=>({rows:[]}));
+    if (ord.rows[0]?.medicament) {
+      const meds = ord.rows[0].medicament.split('\n').filter(m=>m.trim());
+      for (const med of meds) {
+        await db('INSERT INTO lignes_commande (commande_id, medicament, quantite) VALUES ($1,$2,1)',
+          [cmd.rows[0].id, med]).catch(()=>{});
+      }
+    }
+    res.status(201).json({ success:true, data:cmd.rows[0], message:`Commande ${ref} envoyée à la pharmacie` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/pharmacie/mes-commandes — patient voit ses commandes
+app.get('/api/pharmacie/mes-commandes', auth, async (req, res) => {
+  try {
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.json({ success:true, data:[] });
+    const r = await db(`
+      SELECT c.*, ph.prenom AS pharmacie_nom, ph.telephone AS pharmacie_tel, ph.ville AS pharmacie_ville
+      FROM commandes_pharmacie c
+      LEFT JOIN utilisateurs ph ON ph.id=c.pharmacie_id
+      WHERE c.patient_id=$1
+      ORDER BY c.created_at DESC LIMIT 50
+    `, [patientId]);
+    // Ajouter les lignes pour chaque commande
+    const cmds = r.rows;
+    for (const cmd of cmds) {
+      const lignes = await db('SELECT * FROM lignes_commande WHERE commande_id=$1 ORDER BY created_at',[cmd.id]).catch(()=>({rows:[]}));
+      cmd.lignes = lignes.rows;
+    }
+    res.json({ success:true, data:cmds });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/pharmacie/commandes — pharmacie voit les commandes reçues
 app.get('/api/pharmacie/commandes', auth, async (req, res) => {
+  try {
+    const { statut } = req.query;
+    const pharmaId = req.user.id;
+    let sql = `
+      SELECT c.*,
+             u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact,
+             o.medicament AS ordonnance_medicaments
+      FROM commandes_pharmacie c
+      LEFT JOIN patients p ON p.id=c.patient_id
+      LEFT JOIN utilisateurs u ON u.id=p.user_id
+      LEFT JOIN ordonnances o ON o.id=c.ordonnance_id
+      WHERE c.pharmacie_id=$1
+    `;
+    const params = [pharmaId];
+    if (statut) { params.push(statut); sql += ` AND c.statut=$${params.length}`; }
+    sql += ' ORDER BY c.created_at DESC LIMIT 100';
+    const r = await db(sql, params);
+    const cmds = r.rows;
+    for (const cmd of cmds) {
+      const lignes = await db('SELECT * FROM lignes_commande WHERE commande_id=$1 ORDER BY created_at',[cmd.id]).catch(()=>({rows:[]}));
+      cmd.lignes = lignes.rows;
+    }
+    res.json({ success:true, data:cmds });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/pharmacie/commandes/:id/devis — pharmacie renseigne les prix
+app.post('/api/pharmacie/commandes/:id/devis', auth, async (req, res) => {
+  const { lignes, notes_pharmacie } = req.body; // lignes = [{id, prix_unitaire, quantite, disponible}]
+  if (!lignes?.length) return res.status(400).json({ success:false, message:'Lignes requises' });
+  try {
+    let total = 0;
+    for (const l of lignes) {
+      const prixTotal = (l.prix_unitaire||0) * (l.quantite||1);
+      total += prixTotal;
+      await db(`
+        UPDATE lignes_commande SET prix_unitaire=$1, prix_total=$2, quantite=$3, disponible=$4
+        WHERE id=$5
+      `, [l.prix_unitaire||0, prixTotal, l.quantite||1, l.disponible!==false, l.id]);
+    }
+    await db(`
+      UPDATE commandes_pharmacie
+      SET statut='devis_envoye', montant_total=$1, notes_pharmacie=$2, updated_at=NOW()
+      WHERE id=$3
+    `, [total, notes_pharmacie||null, req.params.id]);
+    res.json({ success:true, message:`Devis envoyé — Total: ${total} FCFA`, data:{ total } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// POST /api/pharmacie/commandes/:id/payer — patient initie le paiement
+app.post('/api/pharmacie/commandes/:id/payer', auth, async (req, res) => {
+  const { methode, telephone } = req.body;
+  try {
+    const cmd = await db('SELECT * FROM commandes_pharmacie WHERE id=$1',[req.params.id]);
+    if (!cmd.rows.length) return res.status(404).json({ success:false, message:'Commande introuvable' });
+    const montant = cmd.rows[0].montant_total;
+    // Créer l'enregistrement de paiement
+    const pay = await db(`
+      INSERT INTO paiements_pharmacie (commande_id, montant, methode, statut, telephone)
+      VALUES ($1, $2, $3, 'initie', $4) RETURNING *
+    `, [req.params.id, montant, methode||'mobile_money', telephone||null]);
+    // Mettre à jour statut commande
+    await db("UPDATE commandes_pharmacie SET statut='paiement_initie' WHERE id=$1",[req.params.id]);
+    // URL de paiement AdjeminPay (à configurer avec vraies clés)
+    const paymentUrl = `https://api.adjeminpay.net/v2/adjeminpay/bank/initiatePayment`;
+    res.json({ success:true, data:{ paiement:pay.rows[0], montant, paymentUrl, ref:pay.rows[0].id } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// PATCH /api/pharmacie/commandes/:id/statut — mise à jour statut
+app.patch('/api/pharmacie/commandes/:id/statut', auth, async (req, res) => {
+  const { statut } = req.body;
+  try {
+    await db("UPDATE commandes_pharmacie SET statut=$1, updated_at=NOW() WHERE id=$2",[statut, req.params.id]);
+    res.json({ success:true, message:'Statut mis à jour' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── PHARMACIE commandes (ancienne route — conservée pour compatibilité) ───
+app.get('/api/pharmacie/commandes-legacy', auth, async (req, res) => {
   try {
     const { statut } = req.query;
     let sql = `SELECT c.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact
