@@ -324,7 +324,7 @@ app.get('/api/public/medecins', async (req, res) => {
   try {
     const { clinique_id, specialite } = req.query;
     let sql = 'SELECT * FROM medecins WHERE 1=1'; const p = [];
-    if (clinique_id) { p.push(clinique_id); sql += ` AND o.clinique_id=$${p.length}`; }
+    if (clinique_id) { p.push(clinique_id); sql += ` AND clinique_id=${p.length}`; }
     if (specialite)  { p.push(specialite);  sql += ` AND specialite=$${p.length}`; }
     sql += ' ORDER BY nom,prenom';
     const r = await db(sql, p);
