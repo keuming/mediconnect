@@ -1377,8 +1377,9 @@ app.get('/api/planning/mes-cliniques', auth, async (req, res) => {
 app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
   try {
     const { rdv_id, patient_id, motif, diagnostic, traitement, notes,
-            tension_arterielle, temperature, poids, taille,
-            pathologie, age_patient, sexe_patient, gravite, ordonnance } = req.body;
+            tension_arterielle, ta, fc, spo2, temperature, poids, taille,
+            pathologie, age_patient, sexe_patient, gravite, ordonnance,
+            code_cim10, examen_clinique, note_finale } = req.body;
     if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
     const role = req.user?.role;
     const isIndep = role === 'medecin_independant';
@@ -1403,14 +1404,16 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
     }
     const r = await db(
       `INSERT INTO consultations
-         (id,patient_id,clinique_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,diagnostic,examen_clinique,note_finale,
-          ta,temperature,poids,taille,pathologie,
+         (id,patient_id,clinique_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,
+          diagnostic,code_cim10,examen_clinique,note_finale,
+          ta,fc,spo2,temperature,poids,taille,pathologie,
           age_patient,sexe_patient,gravite,pays_code)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,CURRENT_DATE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CI')
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,CURRENT_DATE,
+               $7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'CI')
        RETURNING *`,
       [patient_id||null, consultCliniqueId, mid, miId, rdv_id||null, motif||diagnostic||'Consultation',
-       diagnostic, traitement||null, notes||null, tension_arterielle||null,
-       temperature||null, poids||null, taille||null,
+       diagnostic, code_cim10||null, examen_clinique||traitement||null, note_finale||notes||null,
+       ta||tension_arterielle||null, fc||null, spo2||null, temperature||null, poids||null, taille||null,
        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere']
     );
     if (ordonnance?.medicaments) {
