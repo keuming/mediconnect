@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PageOrdonnancesPharmacie from "./PageOrdonnancesPharmacie";
+import { PageLivraisonPharmacie } from "../shared/PageLivraison";
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -301,7 +302,8 @@ function PageStock() {
 export default function Dashboard() {
   return (
     <Routes>
-      <Route path="ordonnances" element={<PageOrdonnancesPharmacie/>}/>
+      <Route path="ordonnances" element={<PageOrdonnancesPharmacie/>
+      <Route path="livraison" element={<PageLivraisonPharmacie/>}/>}/>
       <Route index           element={<PageHome/>}/>
       <Route path="commandes" element={<PageCommandes/>}/>
       <Route path="stock"    element={<PageStock/>}/>

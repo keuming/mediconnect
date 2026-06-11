@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { PageMissionsLivreur } from "../shared/PageLivraison";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -322,6 +323,7 @@ function PageGains() {
 export default function Dashboard() {
   return (
     <Routes>
+      <Route path="missions" element={<PageMissionsLivreur/>}/>
       <Route index             element={<DashboardHome />} />
       <Route path="missions"   element={<PageMissions />} />
       <Route path="en-cours"   element={<PageEnCours />} />

@@ -15,6 +15,7 @@ const NAV = {
     { path:'/patient/dossier',         icon:'📋', label:'Mon dossier' },
     { path:'/patient/ordonnances',     icon:'💊', label:'Ordonnances' },
     { path:'/patient/pharmacie',        icon:'🏪', label:'Pharmacie', badge:'NEW' },
+    { path:'/patient/livraison',        icon:'🛵', label:'Mes livraisons', badge:'NEW' },
     { path:'/patient/consultations',   icon:'🩺', label:'Consultations' },
     { path:'/patient/factures',        icon:'🧾', label:'Mes factures' },
     { path:'/patient/commandes',       icon:'🛵', label:'Commander médicaments', badge:'NEW' },
@@ -42,8 +43,10 @@ const NAV = {
     { path:'/pharmacie/stock',      icon:'💊', label:'Stock' },
     { path:'/pharmacie/commandes',  icon:'📦', label:'Commandes' },
     { path:'/pharmacie/ordonnances',icon:'📄', label:'Ordonnances' },
+    { path:'/pharmacie/livraison',   icon:'🚚', label:'Livraisons', badge:'NEW' },
   ],
   livreur: [
+    { path:'/livreur/missions',  icon:'🛵', label:'Missions', badge:'NEW' },
     { path:'/livreur',              icon:'📊', label:'Dashboard' },
     { path:'/livreur/missions',     icon:'📦', label:'Missions' },
     { path:'/livreur/en-cours',     icon:'🛵', label:'En cours' },

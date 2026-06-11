@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ModalEnvoiPharmacie, PageMesCommandesPharmacie } from "../shared/PagePharmacie";
+import { PageSuiviLivraison } from "../shared/PageLivraison";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -1840,6 +1841,7 @@ export default function Dashboard(){
       <Route path="rdv"               element={<PageRdvsV2/>}/>
       <Route path="ordonnances"       element={<PageOrdonnancesV2/>}/>
       <Route path="pharmacie"         element={<PageMesCommandesPharmacie/>}/>
+      <Route path="livraison"         element={<PageSuiviLivraison/>}/>
       <Route path="consultations"     element={<PageConsultations/>}/>
       <Route path="factures"          element={<PageFactures/>}/>
       <Route path="facturation"       element={<PageFactures/>}/>
