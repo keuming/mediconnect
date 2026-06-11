@@ -1302,6 +1302,13 @@ function PageOrdonnancesV2(){
           </div>
         ))
       }
+      {ordoPharmacie&&(
+        <ModalEnvoiPharmacie
+          ordonnance={ordoPharmacie}
+          onClose={()=>setOrdoPharmacie(null)}
+          onSuccess={()=>setOrdoPharmacie(null)}
+        />
+      )}
     </div>
   );
 }
