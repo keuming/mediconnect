@@ -288,6 +288,8 @@ function PagePlanning(){
   const updRdvMut=useMutation({mutationFn:({id,...d})=>mAPI.updRdv(id,d),onSuccess:()=>{toast.success("RDV mis à jour");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-all-rdvs-page"]);}});
   const confirmerMut=useMutation({mutationFn:id=>mAPI.confirmerRdv(id),onSuccess:()=>{toast.success("✅ RDV confirmé !");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-all-rdvs-page"]);},onError:()=>toast.error("Erreur confirmation")});
   const addRdvMut=useMutation({mutationFn:d=>api.post("/rendez-vous",d),onSuccess:()=>{toast.success("RDV ajouté !");qc.invalidateQueries(["mi-rdvs-m"]);setShowAddRdv(false);},onError:()=>toast.error("Erreur")});
+  const [showWorkflow, setShowWorkflow] = useState(false);
+  const [workflowRdv, setWorkflowRdv] = useState(null);
 
   const navigMois=delta=>{let nm=mois+delta,na=annee;if(nm>12){nm=1;na++;}if(nm<1){nm=12;na--;}setMois(nm);setAnnee(na);};
   const HEURES=["07:00","08:00","09:00","10:00","11:00","14:00","15:00","16:00","17:00","18:00"];
@@ -295,6 +297,13 @@ function PagePlanning(){
 
   return(
     <div>
+      <ConsultationWorkflow
+        open={showWorkflow}
+        onClose={()=>{setShowWorkflow(false);setWorkflowRdv(null);}}
+        rdv={workflowRdv}
+        role="medecin_independant"
+        onSuccess={()=>{qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-stats"]);qc.invalidateQueries(["mi-all-rdvs-page"]);setShowWorkflow(false);setWorkflowRdv(null);}}
+      />
       <PageHeader title="📅 Mon planning de disponibilités" subtitle={`${dispos.filter(d=>d.statut==="disponible").length} créneaux visibles sur rdv.mediconnect4africa.cloud`}
         actions={<><Btn onClick={()=>setShowAddDispo(true)}>+ Créneau dispo</Btn><Btn variant="outline" onClick={()=>setShowAddRdv(true)}>+ RDV direct</Btn></>}/>
 
@@ -366,7 +375,7 @@ function PagePlanning(){
                     </div>
                     <div style={{display:"flex",gap:8}}>
                       {r.statut==="en_attente"&&<Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>confirmerMut.mutate(r.id)}>✓ Confirmer</Btn>}
-                      {["confirme","en_attente","en_cours"].includes(r.statut)&&<Btn variant="purple" style={{flex:2,padding:"6px",fontSize:11}} onClick={()=>{setSelectedRdv(r);setShowConsult(true);}}>🩺 Consulter + Facturer</Btn>}
+                      {["confirme","en_attente","en_cours"].includes(r.statut)&&<Btn variant="purple" style={{flex:2,padding:"6px",fontSize:11}} onClick={()=>{setWorkflowRdv(r);setShowWorkflow(true);}}>🩺 Consulter + Facturer</Btn>}
                     </div>
                   </div>
                 ))}

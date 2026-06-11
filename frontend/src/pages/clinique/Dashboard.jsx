@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import ConsultationWorkflow from "../shared/ConsultationWorkflow";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -292,6 +293,8 @@ function PagePlanning() {
   const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
   const [rdvConsult, setRdvConsult] = useState(null);
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
+  const [showWorkflow, setShowWorkflow] = useState(false);
+  const [workflowRdv, setWorkflowRdv] = useState(null);
 
   const { data, isLoading } = useQuery({ queryKey:["cl-rdvs",selectedDate], queryFn:()=>cAPI.rdvs({ date:selectedDate }).then(r=>r.data.data||[]) });
   const rdvs = data||[];
@@ -343,7 +346,7 @@ function PagePlanning() {
                   <div style={{display:"flex",gap:6}}>
                     {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>confirmerMut.mutate(id)}>Confirmer</Btn>}
                     {row.statut==="confirme" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_cours"})}>Démarrer</Btn>}
-                    {row.statut==="en_cours" && <Btn style={{padding:"4px 10px",fontSize:11}} onClick={()=>{ setRdvConsult(row); setRdvCForm({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''}); }}>🩺 Consulter</Btn>}
+                    {row.statut==="en_cours" && <Btn style={{padding:"4px 10px",fontSize:11}} onClick={()=>{ setWorkflowRdv(row); setShowWorkflow(true); }}>🩺 Consulter</Btn>}
                     {row.statut==="en_cours" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.muted}} onClick={()=>updMut.mutate({id,statut:"termine"})}>Terminer</Btn>}
                     <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.red}} onClick={()=>window.confirm("Supprimer ce RDV ?")&&delMut.mutate(id)}>✕</Btn>
                   </div>
@@ -371,7 +374,16 @@ function PagePlanning() {
         </div>
       </Modal>
 
-      {/* Modal consultation depuis RDV */}
+      {/* ConsultationWorkflow partagé */}
+      <ConsultationWorkflow
+        open={showWorkflow}
+        onClose={()=>{ setShowWorkflow(false); setWorkflowRdv(null); }}
+        rdv={workflowRdv}
+        role="clinique"
+        onSuccess={()=>{ qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); setShowWorkflow(false); setWorkflowRdv(null); }}
+      />
+
+      {/* Modal consultation depuis RDV (ancien — gardé pour compatibilité) */}
       {rdvConsult&&(
         <div onClick={()=>setRdvConsult(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
           <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:'1px solid #1E2F42',borderRadius:16,padding:28,width:540,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto'}}>
