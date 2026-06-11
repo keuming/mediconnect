@@ -485,21 +485,6 @@ function PageRecherche(){
       </Modal>
     </div>
   );
-  {ordoPharmacie&&(
-    <ModalEnvoiPharmacie
-      ordonnance={ordoPharmacie}
-      onClose={()=>setOrdoPharmacie(null)}
-      onSuccess={()=>setOrdoPharmacie(null)}
-    />
-  )}
-
-      {ordoPharmacie&&(
-        <ModalEnvoiPharmacie
-          ordonnance={ordoPharmacie}
-          onClose={()=>setOrdoPharmacie(null)}
-          onSuccess={()=>setOrdoPharmacie(null)}
-        />
-      )}
 
 }
 
@@ -691,6 +676,13 @@ function DemandeModal({medecin, onClose}){
           )}
         </div>
       </div>
+      {ordoPharmacie&&(
+        <ModalEnvoiPharmacie
+          ordonnance={ordoPharmacie}
+          onClose={()=>setOrdoPharmacie(null)}
+          onSuccess={()=>setOrdoPharmacie(null)}
+        />
+      )}
     </div>
   );
 }
