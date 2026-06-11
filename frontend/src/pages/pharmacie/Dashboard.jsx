@@ -302,8 +302,8 @@ function PageStock() {
 export default function Dashboard() {
   return (
     <Routes>
-      <Route path="ordonnances" element={<PageOrdonnancesPharmacie/>
-      <Route path="livraison" element={<PageLivraisonPharmacie/>}/>}/>
+      <Route path="ordonnances" element={<PageOrdonnancesPharmacie/>}/>
+      <Route path="livraison" element={<PageLivraisonPharmacie/>}/>
       <Route index           element={<PageHome/>}/>
       <Route path="commandes" element={<PageCommandes/>}/>
       <Route path="stock"    element={<PageStock/>}/>
