@@ -1580,7 +1580,7 @@ app.get('/api/assurance/solde-par-prestataire', auth, async (req, res) => {
         COALESCE(SUM(montant_assure),0) AS total_assure,
         COALESCE(SUM(CASE WHEN statut='en_attente' THEN montant_assure ELSE 0 END),0) AS en_attente
       FROM factures_assurance
-      WHERE assureur_id=$1 OR compagnie IN (SELECT prenom FROM utilisateurs WHERE id=$1)
+      WHERE assureur_id=$1 OR compagnie ILIKE (SELECT '%'||prenom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
       GROUP BY prestataire_nom, type_prestataire
       ORDER BY total_assure DESC
     `, [uid]);
