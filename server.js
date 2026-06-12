@@ -1234,15 +1234,31 @@ app.post('/api/pharmacie/commandes/:id/payer', auth, async (req, res) => {
     const cmd = await db('SELECT * FROM commandes_pharmacie WHERE id=$1',[req.params.id]);
     if (!cmd.rows.length) return res.status(404).json({ success:false, message:'Commande introuvable' });
     const montant = cmd.rows[0].montant_total;
-    // Créer l'enregistrement de paiement
     const pay = await db(`
       INSERT INTO paiements_pharmacie (commande_id, montant, methode, statut, telephone)
       VALUES ($1, $2, $3, 'initie', $4) RETURNING *
     `, [req.params.id, montant, methode||'mobile_money', telephone||null]);
-    // Mettre à jour statut commande
     await db("UPDATE commandes_pharmacie SET statut='paiement_initie' WHERE id=$1",[req.params.id]);
-    // URL de paiement AdjeminPay (à configurer avec vraies clés)
-    const paymentUrl = `https://api.adjeminpay.net/v2/adjeminpay/bank/initiatePayment`;
+
+    // Auto-facture assurance si patient assuré
+    if (cmd.rows[0].patient_id) {
+      const patAss = await db('SELECT assurance FROM patients WHERE id=$1',[cmd.rows[0].patient_id]).catch(()=>({rows:[]}));
+      const ass = patAss.rows[0]?.assurance;
+      if (ass && ass !== 'Sans assurance') {
+        const pharmNom = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[req.user.id]).catch(()=>({rows:[]}));
+        await createFactureAssurance({
+          patient_id: cmd.rows[0].patient_id, assurance: ass,
+          type_prestation: 'pharmacie',
+          description: `Médicaments — Commande ${cmd.rows[0].reference}`,
+          montant_total: montant,
+          prestataire_id: req.user.id,
+          prestataire_nom: pharmNom.rows[0]?.prenom || 'Pharmacie',
+          type_prestataire: 'pharmacie',
+          ordonnance_id: cmd.rows[0].ordonnance_id || null,
+        });
+      }
+    }
+    const paymentUrl = 'https://www.mobilepay-ci.com/pay';
     res.json({ success:true, data:{ paiement:pay.rows[0], montant, paymentUrl, ref:pay.rows[0].id } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
