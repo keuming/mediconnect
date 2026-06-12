@@ -1530,7 +1530,6 @@ app.get('/api/assurance/factures', auth, async (req, res) => {
       FROM factures_assurance fa
       LEFT JOIN utilisateurs p_prest ON p_prest.id=fa.prestataire_id
       WHERE (fa.assureur_id=$1
-      WHERE (fa.assureur_id=$1
          OR fa.compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1))`;
     const params = [uid];
     if (statut) { params.push(statut); sql += ` AND fa.statut=$${params.length}`; }
