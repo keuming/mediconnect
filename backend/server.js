@@ -444,7 +444,7 @@ app.post('/api/patients', auth, async (req, res) => {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
     const r = await db('INSERT INTO patients (id,user_id,code_secret,telephone,date_naissance,sexe,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
       [uuid(), req.user?.id, code, telephone||null, vd(date_naissance)||null, sexe||null, groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]);
-    res.status(201).json({ success:true, data:r.rows[0] });
+    res.status(201).json({ success:true, data:{ ...r.rows[0], prenom, nom, code_secret:code } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/patients/:id', auth, async (req, res) => {

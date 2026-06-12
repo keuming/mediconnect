@@ -441,6 +441,7 @@ function PageDossiers() {
   const [activeTab, setActiveTab] = useState("infos");
   const [showAdd, setShowAdd] = useState(false);
   const [showConsult, setShowConsult] = useState(false);
+  const [newPatient, setNewPatient] = useState(null); // patient créé avec son code
   const [rdvConsult, setRdvConsult] = useState(null); // RDV depuis lequel on ouvre une consultation
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
@@ -457,7 +458,7 @@ function PageDossiers() {
     return !q || `${p.prenom} ${p.nom} ${p.telephone||""}`.toLowerCase().includes(q);
   });
 
-  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:()=>{ toast.success("Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
+  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:(data)=>{ toast.success("✅ Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); setNewPatient(data?.data||data); }, onError:()=>toast.error("Erreur") });
   const addCons = useMutation({ mutationFn:d=>cAPI.addConsult(d), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
   const addConsRdv = useMutation({
     mutationFn: d => api.post('/consultations/depuis-rdv', d),
@@ -656,6 +657,32 @@ function PageDossiers() {
           <Btn style={{flex:2}} loading={addPat.isPending} onClick={()=>{ if(!pForm.prenom||!pForm.nom){toast.error("Prénom et nom requis");return;} addPat.mutate(pForm); }}>Créer le dossier</Btn>
         </div>
       </Modal>
+
+      {/* Modal: Code secret patient créé */}
+      {newPatient&&(
+        <div onClick={()=>setNewPatient(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0E1620",border:"1px solid #1E2F42",borderRadius:18,padding:32,width:420,maxWidth:"95vw",textAlign:"center"}}>
+            <div style={{width:64,height:64,background:"linear-gradient(135deg,#0A8F58,#0D9488)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px"}}>✅</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#F0F4F8",marginBottom:4}}>
+              {newPatient.prenom||"—"} {newPatient.nom||"—"}
+            </div>
+            <div style={{fontSize:13,color:"#8BA0B5",marginBottom:20}}>Dossier médical créé avec succès</div>
+            <div style={{background:"#141E2B",border:"1px solid #1E2F42",borderRadius:12,padding:20,marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Code secret patient</div>
+              <div style={{fontSize:36,fontWeight:900,color:"#0A8F58",letterSpacing:6,fontFamily:"monospace"}}>
+                {newPatient.code_secret||"—"}
+              </div>
+              <div style={{fontSize:11,color:"#4E657A",marginTop:8}}>Remettez ce code au patient — il lui permettra d'accéder à ses soins</div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setNewPatient(null)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:"1.5px solid #1E2F42",color:"#8BA0B5",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Fermer</button>
+              <button onClick={()=>{
+                if(navigator.clipboard) navigator.clipboard.writeText(newPatient.code_secret||"").then(()=>toast.success("Code copié !"));
+              }} style={{flex:1,padding:"10px",borderRadius:9,background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",color:"#0A8F58",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>📋 Copier</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Nouvelle consultation */}
       <Modal open={showConsult} onClose={()=>setShowConsult(false)} title={`🩺 Consultation — ${selected?.prenom} ${selected?.nom}`} width={560}>
