@@ -625,6 +625,55 @@ app.get('/api/consultations', auth, async (req, res) => {
     const r = await db(sql,p); res.json({success:true,data:r.rows});
   } catch(e) { res.json({success:true,data:[]}); }
 });
+// Fonction helper — créer une facture assurance automatiquement
+const createFactureAssurance = async (data) => {
+  const { patient_id, assurance, type_prestation, description, montant_total,
+          prestataire_id, prestataire_nom, type_prestataire,
+          consultation_id, ordonnance_id, rdv_id } = data;
+  if (!assurance || assurance === 'Sans assurance' || !patient_id) return null;
+
+  try {
+    // Trouver l'assureur correspondant
+    const assureurRow = await db(
+      "SELECT id FROM utilisateurs WHERE role='assureur' AND (prenom ILIKE $1 OR nom ILIKE $1) LIMIT 1",
+      ['%'+assurance+'%']
+    ).catch(()=>({rows:[]}));
+    const assureur_id = assureurRow.rows[0]?.id || null;
+
+    // Récupérer infos patient
+    const patRow = await db(
+      'SELECT p.*, u.prenom||\' \'||u.nom AS nom_complet FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id WHERE p.id=$1 LIMIT 1',
+      [patient_id]
+    ).catch(()=>({rows:[]}));
+    const pat = patRow.rows[0];
+
+    const ref = 'FA-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const taux = 80; // 80% pris en charge par défaut
+    const montant_assure = Math.round(montant_total * taux / 100);
+    const ticket = montant_total - montant_assure;
+
+    const fa = await db(`
+      INSERT INTO factures_assurance
+        (reference, assureur_id, compagnie, patient_id, patient_nom, numero_police,
+         prestataire_id, prestataire_nom, type_prestataire,
+         type_prestation, description, montant_total, taux_couverture,
+         montant_assure, ticket_moderateur, statut,
+         consultation_id, ordonnance_id, rdv_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'en_attente',$16,$17,$18)
+      RETURNING *
+    `, [ref, assureur_id, assurance, patient_id, pat?.nom_complet||'Patient',
+        pat?.numero_police||null, prestataire_id, prestataire_nom, type_prestataire,
+        type_prestation, description, montant_total, taux, montant_assure, ticket,
+        consultation_id||null, ordonnance_id||null, rdv_id||null]);
+
+    return fa.rows[0];
+  } catch(e) {
+    console.error('createFactureAssurance error:', e.message);
+    return null;
+  }
+};
+
+
 app.post('/api/consultations', auth, async (req, res) => {
   const { patient_id, motif, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
@@ -1453,53 +1502,6 @@ app.patch('/api/livraison/notifications/lire', auth, async (req, res) => {
 // WORKFLOW ASSURANCE — Facturation temps réel
 // ════════════════════════════════════════════════════════════════════
 
-// Fonction helper — créer une facture assurance automatiquement
-const createFactureAssurance = async (data) => {
-  const { patient_id, assurance, type_prestation, description, montant_total,
-          prestataire_id, prestataire_nom, type_prestataire,
-          consultation_id, ordonnance_id, rdv_id } = data;
-  if (!assurance || assurance === 'Sans assurance' || !patient_id) return null;
-
-  try {
-    // Trouver l'assureur correspondant
-    const assureurRow = await db(
-      "SELECT id FROM utilisateurs WHERE role='assureur' AND (prenom ILIKE $1 OR nom ILIKE $1) LIMIT 1",
-      ['%'+assurance+'%']
-    ).catch(()=>({rows:[]}));
-    const assureur_id = assureurRow.rows[0]?.id || null;
-
-    // Récupérer infos patient
-    const patRow = await db(
-      'SELECT p.*, u.prenom||\' \'||u.nom AS nom_complet FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id WHERE p.id=$1 LIMIT 1',
-      [patient_id]
-    ).catch(()=>({rows:[]}));
-    const pat = patRow.rows[0];
-
-    const ref = 'FA-' + Math.random().toString(36).slice(2,8).toUpperCase();
-    const taux = 80; // 80% pris en charge par défaut
-    const montant_assure = Math.round(montant_total * taux / 100);
-    const ticket = montant_total - montant_assure;
-
-    const fa = await db(`
-      INSERT INTO factures_assurance
-        (reference, assureur_id, compagnie, patient_id, patient_nom, numero_police,
-         prestataire_id, prestataire_nom, type_prestataire,
-         type_prestation, description, montant_total, taux_couverture,
-         montant_assure, ticket_moderateur, statut,
-         consultation_id, ordonnance_id, rdv_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'en_attente',$16,$17,$18)
-      RETURNING *
-    `, [ref, assureur_id, assurance, patient_id, pat?.nom_complet||'Patient',
-        pat?.numero_police||null, prestataire_id, prestataire_nom, type_prestataire,
-        type_prestation, description, montant_total, taux, montant_assure, ticket,
-        consultation_id||null, ordonnance_id||null, rdv_id||null]);
-
-    return fa.rows[0];
-  } catch(e) {
-    console.error('createFactureAssurance error:', e.message);
-    return null;
-  }
-};
 
 // GET /api/assurance/factures — assureur voit ses factures temps réel
 app.get('/api/assurance/factures', auth, async (req, res) => {
