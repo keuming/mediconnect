@@ -657,199 +657,423 @@ function PageStats() {
 // EXPORT
 // ═══════════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════════════
-// PAGE FACTURATION TEMPS RÉEL
+// PAGE FACTURATION TEMPS RÉEL — v2
 // ════════════════════════════════════════════════════════════════════
+const TYPE_CFG = {
+  clinique:    { label:'Cliniques & Hôpitaux', icon:'🏥', color:'#0A8F58', bg:'rgba(10,143,88,.1)',  border:'rgba(10,143,88,.25)'  },
+  pharmacie:   { label:'Pharmacies',           icon:'💊', color:'#2563EB', bg:'rgba(37,99,235,.1)', border:'rgba(37,99,235,.25)'  },
+  laboratoire: { label:'Laboratoires',         icon:'🔬', color:'#7C3AED', bg:'rgba(124,58,237,.1)',border:'rgba(124,58,237,.25)' },
+  imagerie:    { label:'Imagerie médicale',    icon:'🩻', color:'#D97706', bg:'rgba(217,119,6,.1)', border:'rgba(217,119,6,.25)'  },
+  medecin:     { label:'Médecins indépendants',icon:'🩺', color:'#0D9488', bg:'rgba(13,148,136,.1)',border:'rgba(13,148,136,.25)' },
+};
+const STATUT_CFG2 = {
+  en_attente:{ label:'En attente', color:'#D97706', bg:'rgba(217,119,6,.1)' },
+  validee:   { label:'Validée',    color:'#0A8F58', bg:'rgba(10,143,88,.1)' },
+  rejetee:   { label:'Rejetée',    color:'#E11D48', bg:'rgba(225,29,72,.1)' },
+  payee:     { label:'Payée',      color:'#0D9488', bg:'rgba(13,148,136,.1)' },
+};
+
 function PageFacturationTempsReel() {
   const qc = useQueryClient();
-  const [filtreStatut, setFiltreStatut] = useState('');
-  const [filtrePrestataire, setFiltrePrestataire] = useState('');
+  const [categorie, setCategorie] = useState(null); // null = vue catégories
+  const [selectedPresta, setSelectedPresta] = useState(null); // prestataire sélectionné
+  const [modalType, setModalType] = useState(null); // 'listing' | 'factures'
+  const [dateDebut, setDateDebut] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10));
+  const [dateFin, setDateFin]   = useState(() => new Date().toISOString().slice(0,10));
 
-  const { data:soldeData, refetch:refetchSolde } = useQuery({
+  // Solde global
+  const { data:solde={}, refetch:refetchSolde } = useQuery({
     queryKey:['ass-solde'], queryFn:()=>A.solde().then(r=>r.data||{}),
-    refetchInterval: 30000, staleTime:0,
+    refetchInterval:30000, staleTime:0,
   });
-  const solde = soldeData || {};
-
-  const { data:prestData } = useQuery({
+  // Répartition par prestataire
+  const { data:prestList=[], refetch:refetchPrest } = useQuery({
     queryKey:['ass-prest'], queryFn:()=>A.soldeParPrest().then(r=>r.data||[]),
-    refetchInterval: 30000, staleTime:0,
+    refetchInterval:30000, staleTime:0,
   });
-  const prestataires = prestData || [];
-
-  const params = [filtreStatut && `statut=${filtreStatut}`, filtrePrestataire && `prestataire=${filtrePrestataire}`]
-    .filter(Boolean).join('&');
-  const { data:facturesData, isLoading, refetch } = useQuery({
-    queryKey:['ass-factures', filtreStatut, filtrePrestataire],
-    queryFn:()=>A.factures(params?`?${params}`:'').then(r=>r.data||[]),
-    refetchInterval: 15000, staleTime:0,
+  // Factures
+  const [filtreStatut, setFiltreStatut] = useState('');
+  const { data:factures=[], isLoading:loadFa, refetch:refetchFa } = useQuery({
+    queryKey:['ass-factures', filtreStatut, selectedPresta?.prestataire_nom, dateDebut, dateFin],
+    queryFn:()=>{
+      const p=[];
+      if(filtreStatut) p.push(`statut=${filtreStatut}`);
+      if(selectedPresta) p.push(`prestataire=${encodeURIComponent(selectedPresta.prestataire_nom)}`);
+      if(dateDebut) p.push(`date_debut=${dateDebut}`);
+      if(dateFin) p.push(`date_fin=${dateFin}T23:59:59`);
+      return A.factures(p.length?`?${p.join('&')}`:'').then(r=>r.data||[]);
+    },
+    refetchInterval:15000, staleTime:0,
   });
-  const factures = facturesData || [];
+  // Patients assurés
+  const { data:patients=[] } = useQuery({
+    queryKey:['ass-patients'], queryFn:()=>A.patients().then(r=>r.data||[]), staleTime:0,
+  });
 
   const traiterMut = useMutation({
-    mutationFn:({id,statut,motif})=>A.traiterFa(id,{statut,motif_rejet:motif}),
-    onSuccess:()=>{ toast.success('Facture mise à jour'); qc.invalidateQueries(['ass-factures']); qc.invalidateQueries(['ass-solde']); },
+    mutationFn:({id,statut})=>A.traiterFa(id,{statut}),
+    onSuccess:()=>{ toast.success('Facture mise à jour !'); qc.invalidateQueries(['ass-factures']); qc.invalidateQueries(['ass-solde']); qc.invalidateQueries(['ass-prest']); },
     onError:()=>toast.error('Erreur'),
   });
 
-  const TYPE_COLOR = { clinique:C.green, pharmacie:C.blue, laboratoire:C.purple, imagerie:C.amber, medecin:C.teal };
-  const STATUT_CFG = {
-    en_attente: {label:'En attente', color:C.amber},
-    validee:    {label:'Validée',    color:C.green},
-    rejetee:    {label:'Rejetée',    color:C.red},
-    payee:      {label:'Payée',      color:C.teal},
-  };
+  // Grouper prestataires par catégorie
+  const byCategorie = {};
+  prestList.forEach(p => {
+    const t = p.type_prestataire || 'clinique';
+    if(!byCategorie[t]) byCategorie[t] = { actes:0, total:0, assure:0, attente:0, prestataires:[] };
+    byCategorie[t].actes    += Number(p.nb_actes||0);
+    byCategorie[t].total    += Number(p.total_prestations||0);
+    byCategorie[t].assure   += Number(p.total_assure||0);
+    byCategorie[t].attente  += Number(p.en_attente||0);
+    byCategorie[t].prestataires.push(p);
+  });
+  // Ajouter catégories vides pour l'affichage
+  ['clinique','pharmacie','laboratoire','imagerie','medecin'].forEach(t => {
+    if(!byCategorie[t]) byCategorie[t] = { actes:0, total:0, assure:0, attente:0, prestataires:[] };
+  });
 
-  return (
+  const f = n => Number(n||0).toLocaleString('fr-CI');
+
+  // ── VUE CATÉGORIES ────────────────────────────────────────────────
+  if (!categorie) return (
     <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-        <div>
-          <h2 style={{fontSize:18,fontWeight:800,color:C.text,margin:0}}>📊 Facturation temps réel</h2>
-          <div style={{fontSize:12,color:C.muted,marginTop:3}}>Mise à jour automatique toutes les 15s</div>
+      {/* Header solde global */}
+      <div style={{background:'linear-gradient(135deg,#0A8F58,#0D9488)',borderRadius:16,padding:24,margin:'0 0 20px',boxShadow:'0 8px 32px rgba(10,143,88,.2)'}}>
+        <div style={{fontSize:11,color:'rgba(255,255,255,.7)',textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>
+          SOLDE GÉNÉRAL — ENGAGEMENTS ASSURANCE
+          <span style={{marginLeft:8,background:'rgba(255,255,255,.2)',padding:'2px 8px',borderRadius:20,fontSize:10}}>⏱ Live</span>
         </div>
-        <button onClick={()=>{refetch();refetchSolde();}} style={{padding:'7px 14px',borderRadius:9,
-          background:C.hover,border:`1.5px solid ${C.border}`,color:C.muted,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>
-          🔄 Actualiser
-        </button>
-      </div>
-
-      {/* Solde général */}
-      <div style={{background:`linear-gradient(135deg,${C.green},${C.teal})`,borderRadius:16,padding:24,marginBottom:20,
-        boxShadow:'0 8px 32px rgba(10,143,88,.25)'}}>
-        <div style={{fontSize:12,color:'rgba(255,255,255,.7)',marginBottom:4}}>SOLDE GÉNÉRAL — ENGAGEMENTS ASSURANCE</div>
-        <div style={{fontSize:36,fontWeight:900,color:'#fff',marginBottom:16}}>
-          {fmt(Number(solde.total_a_rembourser||0))} FCFA
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
+        <div style={{fontSize:32,fontWeight:900,color:'#fff',marginBottom:16}}>{f(solde.total_a_rembourser||0)} FCFA</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
           {[
-            {label:'En attente',     value:solde.total_en_attente||0, color:'rgba(255,255,255,.9)'},
-            {label:'Validé',         value:solde.total_valide||0,     color:'#A7F3D0'},
-            {label:'Payé',           value:solde.total_paye||0,       color:'#6EE7B7'},
-            {label:'Nb. factures',   value:solde.nb_factures||0,      color:'rgba(255,255,255,.8)', isnb:true},
+            {label:'En attente',  val:solde.total_en_attente||0, col:'rgba(255,255,255,.9)'},
+            {label:'Validé',      val:solde.total_valide||0,     col:'#A7F3D0'},
+            {label:'Payé',        val:solde.total_paye||0,       col:'#6EE7B7'},
+            {label:'Nb. factures',val:solde.nb_factures||0,      col:'rgba(255,255,255,.8)', nb:true},
           ].map(s=>(
-            <div key={s.label} style={{background:'rgba(255,255,255,.1)',borderRadius:10,padding:'12px 14px'}}>
-              <div style={{fontSize:10,color:'rgba(255,255,255,.6)',textTransform:'uppercase',marginBottom:4}}>{s.label}</div>
-              <div style={{fontSize:18,fontWeight:800,color:s.color}}>
-                {s.isnb ? s.value : `${fmt(Number(s.value))} F`}
-              </div>
+            <div key={s.label} style={{background:'rgba(255,255,255,.1)',borderRadius:10,padding:'10px 14px'}}>
+              <div style={{fontSize:10,color:'rgba(255,255,255,.6)',textTransform:'uppercase',marginBottom:3}}>{s.label}</div>
+              <div style={{fontSize:16,fontWeight:800,color:s.col}}>{s.nb ? s.val : f(s.val)+' F'}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Répartition par prestataire */}
-      {prestataires.length>0&&(
-        <div style={{marginBottom:20}}>
-          <div style={{fontSize:13,fontWeight:700,color:C.muted,textTransform:'uppercase',marginBottom:10}}>
-            Répartition par prestataire
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
-            {prestataires.map((p,i)=>(
-              <div key={i} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:12,padding:14}}>
-                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                  <span style={{fontSize:16}}>{p.type_prestataire==='clinique'?'🏥':p.type_prestataire==='pharmacie'?'💊':p.type_prestataire==='laboratoire'?'🔬':'🩻'}</span>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:700,color:C.text}}>{p.prestataire_nom}</div>
-                    <div style={{fontSize:10,color:C.dim}}>{p.type_prestataire}</div>
-                  </div>
+      {/* Grille catégories */}
+      <div style={{fontSize:13,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>
+        Catégories de prestataires
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:14}}>
+        {Object.entries(TYPE_CFG).map(([type, cfg])=>{
+          const cat = byCategorie[type]||{actes:0,assure:0,attente:0,prestataires:[]};
+          return (
+            <div key={type} onClick={()=>setCategorie(type)}
+              style={{background:'#0E1620',border:`1.5px solid ${cat.assure>0?cfg.border:'#1E2F42'}`,
+                borderRadius:14,padding:20,cursor:'pointer',transition:'all .15s'}}
+              onMouseOver={e=>{e.currentTarget.style.borderColor=cfg.color;e.currentTarget.style.background='#141E2B'}}
+              onMouseOut={e=>{e.currentTarget.style.borderColor=cat.assure>0?cfg.border:'#1E2F42';e.currentTarget.style.background='#0E1620'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                <div style={{width:44,height:44,background:cfg.bg,border:`1px solid ${cfg.border}`,borderRadius:10,
+                  display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>{cfg.icon}</div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:'#F0F4F8'}}>{cfg.label}</div>
+                  <div style={{fontSize:11,color:'#8BA0B5',marginTop:2}}>{cat.prestataires.length} prestataire(s)</div>
                 </div>
-                <div style={{fontSize:16,fontWeight:800,color:TYPE_COLOR[p.type_prestataire]||C.green}}>
-                  {fmt(Number(p.total_assure))} F
-                </div>
-                <div style={{fontSize:11,color:C.muted}}>{p.nb_actes} acte(s)</div>
-                {Number(p.en_attente)>0&&(
-                  <div style={{fontSize:10,color:C.amber,marginTop:4}}>⏳ {fmt(Number(p.en_attente))} F en attente</div>
-                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <div style={{background:'#1A2535',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Actes</div>
+                  <div style={{fontSize:16,fontWeight:800,color:'#F0F4F8'}}>{cat.actes}</div>
+                </div>
+                <div style={{background:'#1A2535',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Engagé</div>
+                  <div style={{fontSize:14,fontWeight:800,color:cfg.color}}>{f(cat.assure)} F</div>
+                </div>
+              </div>
+              {cat.attente>0&&(
+                <div style={{marginTop:8,fontSize:11,color:'#D97706',fontWeight:600}}>
+                  ⏳ {f(cat.attente)} F en attente
+                </div>
+              )}
+              <div style={{marginTop:12,fontSize:11,color:cfg.color,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                Voir les prestataires →
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
-      {/* Filtres */}
-      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
-        <select value={filtreStatut} onChange={e=>setFiltreStatut(e.target.value)}
-          style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:'8px 12px',
-            color:C.text,fontSize:13,outline:'none',fontFamily:'inherit',cursor:'pointer'}}>
-          <option value=''>Tous les statuts</option>
-          <option value='en_attente'>En attente</option>
-          <option value='validee'>Validées</option>
-          <option value='rejetee'>Rejetées</option>
-          <option value='payee'>Payées</option>
-        </select>
-        <input value={filtrePrestataire} onChange={e=>setFiltrePrestataire(e.target.value)}
-          placeholder='Filtrer par prestataire…'
-          style={{flex:1,minWidth:180,background:C.input,border:`1px solid ${C.border}`,borderRadius:9,
-            padding:'8px 12px',color:C.text,fontSize:13,outline:'none',fontFamily:'inherit'}}/>
+  // ── VUE PRESTATAIRES D'UNE CATÉGORIE ─────────────────────────────
+  const cfg = TYPE_CFG[categorie];
+  const cat = byCategorie[categorie]||{prestataires:[]};
+
+  return (
+    <div>
+      {/* Breadcrumb */}
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+        <button onClick={()=>{setCategorie(null);setSelectedPresta(null);setModalType(null);}}
+          style={{background:'transparent',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:13,padding:'6px 12px',
+            borderRadius:9,display:'flex',alignItems:'center',gap:6,fontFamily:'inherit'}}>
+          ← Catégories
+        </button>
+        <div style={{color:'#4E657A'}}>›</div>
+        <div style={{fontSize:13,fontWeight:700,color:'#F0F4F8'}}>{cfg.icon} {cfg.label}</div>
       </div>
 
-      {/* Tableau factures */}
-      {isLoading&&<div style={{textAlign:'center',padding:32,color:C.dim}}>⏳ Chargement…</div>}
-      {!isLoading&&factures.length===0&&(
-        <div style={{textAlign:'center',padding:'48px 20px'}}>
-          <div style={{fontSize:40,marginBottom:8}}>📋</div>
-          <div style={{color:C.muted}}>Aucune facture</div>
+      {/* Solde catégorie */}
+      <div style={{background:`${cfg.bg}`,border:`1px solid ${cfg.border}`,borderRadius:12,padding:'14px 20px',marginBottom:20,
+        display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div style={{fontSize:11,color:cfg.color,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>
+            {cfg.label} — Solde catégorie
+          </div>
+          <div style={{fontSize:24,fontWeight:900,color:'#F0F4F8'}}>{f(cat.assure)} FCFA</div>
+          <div style={{fontSize:12,color:'#8BA0B5',marginTop:2}}>{cat.actes} acte(s) · {cat.prestataires.length} prestataire(s)</div>
+        </div>
+        {cat.attente>0&&(
+          <div style={{textAlign:'right'}}>
+            <div style={{fontSize:11,color:'#D97706',fontWeight:700}}>EN ATTENTE</div>
+            <div style={{fontSize:18,fontWeight:800,color:'#D97706'}}>{f(cat.attente)} F</div>
+          </div>
+        )}
+      </div>
+
+      {/* Grille prestataires */}
+      {cat.prestataires.length===0 ? (
+        <div style={{textAlign:'center',padding:'48px 20px',color:'#8BA0B5'}}>
+          <div style={{fontSize:40,marginBottom:10}}>{cfg.icon}</div>
+          <div>Aucun acte enregistré pour cette catégorie</div>
+        </div>
+      ) : (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:14,marginBottom:20}}>
+          {cat.prestataires.map((p,i)=>(
+            <div key={i} style={{background:'#0E1620',border:`1.5px solid ${cfg.border}`,borderRadius:14,padding:18}}>
+              {/* Entête */}
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                <div style={{width:40,height:40,background:cfg.bg,border:`1px solid ${cfg.border}`,borderRadius:10,
+                  display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+                  {cfg.icon}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:14,fontWeight:700,color:'#F0F4F8',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {p.prestataire_nom}
+                  </div>
+                  <div style={{fontSize:11,color:'#8BA0B5'}}>{p.type_prestataire}</div>
+                </div>
+              </div>
+              {/* Stats */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}}>
+                <div style={{background:'#1A2535',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Actes</div>
+                  <div style={{fontSize:16,fontWeight:800,color:'#F0F4F8'}}>{p.nb_actes}</div>
+                </div>
+                <div style={{background:'#1A2535',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Engagé</div>
+                  <div style={{fontSize:14,fontWeight:800,color:cfg.color}}>{f(p.total_assure)} F</div>
+                </div>
+                <div style={{background:'#1A2535',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Total actes</div>
+                  <div style={{fontSize:13,color:'#8BA0B5'}}>{f(p.total_prestations)} F</div>
+                </div>
+                <div style={{background:'#1A2535',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:2}}>En attente</div>
+                  <div style={{fontSize:13,color:Number(p.en_attente||0)>0?'#D97706':'#8BA0B5'}}>
+                    {Number(p.en_attente||0)>0 ? f(p.en_attente)+' F' : '—'}
+                  </div>
+                </div>
+              </div>
+              {/* Actions */}
+              <div style={{display:'flex',gap:8}}>
+                <button onClick={()=>{setSelectedPresta(p);setModalType('listing');}}
+                  style={{flex:1,padding:'8px',borderRadius:9,background:'transparent',
+                    border:`1.5px solid ${cfg.border}`,color:cfg.color,cursor:'pointer',
+                    fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                  👥 Listing patients
+                </button>
+                <button onClick={()=>{setSelectedPresta(p);setModalType('factures');}}
+                  style={{flex:1,padding:'8px',borderRadius:9,
+                    background:cfg.bg,border:`1.5px solid ${cfg.border}`,
+                    color:cfg.color,cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                  📋 Factures
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
-      {factures.map(fa=>{
-        const st = STATUT_CFG[fa.statut]||STATUT_CFG.en_attente;
-        return(
-          <div key={fa.id} style={{background:C.input,border:`1.5px solid ${C.border}`,
-            borderRadius:12,padding:16,marginBottom:10}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+
+      {/* Modal Listing patients */}
+      {modalType==='listing'&&selectedPresta&&(
+        <div onClick={()=>setModalType(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',
+          display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:`1px solid ${cfg.border}`,
+            borderRadius:18,width:600,maxWidth:'95vw',maxHeight:'85vh',overflowY:'auto',padding:28}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
               <div>
-                <div style={{fontSize:13,fontWeight:800,color:C.text}}>{fa.reference}</div>
-                <div style={{fontSize:11,color:C.muted}}>
-                  {fmtDate(fa.created_at)} · {fa.type_prestation}
-                </div>
+                <div style={{fontSize:16,fontWeight:800,color:'#F0F4F8'}}>👥 Patients — {selectedPresta.prestataire_nom}</div>
+                <div style={{fontSize:12,color:'#8BA0B5',marginTop:3}}>Bénéficiaires ayant eu des soins chez ce prestataire</div>
               </div>
-              <span style={{background:st.color+'20',color:st.color,fontSize:11,fontWeight:700,
-                padding:'4px 12px',borderRadius:20}}>{st.label}</span>
+              <button onClick={()=>setModalType(null)} style={{background:'rgba(255,255,255,.1)',border:'none',
+                borderRadius:'50%',width:32,height:32,color:'#F0F4F8',cursor:'pointer',fontSize:18}}>✕</button>
             </div>
-
-            {/* Détails */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:12}}>
-              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Prestataire</div>
-                <div style={{fontSize:12,color:TYPE_COLOR[fa.type_prestataire]||C.green,fontWeight:700}}>
-                  {fa.type_prestataire==='clinique'?'🏥':fa.type_prestataire==='pharmacie'?'💊':'🔬'} {fa.prestataire_nom}
-                </div>
-              </div>
-              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Patient</div>
-                <div style={{fontSize:12,color:C.text}}>{fa.patient_nom}</div>
-              </div>
-              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Prestation</div>
-                <div style={{fontSize:11,color:C.muted}}>{fa.description?.slice(0,40)}</div>
-              </div>
-              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
-                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Montant assureur</div>
-                <div style={{fontSize:14,fontWeight:800,color:C.green}}>{fmt(Number(fa.montant_assure||0))} F</div>
-                <div style={{fontSize:10,color:C.dim}}>TM: {fmt(Number(fa.ticket_moderateur||0))} F</div>
-              </div>
-            </div>
-
-            {/* Actions si en attente */}
-            {fa.statut==='en_attente'&&(
-              <div style={{display:'flex',gap:8}}>
-                <button onClick={()=>traiterMut.mutate({id:fa.id,statut:'validee'})}
-                  style={{flex:2,padding:'8px',borderRadius:8,background:`rgba(10,143,88,.15)`,
-                    border:`1px solid ${C.green}`,color:C.green,cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
-                  ✅ Valider — {fmt(Number(fa.montant_assure||0))} F
-                </button>
-                <button onClick={()=>traiterMut.mutate({id:fa.id,statut:'rejetee',motif:'Acte non couvert'})}
-                  style={{flex:1,padding:'8px',borderRadius:8,background:`rgba(225,29,72,.08)`,
-                    border:`1px solid ${C.red}`,color:C.red,cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
-                  ✕ Rejeter
-                </button>
+            {patients.filter(p=>p.presta_nom===selectedPresta.prestataire_nom||true).length===0 ? (
+              <div style={{textAlign:'center',padding:32,color:'#8BA0B5'}}>Aucun patient trouvé</div>
+            ) : (
+              <div>
+                {patients.slice(0,20).map((p,i)=>(
+                  <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+                    padding:'10px 14px',background:'#141E2B',borderRadius:10,marginBottom:8}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <div style={{width:36,height:36,background:cfg.bg,borderRadius:'50%',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:13,fontWeight:700,color:cfg.color,flexShrink:0}}>
+                        {(p.nom_complet||p.prenom_patient||'?').slice(0,2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:'#F0F4F8'}}>{p.nom_complet||p.prenom_patient||'—'}</div>
+                        <div style={{fontSize:11,color:'#8BA0B5'}}>Assurance : {p.assurance||'—'}</div>
+                      </div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontSize:13,fontWeight:700,color:cfg.color}}>{f(p.total_rembourse||0)} F</div>
+                      <div style={{fontSize:10,color:'#8BA0B5'}}>{p.nb_actes||0} acte(s)</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      {/* Modal Factures par période */}
+      {modalType==='factures'&&selectedPresta&&(
+        <div onClick={()=>setModalType(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',
+          display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:`1px solid ${cfg.border}`,
+            borderRadius:18,width:640,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto',padding:28}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <div>
+                <div style={{fontSize:16,fontWeight:800,color:'#F0F4F8'}}>📋 Factures — {selectedPresta.prestataire_nom}</div>
+                <div style={{fontSize:12,color:'#8BA0B5',marginTop:3}}>Sélectionnez la période de facturation</div>
+              </div>
+              <button onClick={()=>setModalType(null)} style={{background:'rgba(255,255,255,.1)',border:'none',
+                borderRadius:'50%',width:32,height:32,color:'#F0F4F8',cursor:'pointer',fontSize:18}}>✕</button>
+            </div>
+
+            {/* Sélection période */}
+            <div style={{display:'flex',gap:10,alignItems:'center',marginBottom:16,
+              background:'#141E2B',borderRadius:10,padding:'12px 14px',flexWrap:'wrap'}}>
+              <span style={{fontSize:12,color:'#8BA0B5',fontWeight:700}}>Période :</span>
+              <div style={{display:'flex',gap:8,alignItems:'center',flex:1,flexWrap:'wrap'}}>
+                <input type="date" value={dateDebut} onChange={e=>setDateDebut(e.target.value)}
+                  style={{background:'#1A2535',border:'1px solid #1E2F42',borderRadius:8,padding:'6px 10px',
+                    color:'#F0F4F8',fontSize:13,outline:'none',fontFamily:'inherit'}}/>
+                <span style={{color:'#8BA0B5',fontSize:12}}>au</span>
+                <input type="date" value={dateFin} onChange={e=>setDateFin(e.target.value)}
+                  style={{background:'#1A2535',border:'1px solid #1E2F42',borderRadius:8,padding:'6px 10px',
+                    color:'#F0F4F8',fontSize:13,outline:'none',fontFamily:'inherit'}}/>
+                <select value={filtreStatut} onChange={e=>setFiltreStatut(e.target.value)}
+                  style={{background:'#1A2535',border:'1px solid #1E2F42',borderRadius:8,padding:'6px 10px',
+                    color:'#F0F4F8',fontSize:12,outline:'none',fontFamily:'inherit',cursor:'pointer'}}>
+                  <option value=''>Tous statuts</option>
+                  <option value='en_attente'>En attente</option>
+                  <option value='validee'>Validées</option>
+                  <option value='rejetee'>Rejetées</option>
+                  <option value='payee'>Payées</option>
+                </select>
+              </div>
+              {/* Raccourcis période */}
+              <div style={{display:'flex',gap:6,width:'100%',marginTop:6}}>
+                {[['Ce mois',0],['Mois dernier',1],['3 mois',3],['6 mois',6]].map(([label,months])=>(
+                  <button key={label} onClick={()=>{
+                    const now=new Date();
+                    const start=new Date(now.getFullYear(),now.getMonth()-months,1);
+                    setDateDebut(start.toISOString().slice(0,10));
+                    setDateFin(now.toISOString().slice(0,10));
+                  }} style={{padding:'4px 10px',borderRadius:20,border:`1px solid #1E2F42`,
+                    background:'transparent',color:'#8BA0B5',cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Résumé période */}
+            {factures.length>0&&(
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:16}}>
+                {[
+                  {label:'Total actes',  val:factures.reduce((s,f)=>s+Number(f.montant_total||0),0)},
+                  {label:'Part assureur',val:factures.reduce((s,f)=>s+Number(f.montant_assure||0),0), color:cfg.color},
+                  {label:'En attente',   val:factures.filter(f=>f.statut==='en_attente').reduce((s,f)=>s+Number(f.montant_assure||0),0), color:'#D97706'},
+                ].map(s=>(
+                  <div key={s.label} style={{background:'#141E2B',borderRadius:8,padding:'10px 12px'}}>
+                    <div style={{fontSize:10,color:'#4E657A',fontWeight:700,textTransform:'uppercase',marginBottom:3}}>{s.label}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:s.color||'#F0F4F8'}}>{f(s.val)} F</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Liste factures */}
+            {loadFa ? (
+              <div style={{textAlign:'center',padding:32,color:'#8BA0B5'}}>⏳ Chargement…</div>
+            ) : factures.length===0 ? (
+              <div style={{textAlign:'center',padding:32,color:'#8BA0B5'}}>
+                <div style={{fontSize:32,marginBottom:8}}>📋</div>
+                <div>Aucune facture sur cette période</div>
+              </div>
+            ) : factures.map(fa=>{
+              const st = STATUT_CFG2[fa.statut]||STATUT_CFG2.en_attente;
+              return (
+                <div key={fa.id} style={{background:'#141E2B',border:'1px solid #1E2F42',
+                  borderRadius:12,padding:14,marginBottom:10}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+                    <div>
+                      <div style={{fontSize:12,fontFamily:'monospace',color:'#F0F4F8',fontWeight:700}}>{fa.reference}</div>
+                      <div style={{fontSize:11,color:'#8BA0B5',marginTop:2}}>
+                        {new Date(fa.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'short',year:'numeric'})} · {fa.type_prestation}
+                      </div>
+                      <div style={{fontSize:11,color:'#8BA0B5'}}>Patient : {fa.patient_nom}</div>
+                      <div style={{fontSize:11,color:'#4E657A',marginTop:2}}>{fa.description?.slice(0,50)}</div>
+                    </div>
+                    <div style={{textAlign:'right',flexShrink:0,marginLeft:12}}>
+                      <div style={{fontSize:16,fontWeight:800,color:cfg.color}}>{f(fa.montant_assure||0)} F</div>
+                      <div style={{fontSize:10,color:'#8BA0B5'}}>TM : {f(fa.ticket_moderateur||0)} F</div>
+                      <span style={{background:st.bg,color:st.color,fontSize:10,fontWeight:700,
+                        padding:'3px 8px',borderRadius:20,marginTop:4,display:'inline-block'}}>{st.label}</span>
+                    </div>
+                  </div>
+                  {fa.statut==='en_attente'&&(
+                    <div style={{display:'flex',gap:8}}>
+                      <button disabled={traiterMut.isPending}
+                        onClick={()=>traiterMut.mutate({id:fa.id,statut:'validee'})}
+                        style={{flex:2,padding:'8px',borderRadius:8,
+                          background:'rgba(10,143,88,.15)',border:'1px solid rgba(10,143,88,.3)',
+                          color:'#0A8F58',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                        ✅ Valider — {f(fa.montant_assure||0)} F
+                      </button>
+                      <button disabled={traiterMut.isPending}
+                        onClick={()=>traiterMut.mutate({id:fa.id,statut:'rejetee'})}
+                        style={{flex:1,padding:'8px',borderRadius:8,
+                          background:'rgba(225,29,72,.08)',border:'1px solid rgba(225,29,72,.2)',
+                          color:'#E11D48',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                        ✕ Rejeter
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 export default function Dashboard() {
   return (
