@@ -635,7 +635,7 @@ const createFactureAssurance = async (data) => {
   try {
     // Trouver l'assureur correspondant
     const assureurRow = await db(
-      "SELECT id FROM utilisateurs WHERE role='assureur' AND (prenom ILIKE $1 OR nom ILIKE $1) LIMIT 1",
+      "SELECT id FROM utilisateurs WHERE role='assureur' AND (prenom||' '||nom ILIKE $1 OR prenom ILIKE $1 OR $1 ILIKE '%'||prenom||'%') LIMIT 1",
       ['%'+assurance+'%']
     ).catch(()=>({rows:[]}));
     const assureur_id = assureurRow.rows[0]?.id || null;
@@ -1513,9 +1513,9 @@ app.get('/api/assurance/factures', auth, async (req, res) => {
              p_prest.role AS prest_role
       FROM factures_assurance fa
       LEFT JOIN utilisateurs p_prest ON p_prest.id=fa.prestataire_id
-      WHERE (fa.assureur_id=$1 OR fa.compagnie IN (
-        SELECT prenom FROM utilisateurs WHERE id=$1
-      ))
+      WHERE (fa.assureur_id=$1
+         OR fa.compagnie ILIKE (SELECT '%'||prenom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
+         OR fa.compagnie ILIKE (SELECT '%'||prenom||' '||nom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1))
     `;
     const params = [uid];
     if (statut) { params.push(statut); sql += ` AND fa.statut=$${params.length}`; }
@@ -1544,7 +1544,9 @@ app.get('/api/assurance/solde', auth, async (req, res) => {
         COUNT(DISTINCT patient_id) AS nb_patients,
         COUNT(DISTINCT prestataire_id) AS nb_prestataires
       FROM factures_assurance
-      WHERE assureur_id=$1 OR compagnie IN (SELECT prenom FROM utilisateurs WHERE id=$1)
+      WHERE assureur_id=$1
+         OR compagnie ILIKE (SELECT '%'||prenom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
+         OR compagnie ILIKE (SELECT '%'||prenom||' '||nom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
     `, [uid]);
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.json({ success:true, data:{} }); }
