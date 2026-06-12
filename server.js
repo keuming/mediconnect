@@ -1606,8 +1606,8 @@ app.patch('/api/assurance/factures/:id', auth, async (req, res) => {
 app.get('/api/assurance/patients', auth, async (req, res) => {
   try {
     const uid = req.user.id;
-    const compRow = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[uid]).catch(()=>({rows:[]}));
-    const compagnie = compRow.rows[0]?.prenom;
+    const compRow = await db('SELECT prenom||' '||nom AS full_name FROM utilisateurs WHERE id=$1',[uid]).catch(()=>({rows:[]}));
+    const compagnie = compRow.rows[0]?.full_name||'';
     const r = await db(`
       SELECT DISTINCT p.*, u.prenom||' '||u.nom AS nom_complet, u.telephone,
              COUNT(fa.id) AS nb_actes,
@@ -1615,7 +1615,7 @@ app.get('/api/assurance/patients', auth, async (req, res) => {
       FROM patients p
       LEFT JOIN utilisateurs u ON u.id=p.user_id
       LEFT JOIN factures_assurance fa ON fa.patient_id=p.id
-      WHERE p.assurance=$1 OR fa.compagnie=$1
+      WHERE p.assurance ILIKE '%'||$1||'%' OR fa.compagnie ILIKE '%'||$1||'%'
       GROUP BY p.id, u.prenom, u.nom, u.telephone
       ORDER BY total_rembourse DESC LIMIT 100
     `, [compagnie]);
