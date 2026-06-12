@@ -1602,8 +1602,10 @@ app.patch('/api/assurance/factures/:id', auth, async (req, res) => {
 
 // GET /api/assurance/patients — patients assurés de cette compagnie
 app.get('/api/assurance/patients', auth, async (req, res) => {
+app.get('/api/assurance/patients', auth, async (req, res) => {
   try {
     const uid = req.user.id;
+    const { prestataire } = req.query;
     const compRow = await db("SELECT prenom||' '||nom AS full_name FROM utilisateurs WHERE id=$1",[uid]).catch(()=>({rows:[]}));
     const compagnie = compRow.rows[0]?.full_name||'';
     const r = await db(`
@@ -1614,9 +1616,10 @@ app.get('/api/assurance/patients', auth, async (req, res) => {
       LEFT JOIN utilisateurs u ON u.id=p.user_id
       LEFT JOIN factures_assurance fa ON fa.patient_id=p.id
       WHERE p.assurance ILIKE '%'||$1||'%' OR fa.compagnie ILIKE '%'||$1||'%'
+      AND (NOT $2::text IS NOT NULL OR fa.prestataire_nom ILIKE '%'||$2||'%')
       GROUP BY p.id, u.prenom, u.nom, u.telephone
       ORDER BY total_rembourse DESC LIMIT 100
-    `, [compagnie]);
+    `, [compagnie, prestataire||null]);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
@@ -2519,5 +2522,7 @@ if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT||'5000', 10);
   app.listen(PORT, () => console.log(`\n🚀 MediConnect — http://localhost:${PORT}/api/health`));
 }
+
+});
 
 module.exports = app;
