@@ -1531,7 +1531,7 @@ app.get('/api/assurance/factures', auth, async (req, res) => {
       LEFT JOIN utilisateurs p_prest ON p_prest.id=fa.prestataire_id
       WHERE (fa.assureur_id=$1
       WHERE (fa.assureur_id=$1
-         OR fa.compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1))
+         OR fa.compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1))`;
     const params = [uid];
     if (statut) { params.push(statut); sql += ` AND fa.statut=$${params.length}`; }
     if (prestataire) { params.push('%'+prestataire+'%'); sql += ` AND fa.prestataire_nom ILIKE $${params.length}`; }
@@ -1604,7 +1604,7 @@ app.patch('/api/assurance/factures/:id', auth, async (req, res) => {
 app.get('/api/assurance/patients', auth, async (req, res) => {
   try {
     const uid = req.user.id;
-    const compRow = await db('SELECT prenom||' '||nom AS full_name FROM utilisateurs WHERE id=$1',[uid]).catch(()=>({rows:[]}));
+    const compRow = await db("SELECT prenom||' '||nom AS full_name FROM utilisateurs WHERE id=$1",[uid]).catch(()=>({rows:[]}));
     const compagnie = compRow.rows[0]?.full_name||'';
     const r = await db(`
       SELECT DISTINCT p.*, u.prenom||' '||u.nom AS nom_complet, u.telephone,
