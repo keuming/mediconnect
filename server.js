@@ -438,7 +438,7 @@ app.get('/api/patients/:id', auth, async (req, res) => {
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.post('/api/patients', auth, async (req, res) => {
-  const { prenom, nom, telephone, email, date_naissance, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police } = req.body;
+  const { prenom, nom, telephone, email, date_naissance, sexe, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police } = req.body;
   if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
   try {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
