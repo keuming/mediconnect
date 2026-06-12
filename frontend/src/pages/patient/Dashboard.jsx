@@ -1196,7 +1196,7 @@ function PageOrdonnancesV2(){
       doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(60,60,60);
       doc.text("Spécialité : Médecine générale", M+3, by+20);
       doc.text("N° Ordre CNOM : MC-CI-2024-XXXX", M+3, by+26);
-      doc.text("📍 Abidjan, Côte d'Ivoire", M+3, by+32);
+      doc.text("Adresse : Abidjan, Côte d'Ivoire", M+3, by+32);
       doc.setTextColor(10,143,88); doc.setFont("helvetica","bold"); doc.setFontSize(8);
       doc.text("Polyclinique MediConnect", M+3, by+38);
 
@@ -1217,7 +1217,7 @@ function PageOrdonnancesV2(){
       doc.text(`Né(e) le : ${o.date_naissance||"—"}`, px+3, by+26);
       doc.text(`Assurance : ${o.assurance||"Non renseignée"}`, px+3, by+32);
       doc.setFont("helvetica","bold"); doc.setTextColor(13,148,136); doc.setFontSize(8);
-      doc.text(`Code : ${u?.code_secret||"—"}`, px+3, by+38);
+      doc.text(`Code MediConnect : ${o.code_patient||u?.code_secret||"MC-****"}`, px+3, by+38);
 
       // ══════════════════════════════════════════════════════════════
       // DIAGNOSTIC
@@ -1229,7 +1229,7 @@ function PageOrdonnancesV2(){
       doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
       doc.text("DIAGNOSTIC", M+2, y+8);
       doc.setTextColor(20,20,20); doc.setFontSize(9); doc.setFont("helvetica","normal");
-      const diagLines = doc.splitTextToSize(o.diagnostic||"—", W-2*M-35);
+      const diagLines = doc.splitTextToSize(o.diagnostic||o.consultation_diagnostic||"Non renseigné", W-2*M-35);
       doc.text(diagLines, M+32, y+8);
       y += 18;
 
