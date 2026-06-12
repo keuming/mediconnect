@@ -707,7 +707,9 @@ function PageFacturationTempsReel() {
   });
   // Patients assurés
   const { data:patients=[] } = useQuery({
-    queryKey:['ass-patients'], queryFn:()=>A.patients().then(r=>r.data||[]), staleTime:0,
+    queryKey:['ass-patients', selectedPresta?.prestataire_nom],
+    queryFn:()=>A.patients(selectedPresta?.prestataire_nom ? `?prestataire=${encodeURIComponent(selectedPresta.prestataire_nom)}` : '').then(r=>r.data||[]),
+    staleTime:0,
   });
 
   const traiterMut = useMutation({
