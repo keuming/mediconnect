@@ -1530,9 +1530,8 @@ app.get('/api/assurance/factures', auth, async (req, res) => {
       FROM factures_assurance fa
       LEFT JOIN utilisateurs p_prest ON p_prest.id=fa.prestataire_id
       WHERE (fa.assureur_id=$1
-         OR fa.compagnie ILIKE (SELECT '%'||prenom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
-         OR fa.compagnie ILIKE (SELECT '%'||prenom||' '||nom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1))
-    `;
+      WHERE (fa.assureur_id=$1
+         OR fa.compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1))
     const params = [uid];
     if (statut) { params.push(statut); sql += ` AND fa.statut=$${params.length}`; }
     if (prestataire) { params.push('%'+prestataire+'%'); sql += ` AND fa.prestataire_nom ILIKE $${params.length}`; }
@@ -1561,8 +1560,7 @@ app.get('/api/assurance/solde', auth, async (req, res) => {
         COUNT(DISTINCT prestataire_id) AS nb_prestataires
       FROM factures_assurance
       WHERE assureur_id=$1
-         OR compagnie ILIKE (SELECT '%'||prenom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
-         OR compagnie ILIKE (SELECT '%'||prenom||' '||nom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
+         OR compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1)
     `, [uid]);
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.json({ success:true, data:{} }); }
@@ -1580,8 +1578,7 @@ app.get('/api/assurance/solde-par-prestataire', auth, async (req, res) => {
         COALESCE(SUM(montant_assure),0) AS total_assure,
         COALESCE(SUM(CASE WHEN statut='en_attente' THEN montant_assure ELSE 0 END),0) AS en_attente
       FROM factures_assurance
-      WHERE assureur_id=$1 OR compagnie ILIKE (SELECT '%'||prenom||'%' FROM utilisateurs WHERE id=$1 LIMIT 1)
-      GROUP BY prestataire_nom, type_prestataire
+      WHERE assureur_id=$1 OR compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1)
       ORDER BY total_assure DESC
     `, [uid]);
     res.json({ success:true, data:r.rows });
