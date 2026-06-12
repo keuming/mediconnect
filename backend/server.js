@@ -1614,8 +1614,8 @@ app.get('/api/assurance/patients', auth, async (req, res) => {
       FROM patients p
       LEFT JOIN utilisateurs u ON u.id=p.user_id
       LEFT JOIN factures_assurance fa ON fa.patient_id=p.id
-      WHERE p.assurance ILIKE '%'||$1||'%' OR fa.compagnie ILIKE '%'||$1||'%'
-      AND (NOT $2::text IS NOT NULL OR fa.prestataire_nom ILIKE '%'||$2||'%')
+      WHERE (p.assurance ILIKE '%'||$1||'%' OR fa.compagnie ILIKE '%'||$1||'%')
+      AND ($2::text IS NULL OR fa.prestataire_nom ILIKE '%'||$2||'%')
       GROUP BY p.id, u.prenom, u.nom, u.telephone
       ORDER BY total_rembourse DESC LIMIT 100
     `, [compagnie, prestataire||null]);
