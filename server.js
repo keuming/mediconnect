@@ -364,18 +364,22 @@ app.get('/api/patients', auth, async (req, res) => {
       const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
       const cid = clRow.rows[0]?.id || req.user?.clinique_id;
       r = await db(`
-        SELECT DISTINCT p.*, u.prenom, u.nom, u.telephone, u.email
+        SELECT DISTINCT p.*,
+               COALESCE(u.prenom, p.prenom_patient) AS prenom,
+               COALESCE(u.nom, p.nom_patient) AS nom,
+               COALESCE(u.telephone, p.telephone) AS telephone,
+               u.email
         FROM patients p
-        LEFT JOIN utilisateurs u ON u.id=p.user_id
+        LEFT JOIN utilisateurs u ON u.id=p.user_id AND u.role='patient'
         WHERE p.id IN (
           SELECT DISTINCT patient_id FROM rendez_vous WHERE clinique_id=$1 AND patient_id IS NOT NULL
           UNION
           SELECT DISTINCT patient_id FROM consultations WHERE clinique_id=$1 AND patient_id IS NOT NULL
           UNION
-          SELECT id FROM patients WHERE user_id=$1
+          SELECT id FROM patients WHERE user_id=$2
         )
-        ORDER BY u.nom, u.prenom LIMIT 500
-      `, [cid]);
+        ORDER BY prenom, nom LIMIT 500
+      `, [cid, uid]);
     } else if (role === 'admin') {
       r = await db('SELECT p.*, u.prenom, u.nom, u.telephone, u.email FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id ORDER BY u.nom LIMIT 500');
     } else {
@@ -444,8 +448,8 @@ app.post('/api/patients', auth, async (req, res) => {
   if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
   try {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
-    const r = await db('INSERT INTO patients (id,user_id,code_secret,telephone,date_naissance,sexe,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [uuid(), req.user?.id, code, telephone||null, vd(date_naissance)||null, sexe||null, groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]);
+    const r = await db('INSERT INTO patients (id,user_id,code_secret,telephone,date_naissance,sexe,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police,prenom_patient,nom_patient) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [uuid(), req.user?.id, code, telephone||null, vd(date_naissance)||null, sexe||null, groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null, prenom||null, nom||null]);
     res.status(201).json({ success:true, data:{ ...r.rows[0], prenom, nom, code_secret:code } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
