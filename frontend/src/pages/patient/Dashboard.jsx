@@ -1449,7 +1449,9 @@ function PageMedecinsPrivesV2(){
     {id:"d3",prenom:"Diallo",nom:"Seydou",specialite:"Pédiatrie",ville:"Marcory, Abidjan",tarif:15000,experience_ans:15,note_moyenne:4.9,statut:"Absent"},
     {id:"d4",prenom:"Konan",nom:"Adjoua",specialite:"Gynécologie",ville:"Yopougon, Abidjan",tarif:18000,experience_ans:10,note_moyenne:4.7,statut:"Disponible"},
   ];
-  const medecins=(data&&data.length>0?data:DEMO).filter(m=>(spec==="Toutes"||m.specialite===spec)&&(!search||`${m.prenom} ${m.nom} ${m.specialite||""} ${m.ville||""}`.toLowerCase().includes(search.toLowerCase())));
+  // Normaliser les données API : ajouter statut selon creneaux_dispo
+  const medecinsRaw = (data&&data.length>0 ? data.map(m=>({...m, statut: Number(m.creneaux_dispo||0)>0?"Disponible":"Absent"})) : DEMO);
+  const medecins = medecinsRaw.filter(m=>(spec==="Toutes"||m.specialite===spec)&&(!search||`${m.prenom} ${m.nom} ${m.specialite||""} ${m.ville||""}`.toLowerCase().includes(search.toLowerCase())));
 
   return(
     <div>
