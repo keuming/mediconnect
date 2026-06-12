@@ -458,7 +458,7 @@ function PageDossiers() {
     return !q || `${p.prenom} ${p.nom} ${p.telephone||""}`.toLowerCase().includes(q);
   });
 
-  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:(data)=>{ toast.success("✅ Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); setNewPatient(data?.data||data); }, onError:()=>toast.error("Erreur") });
+  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:(data)=>{ toast.success("✅ Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); setNewPatient(data?.data?.data||data?.data||data); }, onError:()=>toast.error("Erreur") });
   const addCons = useMutation({ mutationFn:d=>cAPI.addConsult(d), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
   const addConsRdv = useMutation({
     mutationFn: d => api.post('/consultations/depuis-rdv', d),
