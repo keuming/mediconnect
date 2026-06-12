@@ -371,6 +371,8 @@ app.get('/api/patients', auth, async (req, res) => {
           SELECT DISTINCT patient_id FROM rendez_vous WHERE clinique_id=$1 AND patient_id IS NOT NULL
           UNION
           SELECT DISTINCT patient_id FROM consultations WHERE clinique_id=$1 AND patient_id IS NOT NULL
+          UNION
+          SELECT id FROM patients WHERE user_id=$1
         )
         ORDER BY u.nom, u.prenom LIMIT 500
       `, [cid]);
