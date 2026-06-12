@@ -677,13 +677,6 @@ function DemandeModal({medecin, onClose}){
           )}
         </div>
       </div>
-      {ordoPharmacie&&(
-        <ModalEnvoiPharmacie
-          ordonnance={ordoPharmacie}
-          onClose={()=>setOrdoPharmacie(null)}
-          onSuccess={()=>setOrdoPharmacie(null)}
-        />
-      )}
     </div>
   );
 }
