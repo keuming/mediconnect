@@ -636,6 +636,18 @@ app.post('/api/consultations', auth, async (req, res) => {
     const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,motif,date_consult,diagnostic,examen_clinique,note_finale,ta,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
       [uuid(),patient_id,realCid,realMid,motif||diagnostic,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
     if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1",[rdv_id]).catch(()=>{});
+    // Auto-facture assurance
+    if (patient_id) {
+      const patAss = await db('SELECT assurance FROM patients WHERE id=$1',[patient_id]).catch(()=>({rows:[]}));
+      const ass = patAss.rows[0]?.assurance;
+      if (ass && ass !== 'Sans assurance') {
+        const pNom = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[req.user.id]).catch(()=>({rows:[]}));
+        await createFactureAssurance({ patient_id, assurance:ass, type_prestation:'consultation',
+          description:`Consultation — ${motif||diagnostic||'Acte médical'}`, montant_total:15000,
+          prestataire_id:req.user.id, prestataire_nom:pNom.rows[0]?.prenom||'Prestataire',
+          type_prestataire: req.user.role==='clinique'?'clinique':'medecin', consultation_id:r.rows[0].id });
+      }
+    }
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
@@ -1436,6 +1448,161 @@ app.patch('/api/livraison/notifications/lire', auth, async (req, res) => {
   } catch(e) { res.json({ success:true }); }
 });
 
+
+// ════════════════════════════════════════════════════════════════════
+// WORKFLOW ASSURANCE — Facturation temps réel
+// ════════════════════════════════════════════════════════════════════
+
+// Fonction helper — créer une facture assurance automatiquement
+const createFactureAssurance = async (data) => {
+  const { patient_id, assurance, type_prestation, description, montant_total,
+          prestataire_id, prestataire_nom, type_prestataire,
+          consultation_id, ordonnance_id, rdv_id } = data;
+  if (!assurance || assurance === 'Sans assurance' || !patient_id) return null;
+
+  try {
+    // Trouver l'assureur correspondant
+    const assureurRow = await db(
+      "SELECT id FROM utilisateurs WHERE role='assureur' AND (prenom ILIKE $1 OR nom ILIKE $1) LIMIT 1",
+      ['%'+assurance+'%']
+    ).catch(()=>({rows:[]}));
+    const assureur_id = assureurRow.rows[0]?.id || null;
+
+    // Récupérer infos patient
+    const patRow = await db(
+      'SELECT p.*, u.prenom||\' \'||u.nom AS nom_complet FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id WHERE p.id=$1 LIMIT 1',
+      [patient_id]
+    ).catch(()=>({rows:[]}));
+    const pat = patRow.rows[0];
+
+    const ref = 'FA-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const taux = 80; // 80% pris en charge par défaut
+    const montant_assure = Math.round(montant_total * taux / 100);
+    const ticket = montant_total - montant_assure;
+
+    const fa = await db(`
+      INSERT INTO factures_assurance
+        (reference, assureur_id, compagnie, patient_id, patient_nom, numero_police,
+         prestataire_id, prestataire_nom, type_prestataire,
+         type_prestation, description, montant_total, taux_couverture,
+         montant_assure, ticket_moderateur, statut,
+         consultation_id, ordonnance_id, rdv_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'en_attente',$16,$17,$18)
+      RETURNING *
+    `, [ref, assureur_id, assurance, patient_id, pat?.nom_complet||'Patient',
+        pat?.numero_police||null, prestataire_id, prestataire_nom, type_prestataire,
+        type_prestation, description, montant_total, taux, montant_assure, ticket,
+        consultation_id||null, ordonnance_id||null, rdv_id||null]);
+
+    return fa.rows[0];
+  } catch(e) {
+    console.error('createFactureAssurance error:', e.message);
+    return null;
+  }
+};
+
+// GET /api/assurance/factures — assureur voit ses factures temps réel
+app.get('/api/assurance/factures', auth, async (req, res) => {
+  try {
+    const { statut, prestataire, date_debut, date_fin } = req.query;
+    const uid = req.user.id;
+    let sql = `
+      SELECT fa.*,
+             p_prest.role AS prest_role
+      FROM factures_assurance fa
+      LEFT JOIN utilisateurs p_prest ON p_prest.id=fa.prestataire_id
+      WHERE (fa.assureur_id=$1 OR fa.compagnie IN (
+        SELECT prenom FROM utilisateurs WHERE id=$1
+      ))
+    `;
+    const params = [uid];
+    if (statut) { params.push(statut); sql += ` AND fa.statut=$${params.length}`; }
+    if (prestataire) { params.push('%'+prestataire+'%'); sql += ` AND fa.prestataire_nom ILIKE $${params.length}`; }
+    if (date_debut) { params.push(date_debut); sql += ` AND fa.created_at >= $${params.length}`; }
+    if (date_fin) { params.push(date_fin); sql += ` AND fa.created_at <= $${params.length}`; }
+    sql += ' ORDER BY fa.created_at DESC LIMIT 200';
+    const r = await db(sql, params);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/assurance/solde — solde global temps réel
+app.get('/api/assurance/solde', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const r = await db(`
+      SELECT
+        COUNT(*) AS nb_factures,
+        COALESCE(SUM(montant_total),0) AS total_prestations,
+        COALESCE(SUM(montant_assure),0) AS total_a_rembourser,
+        COALESCE(SUM(CASE WHEN statut='validee' THEN montant_assure ELSE 0 END),0) AS total_valide,
+        COALESCE(SUM(CASE WHEN statut='payee' THEN montant_assure ELSE 0 END),0) AS total_paye,
+        COALESCE(SUM(CASE WHEN statut='en_attente' THEN montant_assure ELSE 0 END),0) AS total_en_attente,
+        COALESCE(SUM(CASE WHEN statut='rejetee' THEN montant_assure ELSE 0 END),0) AS total_rejete,
+        COUNT(DISTINCT patient_id) AS nb_patients,
+        COUNT(DISTINCT prestataire_id) AS nb_prestataires
+      FROM factures_assurance
+      WHERE assureur_id=$1 OR compagnie IN (SELECT prenom FROM utilisateurs WHERE id=$1)
+    `, [uid]);
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.json({ success:true, data:{} }); }
+});
+
+// GET /api/assurance/solde-par-prestataire — répartition par prestataire
+app.get('/api/assurance/solde-par-prestataire', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const r = await db(`
+      SELECT
+        prestataire_nom, type_prestataire,
+        COUNT(*) AS nb_actes,
+        COALESCE(SUM(montant_total),0) AS total_prestations,
+        COALESCE(SUM(montant_assure),0) AS total_assure,
+        COALESCE(SUM(CASE WHEN statut='en_attente' THEN montant_assure ELSE 0 END),0) AS en_attente
+      FROM factures_assurance
+      WHERE assureur_id=$1 OR compagnie IN (SELECT prenom FROM utilisateurs WHERE id=$1)
+      GROUP BY prestataire_nom, type_prestataire
+      ORDER BY total_assure DESC
+    `, [uid]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// PATCH /api/assurance/factures/:id — valider ou rejeter une facture
+app.patch('/api/assurance/factures/:id', auth, async (req, res) => {
+  const { statut, motif_rejet } = req.body;
+  try {
+    const extra = statut === 'validee' ? ', validated_at=NOW()' : '';
+    const r = await db(`
+      UPDATE factures_assurance
+      SET statut=$1, motif_rejet=$2${extra}, updated_at=NOW()
+      WHERE id=$3 RETURNING *
+    `, [statut, motif_rejet||null, req.params.id]);
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/assurance/patients — patients assurés de cette compagnie
+app.get('/api/assurance/patients', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const compRow = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[uid]).catch(()=>({rows:[]}));
+    const compagnie = compRow.rows[0]?.prenom;
+    const r = await db(`
+      SELECT DISTINCT p.*, u.prenom||' '||u.nom AS nom_complet, u.telephone,
+             COUNT(fa.id) AS nb_actes,
+             COALESCE(SUM(fa.montant_assure),0) AS total_rembourse
+      FROM patients p
+      LEFT JOIN utilisateurs u ON u.id=p.user_id
+      LEFT JOIN factures_assurance fa ON fa.patient_id=p.id
+      WHERE p.assurance=$1 OR fa.compagnie=$1
+      GROUP BY p.id, u.prenom, u.nom, u.telephone
+      ORDER BY total_rembourse DESC LIMIT 100
+    `, [compagnie]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
 // ── PHARMACIE commandes (ancienne route — conservée pour compatibilité) ───
 app.get('/api/pharmacie/commandes-legacy', auth, async (req, res) => {
   try {
@@ -1821,6 +1988,19 @@ app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
       ).catch(()=>{});
     }
     if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1", [rdv_id]).catch(()=>{});
+    // Auto-facture assurance depuis RDV
+    if (patient_id) {
+      const patAss2 = await db('SELECT assurance FROM patients WHERE id=$1',[patient_id]).catch(()=>({rows:[]}));
+      const ass2 = patAss2.rows[0]?.assurance;
+      if (ass2 && ass2 !== 'Sans assurance') {
+        const pNom2 = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[req.user.id]).catch(()=>({rows:[]}));
+        await createFactureAssurance({ patient_id, assurance:ass2, type_prestation:'consultation',
+          description:`Consultation — ${motif||diagnostic||'Acte médical'}`, montant_total:15000,
+          prestataire_id:req.user.id, prestataire_nom:pNom2.rows[0]?.prenom||'Prestataire',
+          type_prestataire: req.user.role==='clinique'?'clinique':'medecin',
+          consultation_id:r2.rows[0]?.id, rdv_id:rdv_id });
+      }
+    }
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });

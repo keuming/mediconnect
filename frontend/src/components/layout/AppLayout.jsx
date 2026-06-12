@@ -81,6 +81,7 @@ const NAV = {
   // ── ASSUREUR — mis à jour v3.1.0 ─────────────────────────────
   assureur: [
     { path:'/assureur',              icon:'📊', label:'Dashboard' },
+    { path:'/assureur/facturation',  icon:'💰', label:'Facturation',      badge:'LIVE' },
     { path:'/assureur/offres',       icon:'📋', label:'Mes offres',       badge:'NEW' },
     { path:'/assureur/tiers-payant', icon:'🏥', label:'Tiers-Payant',     badge:'NEW' },
     { path:'/assureur/souscriptions',icon:'👥', label:'Souscriptions',    badge:'NEW' },

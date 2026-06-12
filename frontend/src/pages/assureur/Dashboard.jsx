@@ -25,10 +25,16 @@ const A = {
   mesOffres:      ()         => api.get('/assurance/mes-offres'),
   createOffre:    data       => api.post('/assurance/offres', data),
   updateOffre:    (id,data)  => api.patch(`/assurance/offres/${id}`, data),
-  souscriptions:  ()         => api.get('/assurance/mes-souscriptions'),  // admin view via assureur
+  souscriptions:  ()         => api.get('/assurance/mes-souscriptions'),
   dossiersTp:     (s)        => api.get(`/assurance/dossiers-tp${s?`?statut=${s}`:''}`),
   traiterTp:      (id,data)  => api.patch(`/assurance/dossiers-tp/${id}`, data),
   validerSouscr:  (id,data)  => api.patch(`/assurance/souscriptions/${id}`, data),
+  // Nouvelles routes facturation temps réel
+  factures:       (params)   => api.get(`/assurance/factures${params||''}`),
+  solde:          ()         => api.get('/assurance/solde'),
+  soldeParPrest:  ()         => api.get('/assurance/solde-par-prestataire'),
+  patients:       ()         => api.get('/assurance/patients'),
+  traiterFa:      (id,data)  => api.patch(`/assurance/factures/${id}`, data),
 };
 
 // ── Composants UI ────────────────────────────────────────────────
@@ -650,6 +656,201 @@ function PageStats() {
 // ═══════════════════════════════════════════════════════════════════
 // EXPORT
 // ═══════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
+// PAGE FACTURATION TEMPS RÉEL
+// ════════════════════════════════════════════════════════════════════
+function PageFacturationTempsReel() {
+  const qc = useQueryClient();
+  const [filtreStatut, setFiltreStatut] = useState('');
+  const [filtrePrestataire, setFiltrePrestataire] = useState('');
+
+  const { data:soldeData, refetch:refetchSolde } = useQuery({
+    queryKey:['ass-solde'], queryFn:()=>A.solde().then(r=>r.data||{}),
+    refetchInterval: 30000, staleTime:0,
+  });
+  const solde = soldeData || {};
+
+  const { data:prestData } = useQuery({
+    queryKey:['ass-prest'], queryFn:()=>A.soldeParPrest().then(r=>r.data||[]),
+    refetchInterval: 30000, staleTime:0,
+  });
+  const prestataires = prestData || [];
+
+  const params = [filtreStatut && `statut=${filtreStatut}`, filtrePrestataire && `prestataire=${filtrePrestataire}`]
+    .filter(Boolean).join('&');
+  const { data:facturesData, isLoading, refetch } = useQuery({
+    queryKey:['ass-factures', filtreStatut, filtrePrestataire],
+    queryFn:()=>A.factures(params?`?${params}`:'').then(r=>r.data||[]),
+    refetchInterval: 15000, staleTime:0,
+  });
+  const factures = facturesData || [];
+
+  const traiterMut = useMutation({
+    mutationFn:({id,statut,motif})=>A.traiterFa(id,{statut,motif_rejet:motif}),
+    onSuccess:()=>{ toast.success('Facture mise à jour'); qc.invalidateQueries(['ass-factures']); qc.invalidateQueries(['ass-solde']); },
+    onError:()=>toast.error('Erreur'),
+  });
+
+  const TYPE_COLOR = { clinique:C.green, pharmacie:C.blue, laboratoire:C.purple, imagerie:C.amber, medecin:C.teal };
+  const STATUT_CFG = {
+    en_attente: {label:'En attente', color:C.amber},
+    validee:    {label:'Validée',    color:C.green},
+    rejetee:    {label:'Rejetée',    color:C.red},
+    payee:      {label:'Payée',      color:C.teal},
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div>
+          <h2 style={{fontSize:18,fontWeight:800,color:C.text,margin:0}}>📊 Facturation temps réel</h2>
+          <div style={{fontSize:12,color:C.muted,marginTop:3}}>Mise à jour automatique toutes les 15s</div>
+        </div>
+        <button onClick={()=>{refetch();refetchSolde();}} style={{padding:'7px 14px',borderRadius:9,
+          background:C.hover,border:`1.5px solid ${C.border}`,color:C.muted,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>
+          🔄 Actualiser
+        </button>
+      </div>
+
+      {/* Solde général */}
+      <div style={{background:`linear-gradient(135deg,${C.green},${C.teal})`,borderRadius:16,padding:24,marginBottom:20,
+        boxShadow:'0 8px 32px rgba(10,143,88,.25)'}}>
+        <div style={{fontSize:12,color:'rgba(255,255,255,.7)',marginBottom:4}}>SOLDE GÉNÉRAL — ENGAGEMENTS ASSURANCE</div>
+        <div style={{fontSize:36,fontWeight:900,color:'#fff',marginBottom:16}}>
+          {fmt(Number(solde.total_a_rembourser||0))} FCFA
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
+          {[
+            {label:'En attente',     value:solde.total_en_attente||0, color:'rgba(255,255,255,.9)'},
+            {label:'Validé',         value:solde.total_valide||0,     color:'#A7F3D0'},
+            {label:'Payé',           value:solde.total_paye||0,       color:'#6EE7B7'},
+            {label:'Nb. factures',   value:solde.nb_factures||0,      color:'rgba(255,255,255,.8)', isnb:true},
+          ].map(s=>(
+            <div key={s.label} style={{background:'rgba(255,255,255,.1)',borderRadius:10,padding:'12px 14px'}}>
+              <div style={{fontSize:10,color:'rgba(255,255,255,.6)',textTransform:'uppercase',marginBottom:4}}>{s.label}</div>
+              <div style={{fontSize:18,fontWeight:800,color:s.color}}>
+                {s.isnb ? s.value : `${fmt(Number(s.value))} F`}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Répartition par prestataire */}
+      {prestataires.length>0&&(
+        <div style={{marginBottom:20}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.muted,textTransform:'uppercase',marginBottom:10}}>
+            Répartition par prestataire
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+            {prestataires.map((p,i)=>(
+              <div key={i} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:12,padding:14}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                  <span style={{fontSize:16}}>{p.type_prestataire==='clinique'?'🏥':p.type_prestataire==='pharmacie'?'💊':p.type_prestataire==='laboratoire'?'🔬':'🩻'}</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:C.text}}>{p.prestataire_nom}</div>
+                    <div style={{fontSize:10,color:C.dim}}>{p.type_prestataire}</div>
+                  </div>
+                </div>
+                <div style={{fontSize:16,fontWeight:800,color:TYPE_COLOR[p.type_prestataire]||C.green}}>
+                  {fmt(Number(p.total_assure))} F
+                </div>
+                <div style={{fontSize:11,color:C.muted}}>{p.nb_actes} acte(s)</div>
+                {Number(p.en_attente)>0&&(
+                  <div style={{fontSize:10,color:C.amber,marginTop:4}}>⏳ {fmt(Number(p.en_attente))} F en attente</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filtres */}
+      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+        <select value={filtreStatut} onChange={e=>setFiltreStatut(e.target.value)}
+          style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:'8px 12px',
+            color:C.text,fontSize:13,outline:'none',fontFamily:'inherit',cursor:'pointer'}}>
+          <option value=''>Tous les statuts</option>
+          <option value='en_attente'>En attente</option>
+          <option value='validee'>Validées</option>
+          <option value='rejetee'>Rejetées</option>
+          <option value='payee'>Payées</option>
+        </select>
+        <input value={filtrePrestataire} onChange={e=>setFiltrePrestataire(e.target.value)}
+          placeholder='Filtrer par prestataire…'
+          style={{flex:1,minWidth:180,background:C.input,border:`1px solid ${C.border}`,borderRadius:9,
+            padding:'8px 12px',color:C.text,fontSize:13,outline:'none',fontFamily:'inherit'}}/>
+      </div>
+
+      {/* Tableau factures */}
+      {isLoading&&<div style={{textAlign:'center',padding:32,color:C.dim}}>⏳ Chargement…</div>}
+      {!isLoading&&factures.length===0&&(
+        <div style={{textAlign:'center',padding:'48px 20px'}}>
+          <div style={{fontSize:40,marginBottom:8}}>📋</div>
+          <div style={{color:C.muted}}>Aucune facture</div>
+        </div>
+      )}
+      {factures.map(fa=>{
+        const st = STATUT_CFG[fa.statut]||STATUT_CFG.en_attente;
+        return(
+          <div key={fa.id} style={{background:C.input,border:`1.5px solid ${C.border}`,
+            borderRadius:12,padding:16,marginBottom:10}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:800,color:C.text}}>{fa.reference}</div>
+                <div style={{fontSize:11,color:C.muted}}>
+                  {fmtDate(fa.created_at)} · {fa.type_prestation}
+                </div>
+              </div>
+              <span style={{background:st.color+'20',color:st.color,fontSize:11,fontWeight:700,
+                padding:'4px 12px',borderRadius:20}}>{st.label}</span>
+            </div>
+
+            {/* Détails */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:12}}>
+              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Prestataire</div>
+                <div style={{fontSize:12,color:TYPE_COLOR[fa.type_prestataire]||C.green,fontWeight:700}}>
+                  {fa.type_prestataire==='clinique'?'🏥':fa.type_prestataire==='pharmacie'?'💊':'🔬'} {fa.prestataire_nom}
+                </div>
+              </div>
+              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Patient</div>
+                <div style={{fontSize:12,color:C.text}}>{fa.patient_nom}</div>
+              </div>
+              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Prestation</div>
+                <div style={{fontSize:11,color:C.muted}}>{fa.description?.slice(0,40)}</div>
+              </div>
+              <div style={{background:C.hover,borderRadius:8,padding:'8px 10px'}}>
+                <div style={{fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',marginBottom:2}}>Montant assureur</div>
+                <div style={{fontSize:14,fontWeight:800,color:C.green}}>{fmt(Number(fa.montant_assure||0))} F</div>
+                <div style={{fontSize:10,color:C.dim}}>TM: {fmt(Number(fa.ticket_moderateur||0))} F</div>
+              </div>
+            </div>
+
+            {/* Actions si en attente */}
+            {fa.statut==='en_attente'&&(
+              <div style={{display:'flex',gap:8}}>
+                <button onClick={()=>traiterMut.mutate({id:fa.id,statut:'validee'})}
+                  style={{flex:2,padding:'8px',borderRadius:8,background:`rgba(10,143,88,.15)`,
+                    border:`1px solid ${C.green}`,color:C.green,cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                  ✅ Valider — {fmt(Number(fa.montant_assure||0))} F
+                </button>
+                <button onClick={()=>traiterMut.mutate({id:fa.id,statut:'rejetee',motif:'Acte non couvert'})}
+                  style={{flex:1,padding:'8px',borderRadius:8,background:`rgba(225,29,72,.08)`,
+                    border:`1px solid ${C.red}`,color:C.red,cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'inherit'}}>
+                  ✕ Rejeter
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   return (
     <Routes>
@@ -658,6 +859,7 @@ export default function Dashboard() {
       <Route path="tiers-payant" element={<PageTiersPayant/>}/>
       <Route path="souscriptions" element={<PageSouscriptions/>}/>
       <Route path="stats"        element={<PageStats/>}/>
+      <Route path="facturation"  element={<PageFacturationTempsReel/>}/>
       <Route path="*"            element={<PageHome/>}/>
     </Routes>
   );
