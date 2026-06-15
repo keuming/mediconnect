@@ -219,6 +219,95 @@ app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==
 app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
 
 // ── HEALTH ────────────────────────────────────────────────────────
+
+// ════════════════════════════════════════════════════════════════════
+// CHATBOT VITRINE — Réponses par mots-clés (FAQ MediConnect Africa)
+// ════════════════════════════════════════════════════════════════════
+const CHATBOT_KB = [
+  { kw:['rendez-vous','rdv','prendre rdv','consultation médecin','réserver'],
+    a:"Pour prendre un rendez-vous médical : connectez-vous à votre compte patient sur MediConnect Africa, accédez à la section « Rendez-vous », sélectionnez un médecin ou une clinique, choisissez une date et une heure disponibles, puis confirmez. Vous recevrez une confirmation immédiate." },
+
+  { kw:['médicament','pharmacie','commander médicament','ordonnance pharmacie'],
+    a:"Pour commander des médicaments : consultez un médecin et obtenez votre ordonnance numérique, accédez à la section « Pharmacies », choisissez une pharmacie partenaire, confirmez votre commande, puis optez pour la livraison à domicile ou le retrait. Le paiement se fait via Wave, Orange Money ou MTN MoMo." },
+
+  { kw:['mediconnect card','carte santé','carte numérique','carte médicale'],
+    a:"La MediConnect Card est votre carte de santé numérique. Elle vous permet de stocker vos informations médicales essentielles, de partager votre profil avec les prestataires, d'accéder à vos antécédents en temps réel, et de gérer un compte famille avec jusqu'à 10 membres." },
+
+  { kw:['compte famille','famille','membre famille','ajouter membre'],
+    a:"Pour gérer votre compte famille : allez dans Paramètres → Compte Famille, cliquez sur « Ajouter un membre », saisissez les informations (nom, prénom, date de naissance) puis définissez les permissions d'accès. Vous pouvez gérer jusqu'à 10 membres (conjoint, enfants, parents)." },
+
+  { kw:['mot de passe','réinitialiser','oublié','mdp'],
+    a:"Pour réinitialiser votre mot de passe : allez sur la page de connexion, cliquez sur « Mot de passe oublié ? », saisissez votre email ou numéro de téléphone, puis entrez le code de vérification reçu pour créer un nouveau mot de passe." },
+
+  { kw:['sécurité','données','rgpd','confidentialité','sécurisé'],
+    a:"Vos données sont protégées par chiffrement de bout en bout (AES-256), conformité RGPD, authentification à deux facteurs et serveurs certifiés ISO 27001. Aucune donnée n'est partagée sans votre consentement." },
+
+  { kw:['devenir prestataire','inscription prestataire','rejoindre','partenaire'],
+    a:"Pour devenir prestataire : allez sur la page « Devenir BD », sélectionnez votre type de profil (clinique, médecin, pharmacie, laboratoire, etc.), remplissez le formulaire et téléchargez vos documents de vérification. La validation prend 24 à 48h." },
+
+  { kw:['tarif','prix','abonnement','coût','combien'],
+    a:"Tarifs prestataires : Médecin Conseil 5 000 FCFA/mois, Clinique/Hôpital 10 000 FCFA/mois, Laboratoire 5 000 FCFA/mois, Cabinet Optique 5 000 FCFA/mois, Assureur 50 000 FCFA/mois, Pharmacie 10 000 FCFA/mois. Pour les patients, l'abonnement standard est de 2 500 FCFA/30j, 6 500 FCFA/90j ou 20 000 FCFA/an." },
+
+  { kw:['agenda','horaire','créneau','planning'],
+    a:"Pour gérer votre agenda : accédez à votre tableau de bord, allez dans « Agenda », définissez vos horaires de travail et créneaux disponibles, puis gérez vos rendez-vous confirmés et annulations." },
+
+  { kw:['dossier patient','historique médical','patients'],
+    a:"Pour accéder aux dossiers patients : connectez-vous à votre compte prestataire, allez dans « Patients », recherchez le patient par nom ou code MediConnect, puis consultez son historique médical complet et ajoutez vos notes/prescriptions." },
+
+  { kw:['facturation','facture','paiement abonnement'],
+    a:"La facturation est automatisée : les frais d'abonnement sont prélevés mensuellement, vous recevez des factures détaillées et pouvez les télécharger à tout moment. Paiements via Wave, Orange Money ou MTN MoMo." },
+
+  { kw:['catalogue','stock','médicaments disponibles'],
+    a:"Pour gérer votre catalogue pharmacie : accédez à votre tableau de bord, section « Catalogue », ajoutez ou modifiez vos médicaments, définissez les prix en FCFA et gérez vos stocks et alertes de rupture." },
+
+  { kw:['livraison','livreur','livrer'],
+    a:"Pour configurer les livraisons : allez dans « Livraisons », définissez votre zone de couverture et vos tarifs, puis suivez les livraisons en temps réel. Les frais de livraison standard sont de 2 000 FCFA (1 500 pour le livreur, 500 pour MediConnect)." },
+
+  { kw:['pays','couverture','où','zone','afrique'],
+    a:"MediConnect Africa est disponible dans 14 pays de la zone UEMOA/CEMAC : Côte d'Ivoire, Sénégal, Burkina Faso, Mali, Togo, Bénin, Guinée, Niger, Cameroun, Gabon, Congo, Tchad, République Centrafricaine et Guinée Équatoriale." },
+
+  { kw:['assurance','assureur','remboursement','mutuelle'],
+    a:"MediConnect Africa intègre un système de tiers-payant avec les compagnies d'assurance partenaires (NSIA, Allianz CI, AXA CI, CNAM/CMU, Saham). Les prestations sont automatiquement facturées à votre assureur en temps réel selon votre taux de couverture." },
+
+  { kw:['médecin indépendant','médecin privé','suivi médical'],
+    a:"Vous pouvez choisir un médecin indépendant comme médecin de famille pour un suivi personnalisé. Recherchez par spécialité, consultez les disponibilités, et prenez rendez-vous directement depuis votre espace patient." },
+
+  { kw:['rôle','espace','clinique','laboratoire','imagerie','optique','ministère'],
+    a:"MediConnect Africa propose 12 espaces dédiés : Patient, Médecin (clinique/résident), Médecin indépendant, Clinique, Pharmacie, Livreur, Assureur, Imagerie médicale, Laboratoire, Optique, Ministère de la Santé et Administration." },
+
+  { kw:['contact','support','aide','assistance','téléphone','email'],
+    a:"Pour toute question, contactez notre support via la page FAQ ou créez un compte sur la plateforme pour accéder au support intégré 24/7." },
+
+  { kw:['bonjour','salut','hello','bonsoir'],
+    a:"Bonjour ! 👋 Je suis l'assistant MediConnect Africa. Je peux vous renseigner sur les rendez-vous, les pharmacies, les tarifs, l'assurance, les livraisons et bien plus. Que souhaitez-vous savoir ?" },
+
+  { kw:['merci'],
+    a:"Avec plaisir ! N'hésitez pas si vous avez d'autres questions sur MediConnect Africa. 🌿" },
+];
+
+const CHATBOT_DEFAULT = "Je n'ai pas toute l'information sur ce sujet précis, mais je peux vous renseigner sur : les rendez-vous médicaux, les commandes de médicaments, la MediConnect Card, les tarifs et abonnements, l'assurance, les livraisons, ou comment devenir prestataire. Que souhaitez-vous savoir ?";
+
+app.post('/api/chatbot/send', async (req, res) => {
+  try {
+    const message = (req.body?.message || '').toLowerCase().trim();
+    if (!message) return res.json({ success:false, message:'Message vide' });
+
+    let best = null, bestScore = 0;
+    for (const entry of CHATBOT_KB) {
+      for (const kw of entry.kw) {
+        if (message.includes(kw.toLowerCase())) {
+          const score = kw.length;
+          if (score > bestScore) { bestScore = score; best = entry; }
+        }
+      }
+    }
+    const reply = best ? best.a : CHATBOT_DEFAULT;
+    res.json({ success:true, message:reply });
+  } catch(e) {
+    res.json({ success:false, message:"Désolé, une erreur s'est produite. Veuillez réessayer." });
+  }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db('SELECT 1');
