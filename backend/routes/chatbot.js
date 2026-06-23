@@ -67,7 +67,7 @@ const KB_FAQ = [
     reponse: "Contact MediConnect Africa :\nEmail : keumingo@gmail.com\nPlateforme : manager.mediconnect4africa.cloud\nCDC Compagnie des Services Numeriques\nRCCM : CI-ABJ-03-2022-B12-04961"
   },
   {
-    mots_cles: ["facturation automatique","fin de mois","plusieurs assurances","avant le 5","avant le 7","generer facture","comptabilite"],
+    mots_cles: ["facturation automatique","fin de mois","plusieurs assurances","avant le 5","avant le 7","generer facture","comptabilite","facturation assurance","comment fonctionne facturation"],
     reponse: "MediConnect Africa resout un probleme majeur des cliniques et pharmacies : la facturation multi-assurances en fin de mois.\n\nSans MediConnect :\n- Cliniques et pharmacies travaillent avec plusieurs assurances simultanement\n- Rediger manuellement une facture par assurance est epuisant et chronophage\n- Les assurances imposent des delais stricts : facture avant le 5 ou 7 du mois\n- Un retard = paiement reporte au mois suivant\n\nAvec MediConnect :\n- Chaque acte medical genere automatiquement sa ligne de facturation\n- Fin de mois : selectionnez l'assurance, la facture est prete en 1 clic\n- Comptabilite integree et mise a jour en temps reel\n- Zero saisie manuelle, zero retard, zero stress"
   },
   {
@@ -75,7 +75,7 @@ const KB_FAQ = [
     reponse: "MediConnect Africa est un logiciel complet de gestion pour chaque acteur :\n\nClinic : planning medecins, dossiers patients, caisse, facturation, statistiques\nPharmacie : ordonnances electroniques, stock, commandes, livraisons, facturation\nAssurance : suivi prestations temps reel, tiers-payant, remboursements, factures auto\n\nLes 3 systemes sont interconnectes et communiquent en temps reel."
   },
   {
-    mots_cles: ["specialite","orl","trouver medecin","info clinique","clinique man","clinique ville"],
+    mots_cles: ["specialite","orl","trouver medecin","info clinique","clinique man","clinique ville","connaitre specialite","disponibles","propose","quelle clinique"],
     reponse: "Avant MediConnect, impossible de savoir depuis chez soi si une clinique propose l'ORL, la cardiologie ou la pediatrie.\n\nAvec MediConnect Africa :\n- Chaque clinique publie ses specialites, ses medecins et leurs horaires\n- Le patient consulte depuis son telephone avant de se deplacer\n- Il sait exactement ce qu'il va trouver\n- Il prend RDV avec le medecin de son choix via l'application\n- A la clinique, il scanne le QR Code a l'accueil\n- Son rang dans la file d'attente s'affiche en temps reel sur son ecran\n- Quand son tour arrive, la secretaire l'appelle"
   },
   {
@@ -87,7 +87,7 @@ const KB_FAQ = [
     reponse: "MediConnect Africa digitalise entierement le dossier medical :\n\n- Le medecin saisit les donnees de consultation dans son logiciel\n- Le dossier est accessible depuis n'importe quelle ville ou pays\n- Si le patient voyage (ex : de Man a Abidjan), le nouveau medecin peut consulter le dossier complet avec le code secret du patient\n- Contenu : diagnostics, ordonnances, constantes vitales, antecedents, allergies\n\nLe code secret garantit que seul le patient decide qui accede a ses donnees."
   },
   {
-    mots_cles: ["ordonnance electronique","pharmacie proche","mobilepay","wallet","livreur medicament","algo pharmacie","lien paiement"],
+    mots_cles: ["ordonnance electronique","pharmacie proche","mobilepay","wallet","livreur medicament","algo pharmacie","lien paiement","livrer","domicile","recevoir medicament","commander medicament"],
     reponse: "MediConnect couvre tout le parcours de la prescription a la livraison :\n\n1. Le medecin redige l'ordonnance electronique dans son logiciel\n2. L'algorithme identifie la pharmacie partenaire la plus proche\n3. La pharmacie recoit l'ordonnance et prepare les medicaments\n4. Elle envoie une facture avec lien de paiement au patient\n5. Le patient paie via MobilePay (Wave, Orange Money, MTN MoMo...)\n6. Le livreur MediConnect est alerte automatiquement\n7. Il livre les medicaments a domicile\n\nDe la consultation a la livraison : tout dans un seul ecosysteme, sans papier."
   },
   {
