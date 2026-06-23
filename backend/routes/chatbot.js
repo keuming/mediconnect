@@ -107,6 +107,23 @@ const KB_FAQ = [
     mots_cles: ["moniteur assurance","suivi temps reel assurance","etat factures","milliers cliniques","milliers factures","montant assurance","total pharmacie","total clinique","dashboard assureur","combien payer"],
     reponse: "Les compagnies d'assurance travaillent avec des milliers de cliniques, pharmacies, laboratoires et centres d'imagerie. Sans MediConnect, elles doivent attendre la fin du mois pour recevoir toutes les factures et savoir combien elles vont payer.\n\nAvec MediConnect Africa, l'assureur dispose d'un tableau de bord en temps reel :\n\n- A chaque consultation ou acte medical, le montant se met a jour automatiquement\n- En fin de journee, l'assureur sait exactement ce que chaque pharmacie a genere\n- Il voit le total par pharmacie avec le detail de chaque transaction\n- Il voit le total par clinique avec le detail par clinique\n- Idem pour les laboratoires et les centres d'imagerie medicale\n\nPlus besoin d'attendre la fin du mois pour connaitre son exposition financiere. L'assureur pilote ses remboursements en temps reel, detecte les anomalies immediatement et optimise sa tresorerie."
   }
+,
+  {
+    mots_cles: ["pharmacie facture automatique","facture pharmacie assurance","facture en un clic","envoyer facture assurance","pharmacie assurance paiement"],
+    reponse: "Pour les pharmacies, le fonctionnement est identique aux cliniques :\n\n1. La pharmacie sert les medicaments couverts par les assurances tout au long du mois\n2. Chaque delivrance est enregistree automatiquement dans le systeme\n3. En fin de mois : la facture globale par compagnie d'assurance est generee automatiquement\n4. En un seul clic, la facture est envoyee directement a la compagnie d'assurance\n5. La compagnie recoit la facture et procede au paiement\n\nAvec le wallet multicanal MobilePay integre a MediConnect, les assurances paient directement les cliniques et pharmacies via la plateforme. Plus besoin de cheques, de virements manuels ou de relances."
+  },
+  {
+    mots_cles: ["wallet multicanal","mobilepay","paiement assurance","payer clinique","payer pharmacie","plateforme paiement","se faire payer","paiement prestation"],
+    reponse: "MediConnect Africa integre un wallet multicanal (MobilePay) qui centralise tous les paiements de l'ecosysteme sante :\n\nCe que le wallet permet :\n- Les assurances paient directement les cliniques et pharmacies via la plateforme\n- Les patients paient leurs prestations en clinique (consultation, actes medicaux)\n- Les patients paient leurs medicaments en pharmacie\n- Paiement via Wave, Orange Money, MTN MoMo, Moov Money ou especes\n\nC'est un ecosysteme financier complet qui connecte cliniques, pharmacies, assurances et patients dans un seul flux de paiement fluide et securise."
+  },
+  {
+    mots_cles: ["livraison ordonnance","envoyer ordonnance","devis pharmacie","lien paiement pharmacie","se faire livrer","patient ordonnance domicile","nouveaute livraison","ne se fatigue plus"],
+    reponse: "La livraison de medicaments a domicile est une nouveaute majeure de MediConnect Africa :\n\nAvant MediConnect : le patient devait se deplacer a la pharmacie avec son ordonnance papier, faire la queue, attendre.\n\nAvec MediConnect :\n1. Le patient envoie son ordonnance electronique a la pharmacie via l'application\n2. La pharmacie prepare les medicaments et envoie un devis au patient\n3. Le devis est accompagne d'un lien de paiement direct\n4. Le patient paie en ligne (Wave, Orange Money, MTN MoMo...)\n5. Le livreur MediConnect est alerte automatiquement\n6. Les medicaments sont livres a domicile\n\nLe patient ne se fatigue plus. De chez lui, il gere toute sa sante numeriquement."
+  },
+  {
+    mots_cles: ["ecosysteme complet","mise en relation","clinique pharmacie assurance patient","ensemble","comment ca marche","fonctionnement global","tout en un"],
+    reponse: "MediConnect Africa est un ecosysteme complet qui met en relation tous les acteurs de la sante :\n\nClinic : gestion complete, facturation automatique, visibilite specialites\nPharmacie : ordonnances electroniques, stock, livraison, facturation auto assurances\nAssurance : dashboard temps reel, factures automatiques, paiement via wallet\nPatient : RDV en ligne, dossier medical digitalise, livraison medicaments, paiement mobile\nLivreur : commandes automatiques, livraison domicile, gains par course\n\nLe wallet multicanal MobilePay connecte financierement tous ces acteurs :\n- Assurances paient cliniques et pharmacies via la plateforme\n- Patients paient prestations et medicaments via mobile money\n\nC'est le premier ecosysteme de sante numerique integre d'Afrique de l'Ouest et Centrale."
+  }
 ];
 
 function findBestAnswer(message) {
