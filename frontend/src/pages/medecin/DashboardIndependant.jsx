@@ -17,17 +17,19 @@ const JOURS_FR=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
 const TARIF_ABONNEMENT = 500; // FCFA/mois (suivi médical privé)
 
 const mAPI={
-  stats:      ()=>api.get("/planning/stats"),
-  dispos:     p =>api.get("/planning/disponibilites",{params:p}),
+  stats:      ()=>api.get("/planning/stats").then(r=>({data:{data:r.data||{}}})),
+  dispos:     p =>api.get("/planning/disponibilites",{params:p}).then(r=>({data:{data:r.data||[]}})),
   addDispo:   d =>api.post("/planning/disponibilites",d),
   delDispo:   id=>api.delete(`/planning/disponibilites/${id}`),
-  patients:   ()=>api.get("/planning/mes-patients"),
-  rdvs:       p =>api.get("/planning/rdvs",{params:p}),
-  consultations:()=>api.get("/consultations"),
+  patients:   ()=>api.get("/planning/mes-patients").then(r=>({data:{data:r.data||[]}})),
+  rdvs:       p =>api.get("/planning/rdvs",{params:p}).then(r=>({data:{data:r.data||[]}})),
+  consultations:()=>api.get("/consultations").then(r=>({data:{data:r.data||[]}})),
   addConsult: d =>api.post("/consultations/depuis-rdv",d),
   addOrd:     d =>api.post("/ordonnances",d),
   updRdv:     (id,d)=>api.put(`/rendez-vous/${id}`,d),
-  factures:   ()=>api.get("/factures"),
+  confirmerRdv:(id)=>api.patch(`/rendez-vous/${id}/confirmer`,{}),
+  statutRdv:  (id,s)=>api.patch(`/rendez-vous/${id}/statut`,{statut:s}),
+  factures:   ()=>api.get("/factures").then(r=>({data:{data:r.data||[]}})),
   addFacture: d =>api.post("/factures",d),
   updFacture: (id,d)=>api.put(`/factures/${id}`,d),
   addPatient: d =>api.post("/patients",d),
@@ -278,13 +280,16 @@ function PagePlanning(){
   const {data:rdvData}=useQuery({queryKey:["mi-rdvs-m"],queryFn:()=>mAPI.rdvs({}).then(r=>r.data.data||[])});
   const dispos=dispoData||[]; const rdvs=rdvData||[];
   const dayDispos=dispos.filter(d=>d.date===selectedDay);
-  const dayRdvs=rdvs.filter(r=>r.date_rdv===selectedDay&&r.statut!=="annule");
+  const dayRdvs=rdvs.filter(r=>r.date_rdv?.slice(0,10)===selectedDay&&r.statut!=="annule");
 
   const addDispoMut=useMutation({mutationFn:d=>mAPI.addDispo(d),onSuccess:()=>{toast.success("✅ Créneau publié sur rdv.mediconnect4africa.cloud !");qc.invalidateQueries(["mi-dispos"]);setShowAddDispo(false);},onError:e=>toast.error(e?.response?.data?.message||"Erreur")});
   const delDispoMut=useMutation({mutationFn:id=>mAPI.delDispo(id),onSuccess:()=>{toast.success("Créneau supprimé");qc.invalidateQueries(["mi-dispos"]);}});
   const addConsMut=useMutation({mutationFn:d=>mAPI.addConsult(d),onSuccess:()=>{toast.success("✅ Consultation enregistrée !");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-stats"]);setShowConsult(false);setSelectedRdv(null);},onError:()=>toast.error("Erreur")});
-  const updRdvMut=useMutation({mutationFn:({id,...d})=>mAPI.updRdv(id,d),onSuccess:()=>{toast.success("RDV mis à jour");qc.invalidateQueries(["mi-rdvs-m"]);}});
+  const updRdvMut=useMutation({mutationFn:({id,...d})=>mAPI.updRdv(id,d),onSuccess:()=>{toast.success("RDV mis à jour");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-all-rdvs-page"]);}});
+  const confirmerMut=useMutation({mutationFn:id=>mAPI.confirmerRdv(id),onSuccess:()=>{toast.success("✅ RDV confirmé !");qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-all-rdvs-page"]);},onError:()=>toast.error("Erreur confirmation")});
   const addRdvMut=useMutation({mutationFn:d=>api.post("/rendez-vous",d),onSuccess:()=>{toast.success("RDV ajouté !");qc.invalidateQueries(["mi-rdvs-m"]);setShowAddRdv(false);},onError:()=>toast.error("Erreur")});
+  const [showWorkflow, setShowWorkflow] = useState(false);
+  const [workflowRdv, setWorkflowRdv] = useState(null);
 
   const navigMois=delta=>{let nm=mois+delta,na=annee;if(nm>12){nm=1;na++;}if(nm<1){nm=12;na--;}setMois(nm);setAnnee(na);};
   const HEURES=["07:00","08:00","09:00","10:00","11:00","14:00","15:00","16:00","17:00","18:00"];
@@ -292,6 +297,13 @@ function PagePlanning(){
 
   return(
     <div>
+      <ConsultationWorkflow
+        open={showWorkflow}
+        onClose={()=>{setShowWorkflow(false);setWorkflowRdv(null);}}
+        rdv={workflowRdv}
+        role="medecin_independant"
+        onSuccess={()=>{qc.invalidateQueries(["mi-rdvs-m"]);qc.invalidateQueries(["mi-stats"]);qc.invalidateQueries(["mi-all-rdvs-page"]);setShowWorkflow(false);setWorkflowRdv(null);}}
+      />
       <PageHeader title="📅 Mon planning de disponibilités" subtitle={`${dispos.filter(d=>d.statut==="disponible").length} créneaux visibles sur rdv.mediconnect4africa.cloud`}
         actions={<><Btn onClick={()=>setShowAddDispo(true)}>+ Créneau dispo</Btn><Btn variant="outline" onClick={()=>setShowAddRdv(true)}>+ RDV direct</Btn></>}/>
 
@@ -362,8 +374,8 @@ function PagePlanning(){
                       <Badge color={{confirme:"green",en_attente:"amber",en_cours:"teal",termine:"gray"}[r.statut]||"gray"}>{r.statut}</Badge>
                     </div>
                     <div style={{display:"flex",gap:8}}>
-                      {r.statut==="en_attente"&&<Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>updRdvMut.mutate({id:r.id,statut:"confirme"})}>✓ Confirmer</Btn>}
-                      {["confirme","en_attente","en_cours"].includes(r.statut)&&<Btn variant="purple" style={{flex:2,padding:"6px",fontSize:11}} onClick={()=>{setSelectedRdv(r);setShowConsult(true);}}>🩺 Consulter + Facturer</Btn>}
+                      {r.statut==="en_attente"&&<Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>confirmerMut.mutate(r.id)}>✓ Confirmer</Btn>}
+                      {["confirme","en_attente","en_cours"].includes(r.statut)&&<Btn variant="purple" style={{flex:2,padding:"6px",fontSize:11}} onClick={()=>{setWorkflowRdv(r);setShowWorkflow(true);}}>🩺 Consulter + Facturer</Btn>}
                     </div>
                   </div>
                 ))}
@@ -823,6 +835,7 @@ export default function Dashboard(){
     <Routes>
       <Route index                element={<PageHome/>}/>
       <Route path="planning"      element={<PagePlanning/>}/>
+      <Route path="rdvs"          element={<PageRdvPatients/>}/>
       <Route path="patients"      element={<PagePatients/>}/>
       <Route path="facturation"   element={<PageFacturation/>}/>
       <Route path="consultations" element={<PageConsultations/>}/>
@@ -853,7 +866,7 @@ function PageConsultations(){
   );
 }
 function PageOrdonnances(){
-  const {data,isLoading}=useQuery({queryKey:["mi-ords"],queryFn:()=>api.get("/ordonnances").then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["mi-ords"],queryFn:()=>api.get("/ordonnances").then(r=>({data:{data:r.data||[]}})).then(r=>r.data.data||[])});
   const ords=data||[];
   return(
     <div>
@@ -868,6 +881,159 @@ function PageOrdonnances(){
           </div>
         ))
       }
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PAGE RDV PATIENTS — Liste complète des RDV reçus
+// ═══════════════════════════════════════════════════════════════════
+function PageRdvPatients(){
+  const qc = useQueryClient();
+  const [tab, setTab] = useState('upcoming');
+  const [selected, setSelected] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['mi-all-rdvs-page'],
+    queryFn: () => mAPI.rdvs({}).then(r => r.data.data || []),
+    staleTime: 0,
+  });
+  const rdvs = data || [];
+
+  const today = () => new Date().toISOString().split('T')[0];
+  const upcoming = rdvs.filter(r => r.date_rdv?.slice(0,10) >= today() && r.statut !== 'annule').sort((a,b)=>a.date_rdv>b.date_rdv?1:-1);
+  const past     = rdvs.filter(r => r.date_rdv?.slice(0,10) < today() || r.statut === 'termine' || r.statut === 'annule').sort((a,b)=>a.date_rdv<b.date_rdv?1:-1);
+
+  const updMut = useMutation({
+    mutationFn: ({id, statut}) => mAPI.updRdv(id, {statut}),
+    onSuccess: () => { toast.success('✅ Statut mis à jour'); qc.invalidateQueries(['mi-all-rdvs-page']); qc.invalidateQueries(['mi-rdvs-m']); setSelected(null); },
+    onError: () => toast.error('Erreur'),
+  });
+
+  const statutColor = s => ({ en_attente:'amber', confirme:'teal', en_cours:'blue', termine:'green', annule:'red' }[s] || 'gray');
+  const statutLabel = s => ({ en_attente:'En attente', confirme:'Confirmé', en_cours:'En cours', termine:'Terminé', annule:'Annulé' }[s] || s);
+
+  const RdvCard = ({ r }) => (
+    <div onClick={() => setSelected(r)}
+      style={{ background:C.input, border:`1.5px solid ${C.border}`, borderRadius:12, padding:16, cursor:'pointer', marginBottom:10, transition:'border-color .15s' }}
+      onMouseOver={e=>e.currentTarget.style.borderColor=C.purple}
+      onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
+      <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+        {/* Date */}
+        <div style={{ background:`linear-gradient(135deg,${C.purple},${C.teal})`, borderRadius:10, padding:'8px 12px', textAlign:'center', minWidth:52, flexShrink:0 }}>
+          <div style={{ fontSize:20, fontWeight:900, color:'#fff', lineHeight:1 }}>{new Date(r.date_rdv).getDate()}</div>
+          <div style={{ fontSize:9, color:'rgba(255,255,255,.8)', textTransform:'uppercase' }}>{new Date(r.date_rdv).toLocaleDateString('fr-CI',{month:'short'})}</div>
+        </div>
+        {/* Info */}
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+            <span style={{ fontSize:14, fontWeight:700, color:C.text }}>{r.patient_nom || r.patient_nom_complet || 'Patient'}</span>
+            <Badge color={statutColor(r.statut)}>{statutLabel(r.statut)}</Badge>
+          </div>
+          <div style={{ fontSize:12, color:C.muted }}>
+            🕐 {r.heure_rdv?.slice(0,5)} · {r.motif || '—'}
+            {r.assurance && <span style={{ color:C.teal }}> · 🛡️ {r.assurance}</span>}
+          </div>
+          {r.patient_tel && <div style={{ fontSize:11, color:C.dim, marginTop:2 }}>📞 {r.patient_tel}</div>}
+        </div>
+        <span style={{ color:C.dim, fontSize:18 }}>→</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <PageHeader title="📅 Mes RDV Patients" subtitle={`${upcoming.length} à venir · ${past.length} passés`}/>
+
+      {/* Résumé stats */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
+        {[
+          ['Total',rdvs.length,C.purple],
+          ['En attente',rdvs.filter(r=>r.statut==='en_attente').length,C.amber],
+          ['Confirmés',rdvs.filter(r=>r.statut==='confirme').length,C.teal],
+          ['Terminés',rdvs.filter(r=>r.statut==='termine').length,C.green],
+        ].map(([label,val,color])=>(
+          <div key={label} style={{ background:C.input, border:`1.5px solid ${C.border}`, borderRadius:12, padding:'14px 12px', textAlign:'center' }}>
+            <div style={{ fontSize:24, fontWeight:900, color }}>{val}</div>
+            <div style={{ fontSize:11, color:C.muted, marginTop:2 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Onglets */}
+      <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+        {[['upcoming','📅 À venir',upcoming.length],['past','📋 Passés',past.length]].map(([key,label,count])=>(
+          <button key={key} onClick={()=>setTab(key)}
+            style={{ padding:'8px 18px', borderRadius:99, fontSize:13, fontWeight:700, cursor:'pointer', border:'none',
+              background: tab===key ? `linear-gradient(135deg,${C.purple},${C.teal})` : 'rgba(255,255,255,.06)',
+              color: tab===key ? '#fff' : C.muted }}>
+            {label} ({count})
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? <Loader/> :
+        (tab === 'upcoming' ? upcoming : past).length === 0 ?
+          <Empty icon="📅" title={tab==='upcoming'?'Aucun RDV à venir':'Aucun RDV passé'} subtitle="Les RDV pris par les patients apparaîtront ici"/> :
+          (tab === 'upcoming' ? upcoming : past).map(r => <RdvCard key={r.id} r={r}/>)
+      }
+
+      {/* Modal détail + actions */}
+      {selected && (
+        <div onClick={()=>setSelected(null)} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:28, width:500, maxWidth:'95vw', maxHeight:'90vh', overflowY:'auto' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <h2 style={{ fontSize:17, fontWeight:700, color:C.text, margin:0 }}>📅 RDV — {selected.reference}</h2>
+              <button onClick={()=>setSelected(null)} style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:20 }}>✕</button>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+              {[
+                ['Patient', selected.patient_nom || selected.patient_nom_complet || '—'],
+                ['Téléphone', selected.patient_tel || '—'],
+                ['Date', new Date(selected.date_rdv).toLocaleDateString('fr-CI',{weekday:'long',day:'numeric',month:'long'})],
+                ['Heure', selected.heure_rdv?.slice(0,5) || '—'],
+                ['Motif', selected.motif || '—'],
+                ['Statut', statutLabel(selected.statut)],
+                ['Assurance', selected.assurance || 'Sans assurance'],
+                ['Source', selected.source || '—'],
+              ].map(([k,v])=>(
+                <div key={k} style={{ background:C.hover, borderRadius:8, padding:'9px 12px' }}>
+                  <div style={{ fontSize:10, color:C.dim, fontWeight:700, textTransform:'uppercase', marginBottom:2 }}>{k}</div>
+                  <div style={{ fontSize:13, color:C.text, fontWeight:600 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Actions */}
+            {selected.statut === 'en_attente' && (
+              <div style={{ display:'flex', gap:10, marginTop:8 }}>
+                <button onClick={()=>setSelected(null)} style={{ flex:1, padding:'9px', borderRadius:9, background:'transparent', border:`1.5px solid ${C.border}`, color:C.muted, cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit' }}>Fermer</button>
+                <button onClick={()=>updMut.mutate({id:selected.id, statut:'confirme'})}
+                  style={{ flex:2, padding:'9px', borderRadius:9, background:`linear-gradient(135deg,${C.green},${C.teal})`, border:'none', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit' }}>
+                  ✅ Confirmer le RDV
+                </button>
+                <button onClick={()=>updMut.mutate({id:selected.id, statut:'annule'})}
+                  style={{ flex:1, padding:'9px', borderRadius:9, background:'rgba(225,29,72,.1)', border:'1.5px solid rgba(225,29,72,.25)', color:C.red, cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit' }}>
+                  ✕ Annuler
+                </button>
+              </div>
+            )}
+            {selected.statut === 'confirme' && (
+              <div style={{ display:'flex', gap:10, marginTop:8 }}>
+                <button onClick={()=>setSelected(null)} style={{ flex:1, padding:'9px', borderRadius:9, background:'transparent', border:`1.5px solid ${C.border}`, color:C.muted, cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit' }}>Fermer</button>
+                <button onClick={()=>updMut.mutate({id:selected.id, statut:'en_cours'})}
+                  style={{ flex:2, padding:'9px', borderRadius:9, background:`linear-gradient(135deg,${C.blue},${C.teal})`, border:'none', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit' }}>
+                  🩺 Démarrer consultation
+                </button>
+              </div>
+            )}
+            {!['en_attente','confirme'].includes(selected.statut) && (
+              <button onClick={()=>setSelected(null)} style={{ width:'100%', padding:'9px', borderRadius:9, background:'transparent', border:`1.5px solid ${C.border}`, color:C.muted, cursor:'pointer', fontSize:13, fontWeight:700, fontFamily:'inherit', marginTop:8 }}>Fermer</button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

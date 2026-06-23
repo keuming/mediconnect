@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { ModalEnvoiPharmacie, PageMesCommandesPharmacie } from "../shared/PagePharmacie";
+import { PageSuiviLivraison } from "../shared/PageLivraison";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -19,7 +21,7 @@ const today=()=>new Date().toISOString().split("T")[0];
 const TARIFS={ abonnement_standard:300, abonnement_suivi:500 };
 
 // URL backend fixe — indépendant de la baseURL de services/api.js
-const BACKEND = 'https://mediconnect-fed6.vercel.app';
+const BACKEND = 'https://mediconnect-backend-v2.vercel.app';
 
 // Fetch public (sans auth) avec URL absolue
 const fetchPublic = async (path) => {
@@ -34,15 +36,15 @@ const fetchPublic = async (path) => {
 };
 
 const pAPI = {
-  rdvs:       ()      => api.get("/rendez-vous").catch(()=>({data:{data:[]}})),
+  rdvs:       ()      => api.get("/rendez-vous").then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   addRdv:     (d)     => api.post("/rendez-vous", d),
   cancelRdv:  (id)    => api.put(`/rendez-vous/${id}`,{statut:"annule"}),
-  ords:       ()      => api.get("/ordonnances").catch(()=>({data:{data:[]}})),
+  ords:       ()      => api.get("/ordonnances").then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   consults:   ()      => api.get("/consultations").catch(()=>({data:{data:[]}})),
   // Routes publiques via fetch() direct — URL absolue garantie
   cliniques:  ()      => fetchPublic('/public/cliniques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   medecins:   (cid)   => fetchPublic(`/public/medecins${cid?`?clinique_id=${cid}`:''}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
-  medecinsMI: ()      => fetchPublic('/public/medecins?independant=true').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  medecinsMI: ()      => fetchPublic('/public/medecins-independants').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures").catch(()=>({data:{data:[]}}))),
   addCommande:(d)     => api.post("/commandes", d),
   commandes:  ()      => api.get("/commandes").catch(()=>({data:{data:[]}})),
@@ -169,7 +171,7 @@ function PageHome(){
   const {user}=useAuthStore(); const nav=useNavigate();
   const [showRdv,setShowRdv]=useState(false);
   const {data:rdvData}=useQuery({queryKey:["pat-rdvs"],queryFn:()=>pAPI.rdvs().then(r=>r.data.data||[]),retry:1});
-  const {data:ordData}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),retry:1});
+  const {data:ordData}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0,retry:1});
   const {data:factData}=useQuery({queryKey:["pat-facts"],queryFn:()=>pAPI.factures().then(r=>r.data.data||[]),retry:1});
   const rdvs=rdvData||[]; const ords=ordData||[]; const factures=factData||[];
   const rdvsActifs=rdvs.filter(r=>!["annule","termine"].includes(r.statut));
@@ -180,6 +182,7 @@ function PageHome(){
   const modules=[
     {icon:"📋",label:"Mon dossier",path:"dossier",color:C.teal,desc:"Infos & historique"},
     {icon:"📅",label:"Mes RDV",path:"rdvs",color:C.blue,desc:`${rdvsActifs.length} actif(s)`},
+    {icon:"🏪",label:"Pharmacie",path:"pharmacie",color:C.teal,desc:"Mes commandes"},
     {icon:"💊",label:"Ordonnances",path:"ordonnances",color:C.green,desc:`${ordsActives.length} active(s)`},
     {icon:"🩺",label:"Consultations",path:"consultations",color:C.purple,desc:"Historique"},
     {icon:"💰",label:"Mes factures",path:"factures",color:C.amber,desc:`${facImpayees.length} impayée(s)`},
@@ -262,7 +265,7 @@ function PageHome(){
               <div key={o.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
                 <div style={{width:3,background:o.statut==="active"?C.green:C.dim,borderRadius:2,alignSelf:"stretch",flexShrink:0}}/>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicaments?.slice(0,45)||"—"}</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicament?.slice(0,45)||"—"}</div>
                   <div style={{fontSize:11,color:C.muted}}>{o.duree||"—"} · {fmtDate(o.created_at)}</div>
                 </div>
                 <Badge color={o.statut==="active"?"green":"gray"}>{o.statut}</Badge>
@@ -483,6 +486,7 @@ function PageRecherche(){
       </Modal>
     </div>
   );
+
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -492,8 +496,9 @@ function PageDossier(){ return <PageDossierDME/>; }
 
 
 function PageOrdonnances(){
-  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
+  const [ordoPharmacie, setOrdoPharmacie] = useState(null);
   return(
     <div>
       <PageHeader title="💊 Mes ordonnances" subtitle={`${ords.filter(o=>o.statut==="active").length} active(s)`}/>
@@ -509,12 +514,12 @@ function PageOrdonnances(){
               <Badge color={o.statut==="active"?"green":"gray"}>{o.statut==="active"?"Active":"Terminée"}</Badge>
             </div>
             <div style={{background:C.hover,borderRadius:10,padding:14,marginBottom:12}}>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicaments||"—"}</div>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicament||"—"}</div>
               {o.posologie&&<div style={{fontSize:12,color:C.muted,marginBottom:3}}>📋 {o.posologie}</div>}
               {o.duree&&<div style={{fontSize:12,color:C.muted}}>⏱️ {o.duree}</div>}
             </div>
             <div style={{display:"flex",gap:10}}>
-              <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>toast.success("Envoyée à la pharmacie !")}>💊 Pharmacie</Btn>
+              <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>setOrdoPharmacie(o)}>💊 Pharmacie</Btn>
               <Btn variant="outline" style={{flex:1,padding:"7px",fontSize:12}} onClick={()=>toast.success("PDF généré !")}>📄 PDF</Btn>
             </div>
           </div>
@@ -876,7 +881,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
             <div style={{fontSize:12,color:C.dim,marginBottom:12}}>La connexion au serveur peut être momentanément indisponible.</div>
             <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
               <button onClick={()=>{qc.invalidateQueries(["pub-cliniques"]);qc.refetchQueries(["pub-cliniques"]);}} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Réessayer</button>
-              <button onClick={()=>window.open("https://mediconnect-fed6.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
+              <button onClick={()=>window.open("https://mediconnect-backend-v2.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
             </div>
           </div>:(
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
@@ -1097,12 +1102,272 @@ function PageRdvsV2(){
 //  ORDONNANCES V2 — téléchargement PDF
 // ════════════════════════════════════════════════════════════════════
 function PageOrdonnancesV2(){
-  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const ords=data||[];
+  const [ordoPharmacie, setOrdoPharmacie] = useState(null);
 
+  const u = useAuthStore(s=>s.user);
   const handleDownload=(o)=>{
-    const u=useAuthStore.getState().user;
-    const txt=`ORDONNANCE MÉDICALE\n${"=".repeat(30)}\nPatient : ${u?.prenom||""} ${u?.nom||""}\nDate    : ${new Date(o.created_at).toLocaleDateString("fr-CI")}\nMédecin : Dr. ${o.medecin_nom||"—"}\n\nPRESCRIPTION :\n${o.medicaments||"—"}\n\nPosologie : ${o.posologie||"—"}\nDurée     : ${o.duree||"—"}\n${o.notes_ord?"Notes : "+o.notes_ord+"\n":""}\nMediConnect Africa — Document médical officiel`;
+    const genPDF = async () => {
+      // ── Charger jsPDF + QRCode ──────────────────────────────────
+      if (!window.jspdf) {
+        await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+      }
+      if (!window.QRCode) {
+        await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+      const W=210, H=297, M=14;
+
+      // ── Générer QR code ──────────────────────────────────────────
+      const refNum = `ORD-CI-${new Date().getFullYear()}-${o.id?.slice(0,6).toUpperCase()}`;
+      const verifyUrl = `https://mediconnect4africa.cloud/verify/${o.id}`;
+      let qrDataUrl = null;
+      try {
+        const qrDiv = document.createElement('div');
+        qrDiv.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+        document.body.appendChild(qrDiv);
+        await new Promise(res => {
+          new window.QRCode(qrDiv, { text:verifyUrl, width:128, height:128, correctLevel:window.QRCode.CorrectLevel.M });
+          setTimeout(res, 300);
+        });
+        const qrImg = qrDiv.querySelector('img') || qrDiv.querySelector('canvas');
+        if (qrImg) {
+          if (qrImg.tagName === 'CANVAS') { qrDataUrl = qrImg.toDataURL('image/png'); }
+          else { qrDataUrl = qrImg.src; }
+        }
+        document.body.removeChild(qrDiv);
+      } catch(e) { console.warn('QR generation failed:', e); }
+
+      // ══════════════════════════════════════════════════════════════
+      // HEADER — Bandeau vert dégradé
+      // ══════════════════════════════════════════════════════════════
+      // Fond vert
+      doc.setFillColor(10,143,88); doc.rect(0,0,W,42,'F');
+      // Accent teal côté droit
+      doc.setFillColor(13,148,136); doc.rect(W-40,0,40,42,'F');
+
+      // Logo "+" dans carré blanc
+      doc.setFillColor(255,255,255); doc.roundedRect(M,8,18,18,3,3,'F');
+      doc.setTextColor(10,143,88); doc.setFontSize(20); doc.setFont("helvetica","bold");
+      doc.text("+", M+5, 21);
+
+      // Titre ordonnance
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(18); doc.setFont("helvetica","bold");
+      doc.text("ORDONNANCE MÉDICALE", M+24, 17);
+      doc.setFontSize(8); doc.setFont("helvetica","normal");
+      doc.text("Document médical officiel — MediConnect Africa", M+24, 23);
+
+      // Référence + date (côté droit)
+      doc.setFontSize(9); doc.setFont("helvetica","bold");
+      doc.text(refNum, W-M, 14, {align:"right"});
+      doc.setFont("helvetica","normal"); doc.setFontSize(8);
+      doc.text(`Émis le ${new Date(o.created_at).toLocaleDateString("fr-CI",{day:"2-digit",month:"long",year:"numeric"})}`, W-M, 20, {align:"right"});
+      doc.text("Côte d'Ivoire", W-M, 26, {align:"right"});
+
+      // ══════════════════════════════════════════════════════════════
+      // BLOC PRESCRIPTEUR + PATIENT
+      // ══════════════════════════════════════════════════════════════
+      const bw = (W-2*M)/2 - 3;
+      const by = 48;
+
+      // Bloc prescripteur
+      doc.setFillColor(244,250,246); doc.roundedRect(M, by, bw, 44, 2, 2, 'F');
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.3); doc.roundedRect(M, by, bw, 44, 2, 2, 'S');
+      // Barre accent verte en haut
+      doc.setFillColor(10,143,88); doc.roundedRect(M, by, bw, 6, 2, 2, 'F');
+      doc.rect(M, by+3, bw, 3, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      doc.text("PRESCRIPTEUR", M+3, by+4.5);
+
+      doc.setTextColor(10,20,30);
+      doc.setFontSize(11); doc.setFont("helvetica","bold");
+      doc.text(`Dr. ${o.medecin_nom||"Médecin traitant"}`, M+3, by+14);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(60,60,60);
+      doc.text("Spécialité : Médecine générale", M+3, by+20);
+      doc.text("N° Ordre CNOM : MC-CI-2024-XXXX", M+3, by+26);
+      doc.text("Adresse : Abidjan, Côte d'Ivoire", M+3, by+32);
+      doc.setTextColor(10,143,88); doc.setFont("helvetica","bold"); doc.setFontSize(8);
+      doc.text("Polyclinique MediConnect", M+3, by+38);
+
+      // Bloc patient
+      const px = M + bw + 6;
+      doc.setFillColor(240,252,248); doc.roundedRect(px, by, bw, 44, 2, 2, 'F');
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.3); doc.roundedRect(px, by, bw, 44, 2, 2, 'S');
+      doc.setFillColor(13,148,136); doc.roundedRect(px, by, bw, 6, 2, 2, 'F');
+      doc.rect(px, by+3, bw, 3, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      doc.text("PATIENT", px+3, by+4.5);
+
+      doc.setTextColor(10,20,30);
+      doc.setFontSize(11); doc.setFont("helvetica","bold");
+      doc.text(`${u?.prenom||""} ${u?.nom||""}`, px+3, by+14);
+      doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(60,60,60);
+      doc.text(`Tél : ${u?.telephone||"—"}`, px+3, by+20);
+      doc.text(`Né(e) le : ${o.date_naissance||"—"}`, px+3, by+26);
+      doc.text(`Assurance : ${o.assurance||"Non renseignée"}`, px+3, by+32);
+      doc.setFont("helvetica","bold"); doc.setTextColor(13,148,136); doc.setFontSize(8);
+      doc.text(`Code MediConnect : ${o.code_patient||u?.code_secret||"MC-****"}`, px+3, by+38);
+
+      // ══════════════════════════════════════════════════════════════
+      // DIAGNOSTIC
+      // ══════════════════════════════════════════════════════════════
+      let y = by + 52;
+      doc.setFillColor(232,245,238); doc.setDrawColor(10,143,88); doc.setLineWidth(0.4);
+      doc.rect(M, y, W-2*M, 13, 'FD');
+      doc.setFillColor(10,143,88); doc.rect(M, y, 28, 13, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+      doc.text("DIAGNOSTIC", M+2, y+8);
+      doc.setTextColor(20,20,20); doc.setFontSize(9); doc.setFont("helvetica","normal");
+      const diagLines = doc.splitTextToSize(o.diagnostic||o.consultation_diagnostic||"Non renseigné", W-2*M-35);
+      doc.text(diagLines, M+32, y+8);
+      y += 18;
+
+      // ══════════════════════════════════════════════════════════════
+      // TABLEAU MÉDICAMENTS
+      // ══════════════════════════════════════════════════════════════
+      doc.setTextColor(10,143,88); doc.setFontSize(10); doc.setFont("helvetica","bold");
+      doc.text("PRESCRIPTION MÉDICAMENTEUSE", M, y);
+      y += 5;
+
+      // En-tête tableau
+      const cols = [
+        {label:"N°",  x:M,      w:8  },
+        {label:"MÉDICAMENT & DOSAGE", x:M+8,  w:76 },
+        {label:"FORME",   x:M+84, w:22 },
+        {label:"POSOLOGIE",x:M+106,w:46 },
+        {label:"PRIX (FCFA)",x:M+152,w:44 },
+      ];
+      doc.setFillColor(10,143,88); doc.rect(M, y, W-2*M, 8, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      cols.forEach(col => doc.text(col.label, col.x+2, y+5.5));
+      y += 8;
+
+      const meds = (o.medicament||"—").split("\n").filter(m=>m.trim());
+      meds.forEach((med,i) => {
+        const rowH = 10;
+        // Fond alterné
+        doc.setFillColor(i%2===0 ? 248 : 255, i%2===0 ? 252 : 255, i%2===0 ? 249 : 255);
+        doc.rect(M, y, W-2*M, rowH, 'F');
+        // Bordure
+        doc.setDrawColor(200,225,210); doc.setLineWidth(0.2);
+        doc.rect(M, y, W-2*M, rowH, 'S');
+        // Séparateurs colonnes
+        cols.slice(1).forEach(col => { doc.setDrawColor(210,230,215); doc.line(col.x, y, col.x, y+rowH); });
+
+        // Numéro — cercle vert
+        doc.setFillColor(10,143,88); doc.circle(M+4, y+5, 3, 'F');
+        doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont("helvetica","bold");
+        doc.text(`${i+1}`, M+2.5, y+6.5);
+
+        // Médicament
+        doc.setTextColor(20,20,20); doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+        const parts = med.split(' — ');
+        doc.text(doc.splitTextToSize(parts[0]||med, 73), M+10, y+6.5);
+
+        // Forme galénique
+        const formeMatch = med.match(/\(([^)]+)\)/);
+        if (formeMatch) { doc.setFontSize(7.5); doc.text(formeMatch[1], M+86, y+6.5); }
+
+        // Posologie
+        const posol = parts[1] || o.posologie || "";
+        doc.setFontSize(7.5); doc.text(doc.splitTextToSize(posol, 43), M+108, y+6.5);
+
+        // Prix — ligne pointillée
+        doc.setDrawColor(180,180,180); doc.setLineWidth(0.3);
+        for(let lx=M+154; lx<M+194; lx+=2) doc.line(lx, y+8, lx+1, y+8);
+        y += rowH;
+      });
+
+      // Ligne TOTAL
+      y += 2;
+      doc.setFillColor(232,245,238); doc.rect(M, y, W-2*M, 9, 'F');
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.6);
+      doc.rect(M, y, W-2*M, 9, 'S');
+      doc.setTextColor(10,143,88); doc.setFontSize(9); doc.setFont("helvetica","bold");
+      doc.text("TOTAL À PAYER", M+3, y+6);
+      // Ligne tirets pour prix total
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.5);
+      doc.line(M+152, y+7, M+194, y+7);
+      y += 14;
+
+      // ══════════════════════════════════════════════════════════════
+      // INSTRUCTIONS
+      // ══════════════════════════════════════════════════════════════
+      if (o.posologie || o.duree) {
+        doc.setFillColor(255,251,230); doc.setDrawColor(217,119,6); doc.setLineWidth(0.3);
+        doc.rect(M, y, W-2*M, 14, 'FD');
+        doc.setFillColor(217,119,6); doc.rect(M, y, 30, 14, 'F');
+        doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+        doc.text("INSTRUCTIONS", M+2, y+8);
+        doc.setTextColor(100,60,0); doc.setFont("helvetica","normal"); doc.setFontSize(8);
+        const instr = [o.posologie&&`Posologie : ${o.posologie}`, o.duree&&`Durée du traitement : ${o.duree}`].filter(Boolean).join("   •   ");
+        doc.text(doc.splitTextToSize(instr, W-2*M-36), M+34, y+9);
+        y += 18;
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // SIGNATURES + QR CODE
+      // ══════════════════════════════════════════════════════════════
+      const sigY = Math.max(y+4, 230);
+
+      // Ligne séparatrice
+      doc.setDrawColor(10,143,88); doc.setLineWidth(0.5);
+      doc.line(M, sigY, W-M, sigY);
+
+      // Zone signature médecin
+      doc.setDrawColor(180,180,180); doc.setLineWidth(0.3);
+      doc.rect(M, sigY+4, 75, 32, 'S');
+      doc.setTextColor(100,100,100); doc.setFontSize(7); doc.setFont("helvetica","normal");
+      doc.text("Cachet & Signature du médecin", M+3, sigY+10);
+      doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(10,143,88);
+      doc.text(`Dr. ${o.medecin_nom||"Médecin"}`, M+3, sigY+18);
+      doc.setFont("helvetica","normal"); doc.setTextColor(100,100,100); doc.setFontSize(7);
+      doc.text(new Date().toLocaleDateString("fr-CI"), M+3, sigY+24);
+
+      // Zone visa pharmacien
+      doc.rect(M+80, sigY+4, 70, 32, 'S');
+      doc.text("Visa pharmacien", M+83, sigY+10);
+      doc.text("Pharmacie :", M+83, sigY+18);
+      doc.text("Date :", M+83, sigY+24);
+
+      // QR Code
+      const qrX = W-M-34, qrY = sigY+2;
+      if (qrDataUrl) {
+        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, 32, 32);
+      } else {
+        // Fallback — carré avec texte
+        doc.setFillColor(245,245,245); doc.rect(qrX, qrY, 32, 32, 'F');
+        doc.setDrawColor(180,180,180); doc.rect(qrX, qrY, 32, 32, 'S');
+        // Pattern QR manuel
+        doc.setFillColor(20,20,20);
+        [[0,0],[0,4],[4,0],[4,4]].forEach(([dx,dy])=>doc.rect(qrX+2+dx*6,qrY+2+dy*6,4,4,'F'));
+        doc.setFontSize(5); doc.setTextColor(40,40,40);
+        doc.text("SCAN", qrX+10, qrY+17);
+        doc.text("VÉRIF.", qrX+9, qrY+21);
+      }
+      doc.setFontSize(6); doc.setTextColor(80,80,80);
+      doc.text("Vérifier authenticité", qrX, qrY+34);
+      doc.text(refNum, qrX, qrY+38);
+
+      // ══════════════════════════════════════════════════════════════
+      // FOOTER
+      // ══════════════════════════════════════════════════════════════
+      doc.setFillColor(10,143,88); doc.rect(0, H-14, W, 14, 'F');
+      doc.setFillColor(13,148,136); doc.rect(0, H-14, 40, 14, 'F');
+      doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont("helvetica","bold");
+      doc.text("MediConnect", 5, H-6);
+      doc.setFont("helvetica","normal");
+      doc.text(`Réf: ${refNum}  •  mediconnect4africa.cloud  •  Document officiel non modifiable`, W/2, H-6, {align:"center"});
+      doc.text("© 2026", W-M, H-6, {align:"right"});
+
+      doc.save(`${refNum}.pdf`);
+    };
+    genPDF(); return;
+    const txt = ""
     const blob=new Blob([txt],{type:"text/plain;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -1113,8 +1378,8 @@ function PageOrdonnancesV2(){
   };
 
   const handleShare=(o)=>{
-    if(navigator.share){navigator.share({title:"Ordonnance MediConnect",text:o.medicaments||""}).catch(()=>{});}
-    else{navigator.clipboard.writeText(o.medicaments||"").then(()=>toast.success("Copié !"));}
+    if(navigator.share){navigator.share({title:"Ordonnance MediConnect",text:o.medicament||""}).catch(()=>{});}
+    else{navigator.clipboard.writeText(o.medicament||"").then(()=>toast.success("Copié !"));}
   };
 
   return(
@@ -1135,7 +1400,7 @@ function PageOrdonnancesV2(){
               <Badge color={o.statut==="active"?"green":"gray"}>{o.statut==="active"?"Active":"Terminée"}</Badge>
             </div>
             <div style={{background:C.hover,borderRadius:10,padding:14,marginBottom:12}}>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicaments||"—"}</div>
+              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}}>{o.medicament||"—"}</div>
               {o.posologie&&<div style={{fontSize:12,color:C.muted,marginBottom:3}}>📋 {o.posologie}</div>}
               {o.duree&&<div style={{fontSize:12,color:C.muted}}>⏱️ {o.duree}</div>}
               {o.notes_ord&&<div style={{fontSize:12,color:C.dim,fontStyle:"italic",marginTop:8,borderTop:`1px solid ${C.border}`,paddingTop:8}}>💬 {o.notes_ord}</div>}
@@ -1143,11 +1408,18 @@ function PageOrdonnancesV2(){
             <div style={{display:"flex",gap:8}}>
               <Btn style={{flex:2,padding:"8px",fontSize:12}} onClick={()=>handleDownload(o)}>📥 Télécharger</Btn>
               <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>handleShare(o)}>📤 Partager</Btn>
-              <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>toast.success("Envoyée à la pharmacie ! 💊")}>💊 Pharmacie</Btn>
+              <Btn variant="outline" style={{flex:1,padding:"8px",fontSize:12}} onClick={()=>setOrdoPharmacie(o)}>💊 Pharmacie</Btn>
             </div>
           </div>
         ))
       }
+      {ordoPharmacie&&(
+        <ModalEnvoiPharmacie
+          ordonnance={ordoPharmacie}
+          onClose={()=>setOrdoPharmacie(null)}
+          onSuccess={()=>setOrdoPharmacie(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1170,7 +1442,9 @@ function PageMedecinsPrivesV2(){
     {id:"d3",prenom:"Diallo",nom:"Seydou",specialite:"Pédiatrie",ville:"Marcory, Abidjan",tarif:15000,experience_ans:15,note_moyenne:4.9,statut:"Absent"},
     {id:"d4",prenom:"Konan",nom:"Adjoua",specialite:"Gynécologie",ville:"Yopougon, Abidjan",tarif:18000,experience_ans:10,note_moyenne:4.7,statut:"Disponible"},
   ];
-  const medecins=(data&&data.length>0?data:DEMO).filter(m=>(spec==="Toutes"||m.specialite===spec)&&(!search||`${m.prenom} ${m.nom} ${m.specialite||""} ${m.ville||""}`.toLowerCase().includes(search.toLowerCase())));
+  // Normaliser les données API : ajouter statut selon creneaux_dispo
+  const medecinsRaw = (data&&data.length>0 ? data.map(m=>({...m, statut: Number(m.creneaux_dispo||0)>0?"Disponible":"Absent"})) : DEMO);
+  const medecins = medecinsRaw.filter(m=>(spec==="Toutes"||m.specialite===spec)&&(!search||`${m.prenom} ${m.nom} ${m.specialite||""} ${m.ville||""}`.toLowerCase().includes(search.toLowerCase())));
 
   return(
     <div>
@@ -1241,7 +1515,7 @@ function PageCommandeMedicament(){
   const [notes,setNotes]=useState("");
   const [commande,setCommande]=useState(null);
 
-  const {data:mesOrds}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[])});
+  const {data:mesOrds}=useQuery({queryKey:["pat-ords"],queryFn:()=>pAPI.ords().then(r=>r.data.data||[]),staleTime:0});
   const {data:mesCmds}=useQuery({queryKey:["pat-cmds"],queryFn:()=>pAPI.commandes().then(r=>r.data.data||[]).catch(()=>[])});
 
   const addMut=useMutation({
@@ -1303,7 +1577,7 @@ function PageCommandeMedicament(){
               {mesOrds.filter(o=>o.statut==="active").map(o=>(
                 <button key={o.id} onClick={()=>{setOrdonnanceId(o.id);setOrdFile({name:`ordonnance_${o.id.slice(-6)}.pdf`});}}
                   style={{width:"100%",background:ordonnanceId===o.id?"rgba(10,143,88,.12)":C.hover,border:`1.5px solid ${ordonnanceId===o.id?C.green:C.border}`,borderRadius:10,padding:"10px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",marginBottom:8}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicaments?.slice(0,60)||"Ordonnance"}…</div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{o.medicament?.slice(0,60)||"Ordonnance"}…</div>
                   <div style={{fontSize:11,color:C.muted}}>Dr. {o.medecin_nom||"—"} · {new Date(o.created_at).toLocaleDateString("fr-CI")}</div>
                 </button>
               ))}
@@ -1678,6 +1952,8 @@ export default function Dashboard(){
       <Route path="rdvs"              element={<PageRdvsV2/>}/>
       <Route path="rdv"               element={<PageRdvsV2/>}/>
       <Route path="ordonnances"       element={<PageOrdonnancesV2/>}/>
+      <Route path="pharmacie"         element={<PageMesCommandesPharmacie/>}/>
+      <Route path="livraison"         element={<PageSuiviLivraison/>}/>
       <Route path="consultations"     element={<PageConsultations/>}/>
       <Route path="factures"          element={<PageFactures/>}/>
       <Route path="facturation"       element={<PageFactures/>}/>

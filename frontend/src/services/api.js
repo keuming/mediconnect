@@ -9,7 +9,14 @@ function getHeaders() {
 }
 
 const api = {
-  get:    (url, cfg={})  => fetch(`${BACKEND}/api${url}`, { ...cfg, method:'GET',    headers:getHeaders() }).then(r => r.json()),
+  get:    (url, cfg={})  => {
+    let fullUrl = `${BACKEND}/api${url}`;
+    if (cfg?.params) {
+      const q = new URLSearchParams(Object.entries(cfg.params).filter(([,v])=>v!=null)).toString();
+      if (q) fullUrl += '?' + q;
+    }
+    return fetch(fullUrl, { method:'GET', headers:getHeaders() }).then(r => r.json());
+  },
   post:   (url, data)    => fetch(`${BACKEND}/api${url}`, { method:'POST',   headers:getHeaders(), body:JSON.stringify(data) }).then(r => r.json()),
   put:    (url, data)    => fetch(`${BACKEND}/api${url}`, { method:'PUT',    headers:getHeaders(), body:JSON.stringify(data) }).then(r => r.json()),
   delete: (url)          => fetch(`${BACKEND}/api${url}`, { method:'DELETE', headers:getHeaders() }).then(r => r.json()),

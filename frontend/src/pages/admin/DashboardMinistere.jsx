@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
 
@@ -664,79 +664,55 @@ function PageDemographie({ annee, pays }) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// SHELL : MINISTÈRE DE LA SANTÉ — Layout + Filtres globaux
+// SHELL : MINISTÈRE DE LA SANTÉ — Sans sidebar interne (AppLayout gère la sidebar)
 // ════════════════════════════════════════════════════════════════════
-function MinistereShell() {
-  const nav = useNavigate();
+export default function DashboardMinistere() {
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [pays,  setPays]  = useState('CI');
 
-  const currentPath = window.location.pathname;
-
-  const MENU = [
-    { path:'/admin/ministere',              icon:'🏛️', label:'Vue d\'ensemble' },
-    { path:'/admin/ministere/morbidite',    icon:'🔬', label:'Morbidité & Pathologies' },
-    { path:'/admin/ministere/medicaments',  icon:'💊', label:'Médicaments' },
-    { path:'/admin/ministere/demographie',  icon:'👥', label:'Démographie' },
-  ];
-
   return (
-    <div style={{ display:'flex', gap:0, minHeight:'100vh', background:C.bg }}>
-      {/* Sous-menu latéral */}
-      <div style={{ width:220, background:C.card, borderRight:`1px solid ${C.border}`, padding:'20px 0', flexShrink:0 }}>
-        <div style={{ padding:'0 16px 16px', borderBottom:`1px solid ${C.border}`, marginBottom:8 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:'uppercase', letterSpacing:.5, marginBottom:6 }}>
-            MINISTÈRE DE LA SANTÉ
+    <div style={{ background:C.bg, minHeight:'100%' }}>
+      {/* Barre de filtres globaux horizontale */}
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        background:C.card, border:`1px solid ${C.border}`, borderRadius:14,
+        padding:'12px 20px', marginBottom:24, flexWrap:'wrap', gap:12,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:16 }}>🏛️</span>
+          <span style={{ fontSize:13, fontWeight:700, color:C.text }}>Surveillance épidémiologique</span>
+          <span style={{ fontSize:11, color:C.dim }}>· Données UEMOA + CEMAC · OMS & DHIS2</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <label style={{ fontSize:11, color:C.dim, fontWeight:700 }}>Année</label>
+            <select value={annee} onChange={e=>setAnnee(+e.target.value)}
+              style={{ background:C.input, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:'7px 12px', fontSize:13, outline:'none', fontFamily:'inherit' }}>
+              {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
           </div>
-          <div style={{ fontSize:10, color:C.dim }}>Surveillance épidémiologique</div>
-        </div>
-        {MENU.map(m => {
-          const active = currentPath === m.path || (m.path !== '/admin/ministere' && currentPath.startsWith(m.path));
-          return (
-            <button key={m.path} onClick={() => nav(m.path.replace('/admin/ministere','').replace('/admin/ministere','ministere') || '.')}
-              style={{ display:'flex', alignItems:'center', gap:10, width:'100%', textAlign:'left', padding:'10px 16px', background:active?'rgba(10,143,88,.1)':'transparent', border:'none', borderLeft:active?`3px solid ${C.green}`:'3px solid transparent', color:active?C.greenL:C.muted, fontSize:13, fontWeight:active?700:400, cursor:'pointer', transition:'all .15s' }}
-            >
-              <span style={{ fontSize:16 }}>{m.icon}</span>
-              <span>{m.label}</span>
-            </button>
-          );
-        })}
-
-        {/* Filtres globaux */}
-        <div style={{ margin:'20px 12px 0', padding:'14px', background:C.card2, borderRadius:10, border:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:10, fontWeight:700, color:C.dim, textTransform:'uppercase', letterSpacing:.5, marginBottom:10 }}>Filtres globaux</div>
-          <label style={{ fontSize:11, color:C.dim, display:'block', marginBottom:4 }}>Année</label>
-          <select value={annee} onChange={e=>setAnnee(+e.target.value)} style={{ width:'100%', background:C.input, border:`1px solid ${C.border}`, color:C.text, borderRadius:6, padding:'6px 8px', fontSize:12, marginBottom:10 }}>
-            {ANNEES.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <label style={{ fontSize:11, color:C.dim, display:'block', marginBottom:4 }}>Pays</label>
-          <select value={pays} onChange={e=>setPays(e.target.value)} style={{ width:'100%', background:C.input, border:`1px solid ${C.border}`, color:C.text, borderRadius:6, padding:'6px 8px', fontSize:12 }}>
-            <option value="all">Tous les pays</option>
-            {PAYS_UEMOA.map(p => <option key={p.code} value={p.code}>{p.nom}</option>)}
-          </select>
-        </div>
-
-        {/* Crédits */}
-        <div style={{ margin:'16px 12px 0', fontSize:10, color:C.dim, lineHeight:1.6 }}>
-          🔗 Données issues des consultations MediConnect Africa<br/>
-          Conforme aux standards OMS & DHIS2
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <label style={{ fontSize:11, color:C.dim, fontWeight:700 }}>Pays</label>
+            <select value={pays} onChange={e=>setPays(e.target.value)}
+              style={{ background:C.input, border:`1px solid ${C.border}`, color:C.text, borderRadius:8, padding:'7px 12px', fontSize:13, outline:'none', fontFamily:'inherit' }}>
+              <option value="all">Tous les pays</option>
+              {PAYS_UEMOA.map(p => <option key={p.code} value={p.code}>{p.nom}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Contenu */}
-      <div style={{ flex:1, padding:28, overflowY:'auto' }}>
-        <Routes>
-          <Route index                   element={<PageOverview    annee={annee} pays={pays} setAnnee={setAnnee} setPays={setPays}/>}/>
-          <Route path="morbidite"        element={<PageMorbidite   annee={annee} pays={pays}/>}/>
-          <Route path="medicaments"      element={<PageMedicaments annee={annee} pays={pays}/>}/>
-          <Route path="demographie"      element={<PageDemographie annee={annee} pays={pays}/>}/>
-          <Route path="*"                element={<PageOverview    annee={annee} pays={pays} setAnnee={setAnnee} setPays={setPays}/>}/>
-        </Routes>
-      </div>
+      {/* Routes des pages */}
+      <Routes>
+        <Route index             element={<PageOverview    annee={annee} pays={pays} setAnnee={setAnnee} setPays={setPays}/>}/>
+        <Route path="morbidite"  element={<PageMorbidite   annee={annee} pays={pays}/>}/>
+        <Route path="medicaments"element={<PageMedicaments annee={annee} pays={pays}/>}/>
+        <Route path="demographie"element={<PageDemographie annee={annee} pays={pays}/>}/>
+        <Route path="pathologies"element={<PageMorbidite   annee={annee} pays={pays}/>}/>
+        <Route path="geo"        element={<PageDemographie annee={annee} pays={pays}/>}/>
+        <Route path="demographics"element={<PageDemographie annee={annee} pays={pays}/>}/>
+        <Route path="*"          element={<PageOverview    annee={annee} pays={pays} setAnnee={setAnnee} setPays={setPays}/>}/>
+      </Routes>
     </div>
   );
-}
-
-export default function DashboardMinistere() {
-  return <MinistereShell />;
 }

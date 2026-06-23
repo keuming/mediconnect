@@ -219,6 +219,95 @@ app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==
 app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
 
 // ── HEALTH ────────────────────────────────────────────────────────
+
+// ════════════════════════════════════════════════════════════════════
+// CHATBOT VITRINE — Réponses par mots-clés (FAQ MediConnect Africa)
+// ════════════════════════════════════════════════════════════════════
+const CHATBOT_KB = [
+  { kw:['rendez-vous','rdv','prendre rdv','consultation médecin','réserver'],
+    a:"Pour prendre un rendez-vous médical : connectez-vous à votre compte patient sur MediConnect Africa, accédez à la section « Rendez-vous », sélectionnez un médecin ou une clinique, choisissez une date et une heure disponibles, puis confirmez. Vous recevrez une confirmation immédiate." },
+
+  { kw:['médicament','pharmacie','commander médicament','ordonnance pharmacie'],
+    a:"Pour commander des médicaments : consultez un médecin et obtenez votre ordonnance numérique, accédez à la section « Pharmacies », choisissez une pharmacie partenaire, confirmez votre commande, puis optez pour la livraison à domicile ou le retrait. Le paiement se fait via Wave, Orange Money ou MTN MoMo." },
+
+  { kw:['mediconnect card','carte santé','carte numérique','carte médicale'],
+    a:"La MediConnect Card est votre carte de santé numérique. Elle vous permet de stocker vos informations médicales essentielles, de partager votre profil avec les prestataires, d'accéder à vos antécédents en temps réel, et de gérer un compte famille avec jusqu'à 10 membres." },
+
+  { kw:['compte famille','famille','membre famille','ajouter membre'],
+    a:"Pour gérer votre compte famille : allez dans Paramètres → Compte Famille, cliquez sur « Ajouter un membre », saisissez les informations (nom, prénom, date de naissance) puis définissez les permissions d'accès. Vous pouvez gérer jusqu'à 10 membres (conjoint, enfants, parents)." },
+
+  { kw:['mot de passe','réinitialiser','oublié','mdp'],
+    a:"Pour réinitialiser votre mot de passe : allez sur la page de connexion, cliquez sur « Mot de passe oublié ? », saisissez votre email ou numéro de téléphone, puis entrez le code de vérification reçu pour créer un nouveau mot de passe." },
+
+  { kw:['sécurité','données','rgpd','confidentialité','sécurisé'],
+    a:"Vos données sont protégées par chiffrement de bout en bout (AES-256), conformité RGPD, authentification à deux facteurs et serveurs certifiés ISO 27001. Aucune donnée n'est partagée sans votre consentement." },
+
+  { kw:['devenir prestataire','inscription prestataire','rejoindre','partenaire'],
+    a:"Pour devenir prestataire : allez sur la page « Devenir BD », sélectionnez votre type de profil (clinique, médecin, pharmacie, laboratoire, etc.), remplissez le formulaire et téléchargez vos documents de vérification. La validation prend 24 à 48h." },
+
+  { kw:['tarif','prix','abonnement','coût','combien'],
+    a:"Tarifs prestataires : Médecin Conseil 5 000 FCFA/mois, Clinique/Hôpital 10 000 FCFA/mois, Laboratoire 5 000 FCFA/mois, Cabinet Optique 5 000 FCFA/mois, Assureur 50 000 FCFA/mois, Pharmacie 10 000 FCFA/mois. Pour les patients, l'abonnement standard est de 2 500 FCFA/30j, 6 500 FCFA/90j ou 20 000 FCFA/an." },
+
+  { kw:['agenda','horaire','créneau','planning'],
+    a:"Pour gérer votre agenda : accédez à votre tableau de bord, allez dans « Agenda », définissez vos horaires de travail et créneaux disponibles, puis gérez vos rendez-vous confirmés et annulations." },
+
+  { kw:['dossier patient','historique médical','patients'],
+    a:"Pour accéder aux dossiers patients : connectez-vous à votre compte prestataire, allez dans « Patients », recherchez le patient par nom ou code MediConnect, puis consultez son historique médical complet et ajoutez vos notes/prescriptions." },
+
+  { kw:['facturation','facture','paiement abonnement'],
+    a:"La facturation est automatisée : les frais d'abonnement sont prélevés mensuellement, vous recevez des factures détaillées et pouvez les télécharger à tout moment. Paiements via Wave, Orange Money ou MTN MoMo." },
+
+  { kw:['catalogue','stock','médicaments disponibles'],
+    a:"Pour gérer votre catalogue pharmacie : accédez à votre tableau de bord, section « Catalogue », ajoutez ou modifiez vos médicaments, définissez les prix en FCFA et gérez vos stocks et alertes de rupture." },
+
+  { kw:['livraison','livreur','livrer'],
+    a:"Pour configurer les livraisons : allez dans « Livraisons », définissez votre zone de couverture et vos tarifs, puis suivez les livraisons en temps réel. Les frais de livraison standard sont de 2 000 FCFA (1 500 pour le livreur, 500 pour MediConnect)." },
+
+  { kw:['pays','couverture','où','zone','afrique'],
+    a:"MediConnect Africa est disponible dans 14 pays de la zone UEMOA/CEMAC : Côte d'Ivoire, Sénégal, Burkina Faso, Mali, Togo, Bénin, Guinée, Niger, Cameroun, Gabon, Congo, Tchad, République Centrafricaine et Guinée Équatoriale." },
+
+  { kw:['assurance','assureur','remboursement','mutuelle'],
+    a:"MediConnect Africa intègre un système de tiers-payant avec les compagnies d'assurance partenaires (NSIA, Allianz CI, AXA CI, CNAM/CMU, Saham). Les prestations sont automatiquement facturées à votre assureur en temps réel selon votre taux de couverture." },
+
+  { kw:['médecin indépendant','médecin privé','suivi médical'],
+    a:"Vous pouvez choisir un médecin indépendant comme médecin de famille pour un suivi personnalisé. Recherchez par spécialité, consultez les disponibilités, et prenez rendez-vous directement depuis votre espace patient." },
+
+  { kw:['rôle','espace','clinique','laboratoire','imagerie','optique','ministère'],
+    a:"MediConnect Africa propose 12 espaces dédiés : Patient, Médecin (clinique/résident), Médecin indépendant, Clinique, Pharmacie, Livreur, Assureur, Imagerie médicale, Laboratoire, Optique, Ministère de la Santé et Administration." },
+
+  { kw:['contact','support','aide','assistance','téléphone','email'],
+    a:"Pour toute question, contactez notre support via la page FAQ ou créez un compte sur la plateforme pour accéder au support intégré 24/7." },
+
+  { kw:['bonjour','salut','hello','bonsoir'],
+    a:"Bonjour ! 👋 Je suis l'assistant MediConnect Africa. Je peux vous renseigner sur les rendez-vous, les pharmacies, les tarifs, l'assurance, les livraisons et bien plus. Que souhaitez-vous savoir ?" },
+
+  { kw:['merci'],
+    a:"Avec plaisir ! N'hésitez pas si vous avez d'autres questions sur MediConnect Africa. 🌿" },
+];
+
+const CHATBOT_DEFAULT = "Je n'ai pas toute l'information sur ce sujet précis, mais je peux vous renseigner sur : les rendez-vous médicaux, les commandes de médicaments, la MediConnect Card, les tarifs et abonnements, l'assurance, les livraisons, ou comment devenir prestataire. Que souhaitez-vous savoir ?";
+
+app.post('/api/chatbot/send', async (req, res) => {
+  try {
+    const message = (req.body?.message || '').toLowerCase().trim();
+    if (!message) return res.json({ success:false, message:'Message vide' });
+
+    let best = null, bestScore = 0;
+    for (const entry of CHATBOT_KB) {
+      for (const kw of entry.kw) {
+        if (message.includes(kw.toLowerCase())) {
+          const score = kw.length;
+          if (score > bestScore) { bestScore = score; best = entry; }
+        }
+      }
+    }
+    const reply = best ? best.a : CHATBOT_DEFAULT;
+    res.json({ success:true, message:reply });
+  } catch(e) {
+    res.json({ success:false, message:"Désolé, une erreur s'est produite. Veuillez réessayer." });
+  }
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     await db('SELECT 1');
@@ -282,15 +371,29 @@ app.get('/api/cliniques', async (req, res) => {
 });
 app.get('/api/cliniques/stats', auth, async (req, res) => {
   try {
-    const cid = req.user?.clinique_id;
-    if (!cid) return res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0 } });
-    const [m,r,p] = await Promise.all([
-      db("SELECT COUNT(*) c FROM medecins WHERE clinique_id=$1 AND statut='Disponible'", [cid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE clinique_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE)", [cid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [cid]).catch(()=>({rows:[{c:0}]})),
+    // clinique_id dans le token OU user.id si le compte EST la clinique
+    const cid = req.user?.clinique_id || (req.user?.role === 'clinique' ? req.user?.id : null);
+    if (!cid) return res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } });
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // Chercher aussi dans cliniques par user_id
+    const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 OR id=$1 LIMIT 1', [cid]).catch(()=>({rows:[]}));
+    const effectiveCid = clRow.rows[0]?.id || cid;
+
+    const [m, r, p, rj] = await Promise.all([
+      db("SELECT COUNT(*) c FROM medecins WHERE clinique_id=$1 AND statut='Disponible'", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')`, [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM patients WHERE clinique_id=$1 AND created_at>=date_trunc('month',CURRENT_DATE)", [effectiveCid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE (clinique_id=$1) AND date_rdv=$2 AND statut NOT IN ('annule')`, [effectiveCid, today]).catch(()=>({rows:[{c:0}]})),
     ]);
-    res.json({ success:true, data:{ medecins_actifs:m.rows[0]?.c||0, rdv_ce_mois:r.rows[0]?.c||0, patients_mois:p.rows[0]?.c||0 } });
-  } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0 } }); }
+    res.json({ success:true, data:{
+      medecins_actifs: +m.rows[0]?.c||0,
+      rdv_ce_mois:     +r.rows[0]?.c||0,
+      patients_mois:   +p.rows[0]?.c||0,
+      rdv_aujourd_hui: +rj.rows[0]?.c||0,
+    }});
+  } catch(e) { res.json({ success:true, data:{ medecins_actifs:0, rdv_ce_mois:0, patients_mois:0, rdv_aujourd_hui:0 } }); }
 });
 
 // ── MÉDECINS ──────────────────────────────────────────────────────
@@ -343,23 +446,100 @@ medecinRouter('delete', '/:id', auth, async (req, res) => {
 const vd = d => d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
 app.get('/api/patients', auth, async (req, res) => {
   try {
-    const cid = req.user?.clinique_id;
-    const r = cid ? await db('SELECT * FROM patients WHERE clinique_id=$1 ORDER BY nom,prenom LIMIT 500', [cid]) : await db('SELECT * FROM patients ORDER BY nom LIMIT 500');
+    const role = req.user?.role, uid = req.user?.id;
+    let r;
+    if (role === 'clinique') {
+      // Clinique : patients ayant eu un RDV ou une consultation dans cette clinique
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const cid = clRow.rows[0]?.id || req.user?.clinique_id;
+      r = await db(`
+        SELECT DISTINCT p.*,
+               COALESCE(u.prenom, p.prenom_patient) AS prenom,
+               COALESCE(u.nom, p.nom_patient) AS nom,
+               COALESCE(u.telephone, p.telephone) AS telephone,
+               u.email
+        FROM patients p
+        LEFT JOIN utilisateurs u ON u.id=p.user_id AND u.role='patient'
+        WHERE p.id IN (
+          SELECT DISTINCT patient_id FROM rendez_vous WHERE clinique_id=$1 AND patient_id IS NOT NULL
+          UNION
+          SELECT DISTINCT patient_id FROM consultations WHERE clinique_id=$1 AND patient_id IS NOT NULL
+          UNION
+          SELECT id FROM patients WHERE user_id=$2
+        )
+        ORDER BY prenom, nom LIMIT 500
+      `, [cid, uid]);
+    } else if (role === 'admin') {
+      r = await db('SELECT p.*, u.prenom, u.nom, u.telephone, u.email FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id ORDER BY u.nom LIMIT 500');
+    } else {
+      r = await db('SELECT p.*, u.prenom, u.nom, u.telephone, u.email FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id ORDER BY u.nom LIMIT 200');
+    }
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+// GET /api/patients/recherche — Recherche patient par code secret (pour consultation clinique)
+app.get('/api/patients/recherche', auth, async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).json({ success:false, message:'Code requis' });
+    const r = await db(`
+      SELECT p.*, u.prenom, u.nom, u.telephone, u.email
+      FROM patients p
+      LEFT JOIN utilisateurs u ON u.id=p.user_id
+      WHERE p.code_secret=$1
+      LIMIT 1
+    `, [code.toUpperCase()]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Patient introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/patients/rdvs — RDV du patient connecté
+app.get('/api/patients/rdvs', auth, async (req, res) => {
+  try {
+    const { statut, upcoming } = req.query;
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.json({ success:true, data:[] });
+    let sql = `
+      SELECT r.*,
+             m.prenom||' '||m.nom AS medecin_nom_complet,
+             m.specialite AS medecin_specialite,
+             cl.nom AS clinique_nom, cl.adresse AS clinique_adresse, cl.telephone AS clinique_tel
+      FROM rendez_vous r
+      LEFT JOIN medecins m ON m.id=r.medecin_id
+      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
+      WHERE r.patient_id=$1
+    `;
+    const p = [patientId];
+    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
+    if (upcoming === '1') sql += ` AND r.date_rdv >= CURRENT_DATE`;
+    sql += ' ORDER BY r.date_rdv DESC, r.heure_rdv DESC LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+
+app.get('/api/patients/me', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
+    res.json({ success:true, data:r.rows[0]||null });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/patients/:id', auth, async (req, res) => {
   try { const r = await db('SELECT * FROM patients WHERE id=$1', [req.params.id]); res.json({ success:true, data:r.rows[0]||null }); }
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.post('/api/patients', auth, async (req, res) => {
-  const { prenom, nom, telephone, email, date_naissance, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police } = req.body;
+  const { prenom, nom, telephone, email, date_naissance, sexe, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police } = req.body;
   if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
   try {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
-    const r = await db('INSERT INTO patients (id,clinique_id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [uuid(), req.user?.clinique_id, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]);
-    res.status(201).json({ success:true, data:r.rows[0] });
+    const r = await db('INSERT INTO patients (id,user_id,code_secret,telephone,date_naissance,sexe,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police,prenom_patient,nom_patient) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [uuid(), req.user?.id, code, telephone||null, vd(date_naissance)||null, sexe||null, groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null, prenom||null, nom||null]);
+    res.status(201).json({ success:true, data:{ ...r.rows[0], prenom, nom, code_secret:code } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/patients/:id', auth, async (req, res) => {
@@ -375,26 +555,129 @@ app.put('/api/patients/:id', auth, async (req, res) => {
 app.get('/api/rendez-vous', auth, async (req, res) => {
   try {
     const { date, statut, medecin_id } = req.query;
-    const cid = req.user?.clinique_id;
-    let sql = 'SELECT * FROM rendez_vous WHERE 1=1'; const p = [];
-    if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    if (date) { p.push(date); sql+=` AND date_rdv=$${p.length}`; }
-    if (statut) { p.push(statut); sql+=` AND statut=$${p.length}`; }
-    if (medecin_id) { p.push(medecin_id); sql+=` AND medecin_id=$${p.length}`; }
-    sql+=' ORDER BY date_rdv,heure_rdv LIMIT 200';
-    const r = await db(sql, p); res.json({ success:true, data:r.rows });
+    const role = req.user?.role;
+    const uid  = req.user?.id;
+    const cid  = req.user?.clinique_id;
+
+    let sql = `
+      SELECT r.*,
+             u.prenom||' '||u.nom AS patient_nom_complet,
+             u.telephone AS patient_tel,
+             m.prenom||' '||m.nom AS medecin_nom_complet,
+             m.specialite AS medecin_specialite,
+             cl.nom AS clinique_nom
+      FROM rendez_vous r
+      LEFT JOIN utilisateurs u ON u.id=r.patient_id
+      LEFT JOIN medecins m ON m.id=r.medecin_id
+      LEFT JOIN cliniques cl ON cl.id=r.clinique_id
+      WHERE 1=1
+    `;
+    const p = [];
+
+    // Filtrage selon le rôle
+    if (role === 'clinique') {
+      // clinique_id du token OU user.id si le compte EST la clinique
+      const effectiveCid = cid || uid;
+      // Chercher aussi via table cliniques (user_id)
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 OR id=$1 LIMIT 1', [effectiveCid]).catch(()=>({rows:[]}));
+      const realCid = clRow.rows[0]?.id || effectiveCid;
+      p.push(realCid);
+      sql += ` AND (r.clinique_id=$${p.length} OR m.clinique_id=$${p.length})`;
+    } else if (role === 'medecin' || role === 'medecin_independant') {
+      // Médecin : voit ses propres RDV
+      p.push(uid);
+      sql += ` AND r.medecin_id=$${p.length}`;
+    } else if (role === 'patient') {
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [uid]).catch(()=>({rows:[]}));
+      const patId = pRow.rows[0]?.id;
+      if (!patId) return res.json({ success:true, data:[] });
+      p.push(patId);
+      sql += ` AND r.patient_id=$${p.length}`;
+    }
+    // admin voit tout
+
+    if (date)       { p.push(date);       sql += ` AND r.date_rdv=$${p.length}`; }
+    if (statut)     { p.push(statut);     sql += ` AND r.statut=$${p.length}`; }
+    if (medecin_id) { p.push(medecin_id); sql += ` AND r.medecin_id=$${p.length}`; }
+
+    sql += ' ORDER BY r.date_rdv, r.heure_rdv LIMIT 200';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/rendez-vous', auth, async (req, res) => {
-  const { patient_nom, patient_id, medecin_nom, medecin_id, date_rdv, heure_rdv, motif, statut, assurance, notes } = req.body;
+  const { patient_nom, patient_id, medecin_nom, medecin_id, clinique_id, date_rdv, heure_rdv, motif, statut, assurance, notes, source } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
   try {
     const ref = 'RDV-'+Date.now().toString(36).toUpperCase();
-    const r = await db('INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [uuid(),ref,req.user?.clinique_id,patient_id||null,patient_nom||null,medecin_id||null,medecin_nom||null,date_rdv,heure_rdv,motif||null,statut||'en_attente',assurance||null,notes||null]);
+    // patient_id : résoudre depuis table patients via user_id
+    let finalPatientId = patient_id || null;
+    if (!finalPatientId && req.user?.role === 'patient') {
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      finalPatientId = pRow.rows[0]?.id || null;
+    }
+    // clinique_id : priorité au body → token → user.id si rôle clinique
+    let finalCliniqueId = clinique_id || req.user?.clinique_id || null;
+    if (!finalCliniqueId && req.user?.role === 'clinique') {
+      // Chercher l'id réel dans la table cliniques
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      finalCliniqueId = clRow.rows[0]?.id || req.user.id;
+    }
+
+    // Récupérer le nom du patient si non fourni
+    let finalPatientNom = patient_nom;
+    if (!finalPatientNom && finalPatientId) {
+      const u = await db('SELECT prenom, nom FROM utilisateurs WHERE id=$1', [finalPatientId]);
+      if (u.rows[0]) finalPatientNom = `${u.rows[0].prenom||''} ${u.rows[0].nom||''}`.trim();
+    }
+
+    // Déterminer si medecin_id est un utilisateur indépendant
+    let finalMedecinId = medecin_id || null;
+    let finalMedecinIndepId = null;
+    if (medecin_id) {
+      const roleCheck = await db('SELECT role FROM utilisateurs WHERE id=$1', [medecin_id]).catch(()=>({rows:[]}));
+      if (roleCheck.rows[0]?.role === 'medecin_independant') {
+        // Résoudre le vrai id dans medecins_independants
+        const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [medecin_id]).catch(()=>({rows:[]}));
+        finalMedecinIndepId = miRow.rows[0]?.id || null;
+        finalMedecinId = null; // pas dans table medecins
+      }
+    }
+
+    const r = await db(
+      'INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_independant_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+      [uuid(), ref, finalCliniqueId, finalPatientId, finalPatientNom||null, finalMedecinId, finalMedecinIndepId, medecin_nom||null, date_rdv, heure_rdv, motif||null, statut||'en_attente', assurance||null, notes||null, source||'dashboard']
+    );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+// PATCH /api/rendez-vous/:id/confirmer — confirmation rapide
+app.patch('/api/rendez-vous/:id/confirmer', auth, async (req, res) => {
+  try {
+    const r = await db(
+      "UPDATE rendez_vous SET statut='confirme', updated_at=NOW() WHERE id=$1 RETURNING *",
+      [req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
+    res.json({ success:true, data:r.rows[0], message:'RDV confirmé' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// PATCH /api/rendez-vous/:id/statut — changement de statut générique
+app.patch('/api/rendez-vous/:id/statut', auth, async (req, res) => {
+  const { statut } = req.body;
+  const valides = ['en_attente','confirme','en_cours','termine','annule'];
+  if (!valides.includes(statut)) return res.status(400).json({ success:false, message:'Statut invalide' });
+  try {
+    const r = await db(
+      "UPDATE rendez_vous SET statut=$1, updated_at=NOW() WHERE id=$2 RETURNING *",
+      [statut, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.put('/api/rendez-vous/:id', auth, async (req, res) => {
   const { statut, motif, heure_rdv, date_rdv, medecin_nom, patient_nom, notes } = req.body;
   try {
@@ -411,20 +694,98 @@ app.delete('/api/rendez-vous/:id', auth, async (req, res) => {
 // ── CONSULTATIONS ─────────────────────────────────────────────────
 app.get('/api/consultations', auth, async (req, res) => {
   try {
-    const { patient_id } = req.query; const cid = req.user?.clinique_id;
-    let sql='SELECT * FROM consultations WHERE 1=1'; const p=[];
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
-    else if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    sql+=' ORDER BY created_at DESC LIMIT 100';
-    const r = await db(sql,p); res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
+    const role = req.user?.role, uid = req.user?.id;
+    let sql = 'SELECT c.* FROM consultations c WHERE 1=1'; const p = [];
+    if (role === 'patient') {
+      const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
+      p.push(pid); sql += ' AND c.patient_id=$' + p.length;
+    } else if (role === 'medecin_independant') {
+      const mr = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND c.medecin_independant_id=$' + p.length;
+    } else if (role === 'medecin') {
+      p.push(uid); sql += ' AND c.medecin_id=$' + p.length;
+    } else {
+      const cr = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const cid = cr.rows[0]?.id||req.user?.clinique_id;
+      if(cid){ p.push(cid); sql += ' AND c.clinique_id=$' + p.length; }
+    }
+    sql += ' ORDER BY c.created_at DESC LIMIT 100';
+    const r = await db(sql,p); res.json({success:true,data:r.rows});
+  } catch(e) { res.json({success:true,data:[]}); }
 });
+// Fonction helper — créer une facture assurance automatiquement
+const createFactureAssurance = async (data) => {
+  const { patient_id, assurance, type_prestation, description, montant_total,
+          prestataire_id, prestataire_nom, type_prestataire,
+          consultation_id, ordonnance_id, rdv_id } = data;
+  if (!assurance || assurance === 'Sans assurance' || !patient_id) return null;
+
+  try {
+    // Trouver l'assureur correspondant
+    const assureurRow = await db(
+      "SELECT id FROM utilisateurs WHERE role='assureur' AND (prenom||' '||nom ILIKE $1 OR prenom ILIKE $1 OR $1 ILIKE '%'||prenom||'%') LIMIT 1",
+      ['%'+assurance+'%']
+    ).catch(()=>({rows:[]}));
+    const assureur_id = assureurRow.rows[0]?.id || null;
+
+    // Récupérer infos patient
+    const patRow = await db(
+      'SELECT p.*, u.prenom||\' \'||u.nom AS nom_complet FROM patients p LEFT JOIN utilisateurs u ON u.id=p.user_id WHERE p.id=$1 LIMIT 1',
+      [patient_id]
+    ).catch(()=>({rows:[]}));
+    const pat = patRow.rows[0];
+
+    const ref = 'FA-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const taux = 80; // 80% pris en charge par défaut
+    const montant_assure = Math.round(montant_total * taux / 100);
+    const ticket = montant_total - montant_assure;
+
+    const fa = await db(`
+      INSERT INTO factures_assurance
+        (reference, assureur_id, compagnie, patient_id, patient_nom, numero_police,
+         prestataire_id, prestataire_nom, type_prestataire,
+         type_prestation, description, montant_total, taux_couverture,
+         montant_assure, ticket_moderateur, statut,
+         consultation_id, ordonnance_id, rdv_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'en_attente',$16,$17,$18)
+      RETURNING *
+    `, [ref, assureur_id, assurance, patient_id, pat?.nom_complet||'Patient',
+        pat?.numero_police||null, prestataire_id, prestataire_nom, type_prestataire,
+        type_prestation, description, montant_total, taux, montant_assure, ticket,
+        consultation_id||null, ordonnance_id||null, rdv_id||null]);
+
+    return fa.rows[0];
+  } catch(e) {
+    console.error('createFactureAssurance error:', e.message);
+    return null;
+  }
+};
+
+
 app.post('/api/consultations', auth, async (req, res) => {
-  const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
+  const { patient_id, motif, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
   try {
-    const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,diagnostic,traitement,notes,tension_arterielle,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
+    const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
+    const realCid = clRow.rows[0]?.id || req.user?.clinique_id || null;
+    const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
+    const realMid = mRow.rows[0]?.id || null;
+    const r = await db('INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,motif,date_consult,diagnostic,examen_clinique,note_finale,ta,temperature,poids,taille,rdv_id) VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [uuid(),patient_id,realCid,realMid,motif||diagnostic,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null]);
+    if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1",[rdv_id]).catch(()=>{});
+    // Auto-facture assurance
+    if (patient_id) {
+      const patAss = await db('SELECT assurance FROM patients WHERE id=$1',[patient_id]).catch(()=>({rows:[]}));
+      const ass = patAss.rows[0]?.assurance;
+      if (ass && ass !== 'Sans assurance') {
+        const pNom = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[req.user.id]).catch(()=>({rows:[]}));
+        await createFactureAssurance({ patient_id, assurance:ass, type_prestation:'consultation',
+          description:`Consultation — ${motif||diagnostic||'Acte médical'}`, montant_total:15000,
+          prestataire_id:req.user.id, prestataire_nom:pNom.rows[0]?.prenom||'Prestataire',
+          type_prestataire: req.user.role==='clinique'?'clinique':'medecin', consultation_id:r.rows[0].id });
+      }
+    }
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
@@ -432,20 +793,35 @@ app.post('/api/consultations', auth, async (req, res) => {
 // ── ORDONNANCES ───────────────────────────────────────────────────
 app.get('/api/ordonnances', auth, async (req, res) => {
   try {
-    const { patient_id } = req.query; const cid = req.user?.clinique_id;
-    let sql='SELECT * FROM ordonnances WHERE 1=1'; const p=[];
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
-    else if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    sql+=' ORDER BY created_at DESC LIMIT 100';
-    const r = await db(sql,p); res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
+    const role = req.user?.role, uid = req.user?.id;
+    let sql = `SELECT o.*, u.prenom||' '||u.nom AS medecin_nom FROM ordonnances o LEFT JOIN medecins_independants mi ON mi.id=o.medecin_independant_id LEFT JOIN utilisateurs u ON u.id=mi.user_id WHERE 1=1`; const p = [];
+    if (role === 'patient') {
+      const pr = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const pid = pr.rows[0]?.id; if(!pid) return res.json({success:true,data:[]});
+      p.push(pid); sql += ' AND patient_id=$' + p.length;
+    } else if (role === 'medecin_independant') {
+      const mr = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const mid = mr.rows[0]?.id||uid; p.push(mid); sql += ' AND medecin_independant_id=$' + p.length;
+    } else if (role === 'medecin') {
+      p.push(uid); sql += ' AND medecin_id=$' + p.length;
+    } else {
+      const cr = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const cid = cr.rows[0]?.id||req.user?.clinique_id;
+      if(cid){ p.push(cid); sql += ' AND clinique_id=$' + p.length; }
+    }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql,p); res.json({success:true,data:r.rows});
+  } catch(e) { res.json({success:true,data:[]}); }
 });
 app.post('/api/ordonnances', auth, async (req, res) => {
-  const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id } = req.body;
-  if (!patient_id||!medicaments) return res.status(400).json({ success:false, message:'Patient et médicaments requis' });
+  const { patient_id, medicament, medicaments, posologie, duree, consultation_id } = req.body;
+  const drug = medicament || medicaments;
+  if (!patient_id || !drug) return res.status(400).json({ success:false, message:'Patient et médicament requis' });
   try {
-    const r = await db('INSERT INTO ordonnances (id,patient_id,clinique_id,medicaments,posologie,duree,notes_ord,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,medicaments,posologie||null,duree||null,notes_ord||null,consultation_id||null]);
+    const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1',[req.user?.id]).catch(()=>({rows:[]}));
+    const mid = mRow.rows[0]?.id || null;
+    const r = await db('INSERT INTO ordonnances (id,patient_id,medecin_id,medicament,posologie,duree,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [uuid(),patient_id,mid,drug,posologie||null,duree||null,consultation_id||null]);
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
@@ -652,9 +1028,131 @@ app.get('/api/public/cliniques', async (req, res) => {
   try { const r=await db('SELECT * FROM cliniques WHERE is_active=true ORDER BY nom'); res.json({ success:true, data:r.rows }); }
   catch(e) { res.json({ success:true, data:[] }); }
 });
+// GET /api/public/medecins/:id/disponibilites — créneaux disponibles réels
 app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
-  res.json({ success:true, data:[] });
+  try {
+    const { date_debut, date_fin } = req.query;
+    const debut = date_debut || new Date().toISOString().split('T')[0];
+    const fin   = date_fin   || new Date(Date.now()+14*24*3600*1000).toISOString().split('T')[0];
+    const r = await db(`
+      SELECT d.*, m.prenom||' '||m.nom AS medecin_nom, m.specialite, m.tarif
+      FROM disponibilites d
+      LEFT JOIN medecins m ON m.id=d.medecin_id
+      WHERE d.medecin_id=$1 AND d.statut='disponible'
+        AND d.date >= $2 AND d.date <= $3
+      ORDER BY d.date, d.heure_debut
+    `, [req.params.id, debut, fin]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
+
+// GET /api/public/cliniques/:id/medecins — médecins d'une clinique
+app.get('/api/public/cliniques/:id/medecins', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT m.*,
+        (SELECT COUNT(*) FROM disponibilites d
+         WHERE d.medecin_id=m.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
+      FROM medecins m WHERE m.clinique_id=$1 AND m.statut='Disponible'
+      ORDER BY m.specialite, m.nom
+    `, [req.params.id]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/public/medecins-independants — médecins conseils publics
+app.get('/api/public/medecins-independants', async (req, res) => {
+  try {
+    const { specialite } = req.query;
+    let sql = `
+      SELECT u.id, u.prenom, u.nom, u.telephone, u.ville, u.pays_code,
+             mi.specialite, mi.tarif, mi.experience_ans, mi.note_moyenne,
+             (SELECT COUNT(*) FROM disponibilites d
+              WHERE d.medecin_id=u.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
+      FROM utilisateurs u
+      LEFT JOIN medecins_independants mi ON mi.user_id=u.id
+      WHERE u.role='medecin_independant' AND u.is_active=true
+    `;
+    const p = [];
+    if (specialite) { p.push(specialite); sql += ` AND mi.specialite=$${p.length}`; }
+    sql += ' ORDER BY mi.note_moyenne DESC NULLS LAST, u.nom';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/patients/rdv — Patient prend un RDV (authentifié)
+app.post('/api/patients/rdv', auth, async (req, res) => {
+  const { medecin_id, clinique_id, disponibilite_id, date_rdv, heure_rdv, motif, type_rdv } = req.body;
+  if (!date_rdv || !heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
+  try {
+    // Récupérer infos patient
+    const userRow = await db('SELECT prenom, nom, telephone FROM utilisateurs WHERE id=$1', [req.user.id]);
+    const u = userRow.rows[0] || {};
+    const patient_nom = `${u.prenom||''} ${u.nom||''}`.trim() || 'Patient';
+
+    // Récupérer nom médecin si fourni
+    let medecin_nom = null;
+    if (medecin_id) {
+      const mRow = await db('SELECT prenom, nom FROM medecins WHERE id=$1', [medecin_id]);
+      if (mRow.rows[0]) medecin_nom = `Dr. ${mRow.rows[0].prenom} ${mRow.rows[0].nom}`;
+      else {
+        // Médecin indépendant
+        const uRow = await db('SELECT prenom, nom FROM utilisateurs WHERE id=$1', [medecin_id]);
+        if (uRow.rows[0]) medecin_nom = `Dr. ${uRow.rows[0].prenom} ${uRow.rows[0].nom}`;
+      }
+    }
+
+    const ref = 'MC-RDV-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const r = await db(`
+      INSERT INTO rendez_vous
+        (id,reference,patient_id,patient_nom,medecin_id,medecin_nom,clinique_id,date_rdv,heure_rdv,motif,statut,source)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'en_attente','patient_app')
+      RETURNING *
+    `, [uuid(), ref, req.user.id, patient_nom, medecin_id||null, medecin_nom, clinique_id||null, date_rdv, heure_rdv, motif||null]);
+
+    // Marquer la disponibilité comme réservée si fournie
+    if (disponibilite_id) {
+      await db("UPDATE disponibilites SET statut='reserve' WHERE id=$1", [disponibilite_id]).catch(()=>{});
+    }
+
+    res.status(201).json({ success:true, data:{ reference:ref, rdv:r.rows[0] }, message:`RDV confirmé pour le ${date_rdv} à ${heure_rdv}` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// DELETE /api/patients/rdv/:id — Annuler un RDV
+app.delete('/api/patients/rdv/:id', auth, async (req, res) => {
+  try {
+    const rdv = await db('SELECT * FROM rendez_vous WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!rdv.rows.length) return res.status(404).json({ success:false, message:'RDV introuvable' });
+    if (rdv.rows[0].statut === 'termine') return res.status(400).json({ success:false, message:'Impossible d annuler un RDV terminé' });
+    await db("UPDATE rendez_vous SET statut='annule', updated_at=NOW() WHERE id=$1", [req.params.id]);
+    res.json({ success:true, message:'RDV annulé' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/patients/cliniques — Cliniques disponibles pour RDV avec leurs spécialités
+app.get('/api/patients/cliniques', auth, async (req, res) => {
+  try {
+    const { pays_code, ville, specialite } = req.query;
+    let sql = `
+      SELECT cl.*,
+        (SELECT COUNT(*) FROM medecins m WHERE m.clinique_id=cl.id AND m.statut='Disponible') AS nb_medecins,
+        (SELECT COUNT(*) FROM disponibilites d
+         JOIN medecins m ON m.id=d.medecin_id
+         WHERE m.clinique_id=cl.id AND d.statut='disponible' AND d.date>=CURRENT_DATE) AS creneaux_dispo
+      FROM cliniques cl
+      WHERE cl.is_active IS NOT false
+    `;
+    const p = [];
+    if (pays_code) { p.push(pays_code); sql += ` AND cl.pays_code=$${p.length}`; }
+    if (ville)     { p.push(ville);     sql += ` AND cl.ville ILIKE $${p.length}`; }
+    sql += ' ORDER BY cl.nom LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
 app.post('/api/public/rdv', async (req, res) => {
   const { patient_nom, patient_telephone, clinique_id, medecin_id, date_rdv, heure_rdv, motif } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
@@ -671,9 +1169,6 @@ app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
   res.status(err.status||500).json({ success:false, message:isProd&&err.status>=500?'Erreur interne':err.message });
 });
-app.use((req, res) => {
-  res.status(404).json({ success:false, message:`Route introuvable: ${req.method} ${req.originalUrl}` });
-});
 
 
 // ════════════════════════════════════════════════════════════════════
@@ -681,12 +1176,7 @@ app.use((req, res) => {
 // ════════════════════════════════════════════════════════════════════
 
 // ── PATIENTS /me ─────────────────────────────────────────────────
-app.get('/api/patients/me', auth, async (req, res) => {
-  try {
-    const r = await db('SELECT * FROM patients WHERE user_id=$1 LIMIT 1', [req.user.id]);
-    res.json({ success:true, data:r.rows[0]||null });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
+
 
 // ── LIVREURS commandes ────────────────────────────────────────────
 app.get('/api/livreurs/commandes', auth, async (req, res) => {
@@ -704,8 +1194,526 @@ app.get('/api/livreurs/commandes', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
-// ── PHARMACIE commandes ───────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+// WORKFLOW PHARMACIE — Ordonnances, Devis, Paiement
+// ════════════════════════════════════════════════════════════════════
+
+// GET /api/pharmacie/liste — liste des pharmacies pour le patient
+app.get('/api/pharmacie/liste', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT u.id, u.prenom AS nom, u.telephone, u.ville, u.pays_code
+      FROM utilisateurs u
+      WHERE u.role='pharmacie' AND u.is_active=true
+      ORDER BY u.ville, u.prenom LIMIT 50
+    `);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/pharmacie/commander — patient envoie ordonnance à une pharmacie
+app.post('/api/pharmacie/commander', auth, async (req, res) => {
+  const { ordonnance_id, pharmacie_id, notes_patient } = req.body;
+  if (!ordonnance_id || !pharmacie_id) return res.status(400).json({ success:false, message:'Ordonnance et pharmacie requis' });
+  try {
+    // Récupérer patient_id depuis table patients
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.status(400).json({ success:false, message:'Profil patient introuvable' });
+
+    const ref = 'CMD-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const { lat_patient, lng_patient, adresse_patient } = req.body;
+    // Créer la commande
+    const cmd = await db(`
+      INSERT INTO commandes_pharmacie (reference, ordonnance_id, patient_id, pharmacie_id, statut, notes_patient, lat_patient, lng_patient, adresse_patient)
+      VALUES ($1, $2, $3, $4, 'en_attente', $5, $6, $7, $8) RETURNING *
+    `, [ref, ordonnance_id, patientId, pharmacie_id, notes_patient||null, lat_patient||null, lng_patient||null, adresse_patient||null]);
+
+    // Copier les lignes de l'ordonnance
+    const ord = await db('SELECT medicament FROM ordonnances WHERE id=$1',[ordonnance_id]).catch(()=>({rows:[]}));
+    if (ord.rows[0]?.medicament) {
+      const meds = ord.rows[0].medicament.split('\n').filter(m=>m.trim());
+      for (const med of meds) {
+        await db('INSERT INTO lignes_commande (commande_id, medicament, quantite) VALUES ($1,$2,1)',
+          [cmd.rows[0].id, med]).catch(()=>{});
+      }
+    }
+    res.status(201).json({ success:true, data:cmd.rows[0], message:`Commande ${ref} envoyée à la pharmacie` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/pharmacie/mes-commandes — patient voit ses commandes
+app.get('/api/pharmacie/mes-commandes', auth, async (req, res) => {
+  try {
+    const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+    const patientId = pRow.rows[0]?.id;
+    if (!patientId) return res.json({ success:true, data:[] });
+    const r = await db(`
+      SELECT c.*, ph.prenom AS pharmacie_nom, ph.telephone AS pharmacie_tel, ph.ville AS pharmacie_ville
+      FROM commandes_pharmacie c
+      LEFT JOIN utilisateurs ph ON ph.id=c.pharmacie_id
+      WHERE c.patient_id=$1
+      ORDER BY c.created_at DESC LIMIT 50
+    `, [patientId]);
+    // Ajouter les lignes pour chaque commande
+    const cmds = r.rows;
+    for (const cmd of cmds) {
+      const lignes = await db('SELECT * FROM lignes_commande WHERE commande_id=$1 ORDER BY created_at',[cmd.id]).catch(()=>({rows:[]}));
+      cmd.lignes = lignes.rows;
+    }
+    res.json({ success:true, data:cmds });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/pharmacie/commandes — pharmacie voit les commandes reçues
 app.get('/api/pharmacie/commandes', auth, async (req, res) => {
+  try {
+    const { statut } = req.query;
+    const pharmaId = req.user.id;
+    let sql = `
+      SELECT c.*, c.lat_patient, c.lng_patient, c.adresse_patient,
+             u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact,
+             o.medicament AS ordonnance_medicaments
+      FROM commandes_pharmacie c
+      LEFT JOIN patients p ON p.id=c.patient_id
+      LEFT JOIN utilisateurs u ON u.id=p.user_id
+      LEFT JOIN ordonnances o ON o.id=c.ordonnance_id
+      WHERE c.pharmacie_id=$1
+    `;
+    const params = [pharmaId];
+    if (statut) { params.push(statut); sql += ` AND c.statut=$${params.length}`; }
+    sql += ' ORDER BY c.created_at DESC LIMIT 100';
+    const r = await db(sql, params);
+    const cmds = r.rows;
+    for (const cmd of cmds) {
+      const lignes = await db('SELECT * FROM lignes_commande WHERE commande_id=$1 ORDER BY created_at',[cmd.id]).catch(()=>({rows:[]}));
+      cmd.lignes = lignes.rows;
+    }
+    res.json({ success:true, data:cmds });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/pharmacie/commandes/:id/devis — pharmacie renseigne les prix
+app.post('/api/pharmacie/commandes/:id/devis', auth, async (req, res) => {
+  const { lignes, notes_pharmacie } = req.body; // lignes = [{id, prix_unitaire, quantite, disponible}]
+  if (!lignes?.length) return res.status(400).json({ success:false, message:'Lignes requises' });
+  try {
+    let total = 0;
+    for (const l of lignes) {
+      const prixTotal = (l.prix_unitaire||0) * (l.quantite||1);
+      total += prixTotal;
+      await db(`
+        UPDATE lignes_commande SET prix_unitaire=$1, prix_total=$2, quantite=$3, disponible=$4
+        WHERE id=$5
+      `, [l.prix_unitaire||0, prixTotal, l.quantite||1, l.disponible!==false, l.id]);
+    }
+    await db(`
+      UPDATE commandes_pharmacie
+      SET statut='devis_envoye', montant_total=$1, notes_pharmacie=$2, updated_at=NOW()
+      WHERE id=$3
+    `, [total, notes_pharmacie||null, req.params.id]);
+    res.json({ success:true, message:`Devis envoyé — Total: ${total} FCFA`, data:{ total } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// POST /api/pharmacie/commandes/:id/payer — patient initie le paiement
+app.post('/api/pharmacie/commandes/:id/payer', auth, async (req, res) => {
+  const { methode, telephone } = req.body;
+  try {
+    const cmd = await db('SELECT * FROM commandes_pharmacie WHERE id=$1',[req.params.id]);
+    if (!cmd.rows.length) return res.status(404).json({ success:false, message:'Commande introuvable' });
+    const montant = cmd.rows[0].montant_total;
+    const pay = await db(`
+      INSERT INTO paiements_pharmacie (commande_id, montant, methode, statut, telephone)
+      VALUES ($1, $2, $3, 'initie', $4) RETURNING *
+    `, [req.params.id, montant, methode||'mobile_money', telephone||null]);
+    await db("UPDATE commandes_pharmacie SET statut='paiement_initie' WHERE id=$1",[req.params.id]);
+
+    // Auto-facture assurance si patient assuré
+    if (cmd.rows[0].patient_id) {
+      const patAss = await db('SELECT assurance FROM patients WHERE id=$1',[cmd.rows[0].patient_id]).catch(()=>({rows:[]}));
+      const ass = patAss.rows[0]?.assurance;
+      if (ass && ass !== 'Sans assurance') {
+        const pharmNom = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[req.user.id]).catch(()=>({rows:[]}));
+        await createFactureAssurance({
+          patient_id: cmd.rows[0].patient_id, assurance: ass,
+          type_prestation: 'pharmacie',
+          description: `Médicaments — Commande ${cmd.rows[0].reference}`,
+          montant_total: montant,
+          prestataire_id: req.user.id,
+          prestataire_nom: pharmNom.rows[0]?.prenom || 'Pharmacie',
+          type_prestataire: 'pharmacie',
+          ordonnance_id: cmd.rows[0].ordonnance_id || null,
+        });
+      }
+    }
+    const paymentUrl = 'https://www.mobilepay-ci.com/pay';
+    res.json({ success:true, data:{ paiement:pay.rows[0], montant, paymentUrl, ref:pay.rows[0].id } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// PATCH /api/pharmacie/commandes/:id/statut — mise à jour statut
+app.patch('/api/pharmacie/commandes/:id/statut', auth, async (req, res) => {
+  const { statut } = req.body;
+  try {
+    await db("UPDATE commandes_pharmacie SET statut=$1, updated_at=NOW() WHERE id=$2",[statut, req.params.id]);
+    res.json({ success:true, message:'Statut mis à jour' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+
+// ════════════════════════════════════════════════════════════════════
+// WORKFLOW LIVRAISON — Publication, Acceptation, Suivi, Confirmation
+// ════════════════════════════════════════════════════════════════════
+
+// Générer code confirmation 6 chiffres
+const genCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Créer notification pour un utilisateur
+const createNotif = async (mission_id, destinataire, role_dest, type_notif, message) => {
+  await db(`INSERT INTO notifications_livraison (mission_id,destinataire,role_dest,type_notif,message)
+            VALUES ($1,$2,$3,$4,$5)`,
+    [mission_id, destinataire, role_dest, type_notif, message]).catch(()=>{});
+};
+
+// POST /api/livraison/publier — pharmacie publie une mission après paiement confirmé
+app.post('/api/livraison/publier', auth, async (req, res) => {
+  const { commande_id, adresse_retrait, adresse_livraison, ville, quartier, notes_patient } = req.body;
+  if (!commande_id) return res.status(400).json({ success:false, message:'commande_id requis' });
+  try {
+    // Vérifier que la commande est payée
+    const cmd = await db('SELECT * FROM commandes_pharmacie WHERE id=$1',[commande_id]);
+    if (!cmd.rows.length) return res.status(404).json({ success:false, message:'Commande introuvable' });
+
+    const ref = 'LIV-' + Math.random().toString(36).slice(2,8).toUpperCase();
+    const code = genCode();
+
+    // Récupérer les coordonnées GPS du patient depuis la commande
+    const gpsLat = cmd.rows[0].lat_patient || null;
+    const gpsLng = cmd.rows[0].lng_patient || null;
+    const gpsAdresse = cmd.rows[0].adresse_patient || adresse_livraison || 'Adresse patient';
+
+    const mission = await db(`
+      INSERT INTO missions_livraison
+        (reference, commande_id, patient_id, pharmacie_id, adresse_retrait, adresse_livraison,
+         ville, quartier, notes_patient, code_confirmation, statut, lat_livraison, lng_livraison)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'publiee',$11,$12) RETURNING *
+    `, [ref, commande_id, cmd.rows[0].patient_id, req.user.id,
+        adresse_retrait||'Pharmacie partenaire', gpsAdresse,
+        ville||'Abidjan', quartier||null, notes_patient||null, code, gpsLat, gpsLng]);
+
+    // Notifier tous les livreurs disponibles
+    const livreurs = await db("SELECT id FROM utilisateurs WHERE role='livreur' AND is_active=true").catch(()=>({rows:[]}));
+    for (const l of livreurs.rows) {
+      await createNotif(mission.rows[0].id, l.id, 'livreur', 'mission_publiee',
+        `🛵 Nouvelle mission disponible — ${ref} — 1500 FCFA — ${ville||'Abidjan'}`);
+    }
+
+    res.status(201).json({ success:true, data:mission.rows[0], message:'Mission publiée — livreurs notifiés' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/livraison/missions — livreur voit les missions disponibles
+app.get('/api/livraison/missions', auth, async (req, res) => {
+  try {
+    const { statut } = req.query;
+    const uid = req.user.id;
+    const role = req.user.role;
+    let sql, params = [];
+
+    if (role === 'livreur') {
+      if (statut === 'publiee') {
+        // Toutes les missions publiées (non encore acceptées)
+        sql = `
+          SELECT m.*, cp.reference AS cmd_ref, cp.montant_total,
+                 ph.prenom AS pharmacie_nom, ph.telephone AS pharmacie_tel,
+                 u.prenom AS patient_prenom, u.nom AS patient_nom
+          FROM missions_livraison m
+          LEFT JOIN commandes_pharmacie cp ON cp.id=m.commande_id
+          LEFT JOIN utilisateurs ph ON ph.id=m.pharmacie_id
+          LEFT JOIN patients p ON p.id=m.patient_id
+          LEFT JOIN utilisateurs u ON u.id=p.user_id
+          WHERE m.statut='publiee'
+          ORDER BY m.created_at DESC LIMIT 50
+        `;
+      } else {
+        // Missions du livreur connecté
+        sql = `
+          SELECT m.*, cp.reference AS cmd_ref, cp.montant_total,
+                 ph.prenom AS pharmacie_nom, ph.telephone AS pharmacie_tel,
+                 u.prenom AS patient_prenom, u.nom AS patient_nom, u.telephone AS patient_tel
+          FROM missions_livraison m
+          LEFT JOIN commandes_pharmacie cp ON cp.id=m.commande_id
+          LEFT JOIN utilisateurs ph ON ph.id=m.pharmacie_id
+          LEFT JOIN patients p ON p.id=m.patient_id
+          LEFT JOIN utilisateurs u ON u.id=p.user_id
+          WHERE m.livreur_id=$1
+        `;
+        params = [uid];
+        if (statut) { params.push(statut); sql += ` AND m.statut=$${params.length}`; }
+        sql += ' ORDER BY m.updated_at DESC LIMIT 50';
+      }
+    } else if (role === 'pharmacie') {
+      sql = `
+        SELECT m.*, u.prenom AS patient_prenom, u.nom AS patient_nom,
+               lu.prenom AS livreur_prenom, lu.nom AS livreur_nom, lu.telephone AS livreur_tel
+        FROM missions_livraison m
+        LEFT JOIN patients p ON p.id=m.patient_id
+        LEFT JOIN utilisateurs u ON u.id=p.user_id
+        LEFT JOIN utilisateurs lu ON lu.id=m.livreur_id
+        WHERE m.pharmacie_id=$1
+      `;
+      params = [uid];
+      if (statut) { params.push(statut); sql += ` AND m.statut=$${params.length}`; }
+      sql += ' ORDER BY m.updated_at DESC LIMIT 50';
+    } else {
+      // Patient
+      const pRow = await db('SELECT id FROM patients WHERE user_id=$1 LIMIT 1',[uid]).catch(()=>({rows:[]}));
+      const pid = pRow.rows[0]?.id;
+      sql = `
+        SELECT m.*, lu.prenom AS livreur_prenom, lu.nom AS livreur_nom, lu.telephone AS livreur_tel,
+               ph.prenom AS pharmacie_nom
+        FROM missions_livraison m
+        LEFT JOIN utilisateurs lu ON lu.id=m.livreur_id
+        LEFT JOIN utilisateurs ph ON ph.id=m.pharmacie_id
+        WHERE m.patient_id=$1
+      `;
+      params = [pid];
+      sql += ' ORDER BY m.updated_at DESC LIMIT 20';
+    }
+
+    const r = await db(sql, params);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// POST /api/livraison/missions/:id/accepter — livreur accepte une mission
+app.post('/api/livraison/missions/:id/accepter', auth, async (req, res) => {
+  const uid = req.user.id;
+  try {
+    // Vérifier que la mission est encore disponible (transaction)
+    const check = await db("SELECT * FROM missions_livraison WHERE id=$1 AND statut='publiee' FOR UPDATE",[req.params.id]);
+    if (!check.rows.length) return res.status(409).json({ success:false, message:'Mission déjà prise ou introuvable' });
+
+    const mission = await db(`
+      UPDATE missions_livraison
+      SET statut='acceptee', livreur_id=$1, date_acceptation=NOW(), updated_at=NOW()
+      WHERE id=$2 RETURNING *
+    `, [uid, req.params.id]);
+
+    const m = mission.rows[0];
+
+    // Notifier pharmacie
+    if (m.pharmacie_id) {
+      await createNotif(m.id, m.pharmacie_id, 'pharmacie', 'mission_acceptee',
+        `✅ Livreur en route — Mission ${m.reference} acceptée`);
+    }
+    // Notifier patient
+    if (m.patient_id) {
+      const pRow = await db('SELECT user_id FROM patients WHERE id=$1',[m.patient_id]).catch(()=>({rows:[]}));
+      if (pRow.rows[0]) await createNotif(m.id, pRow.rows[0].user_id, 'patient', 'mission_acceptee',
+        `🛵 Un livreur a accepté votre mission — Il viendra récupérer vos médicaments`);
+    }
+
+    res.json({ success:true, data:m, message:'Mission acceptée !' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// PATCH /api/livraison/missions/:id/statut — mise à jour statut par livreur
+app.patch('/api/livraison/missions/:id/statut', auth, async (req, res) => {
+  const { statut, notes } = req.body;
+  const uid = req.user.id;
+  const VALID = ['retrait_confirme','en_route','livree','echouee'];
+  if (!VALID.includes(statut)) return res.status(400).json({ success:false, message:'Statut invalide' });
+  try {
+    let extra = '';
+    if (statut === 'retrait_confirme') extra = ', date_retrait=NOW()';
+    if (statut === 'livree') extra = ', date_livraison=NOW()';
+
+    const mission = await db(`
+      UPDATE missions_livraison
+      SET statut=$1, notes_livreur=COALESCE($2, notes_livreur)${extra}, updated_at=NOW()
+      WHERE id=$3 AND livreur_id=$4 RETURNING *
+    `, [statut, notes||null, req.params.id, uid]);
+
+    if (!mission.rows.length) return res.status(404).json({ success:false, message:'Mission introuvable' });
+    const m = mission.rows[0];
+
+    // Notifier patient selon statut
+    const pRow = await db('SELECT user_id FROM patients WHERE id=$1',[m.patient_id]).catch(()=>({rows:[]}));
+    const patientUserId = pRow.rows[0]?.user_id;
+
+    const MESSAGES = {
+      retrait_confirme: '📦 Le livreur a retiré vos médicaments à la pharmacie — En route vers vous !',
+      en_route:         '🛵 Votre livreur est en chemin — Préparez-vous à recevoir votre commande',
+      livree:           '✅ Médicaments livrés ! Bon rétablissement 🌿',
+      echouee:          '⚠️ Livraison échouée — Contactez la pharmacie',
+    };
+    if (patientUserId) {
+      await createNotif(m.id, patientUserId, 'patient', statut, MESSAGES[statut]);
+    }
+    // Notifier pharmacie si livraison terminée
+    if (['livree','echouee'].includes(statut) && m.pharmacie_id) {
+      await createNotif(m.id, m.pharmacie_id, 'pharmacie', statut,
+        statut === 'livree' ? `✅ Mission ${m.reference} livrée avec succès` : `⚠️ Mission ${m.reference} échouée`);
+    }
+
+    // Si livré → mettre à jour statut commande pharmacie
+    if (statut === 'livree') {
+      await db("UPDATE commandes_pharmacie SET statut='livre' WHERE id=$1",[m.commande_id]).catch(()=>{});
+    }
+
+    res.json({ success:true, data:m });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// POST /api/livraison/missions/:id/confirmer-livraison — patient confirme réception (code)
+app.post('/api/livraison/missions/:id/confirmer-livraison', auth, async (req, res) => {
+  const { code } = req.body;
+  try {
+    const m = await db('SELECT * FROM missions_livraison WHERE id=$1',[req.params.id]);
+    if (!m.rows.length) return res.status(404).json({ success:false, message:'Mission introuvable' });
+    if (m.rows[0].code_confirmation !== code) return res.status(400).json({ success:false, message:'Code incorrect' });
+    await db("UPDATE missions_livraison SET statut='livree', date_livraison=NOW() WHERE id=$1",[req.params.id]);
+    await db("UPDATE commandes_pharmacie SET statut='livre' WHERE id=$1",[m.rows[0].commande_id]).catch(()=>{});
+    res.json({ success:true, message:'Livraison confirmée !' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/livraison/notifications — notifications non lues
+app.get('/api/livraison/notifications', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT n.*, m.reference AS mission_ref
+      FROM notifications_livraison n
+      LEFT JOIN missions_livraison m ON m.id=n.mission_id
+      WHERE n.destinataire=$1 AND n.lu=false
+      ORDER BY n.created_at DESC LIMIT 20
+    `, [req.user.id]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// PATCH /api/livraison/notifications/lire — marquer comme lues
+app.patch('/api/livraison/notifications/lire', auth, async (req, res) => {
+  try {
+    await db("UPDATE notifications_livraison SET lu=true WHERE destinataire=$1",[req.user.id]);
+    res.json({ success:true });
+  } catch(e) { res.json({ success:true }); }
+});
+
+
+// ════════════════════════════════════════════════════════════════════
+// WORKFLOW ASSURANCE — Facturation temps réel
+// ════════════════════════════════════════════════════════════════════
+
+
+// GET /api/assurance/factures — assureur voit ses factures temps réel
+app.get('/api/assurance/factures', auth, async (req, res) => {
+  try {
+    const { statut, prestataire, date_debut, date_fin } = req.query;
+    const uid = req.user.id;
+    let sql = `
+      SELECT fa.*,
+             p_prest.role AS prest_role
+      FROM factures_assurance fa
+      LEFT JOIN utilisateurs p_prest ON p_prest.id=fa.prestataire_id
+      WHERE (fa.assureur_id=$1
+         OR fa.compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1))`;
+    const params = [uid];
+    if (statut) { params.push(statut); sql += ` AND fa.statut=$${params.length}`; }
+    if (prestataire) { params.push('%'+prestataire+'%'); sql += ` AND fa.prestataire_nom ILIKE $${params.length}`; }
+    if (date_debut) { params.push(date_debut); sql += ` AND fa.created_at >= $${params.length}`; }
+    if (date_fin) { params.push(date_fin); sql += ` AND fa.created_at <= $${params.length}`; }
+    sql += ' ORDER BY fa.created_at DESC LIMIT 200';
+    const r = await db(sql, params);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// GET /api/assurance/solde — solde global temps réel
+app.get('/api/assurance/solde', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const r = await db(`
+      SELECT
+        COUNT(*) AS nb_factures,
+        COALESCE(SUM(montant_total),0) AS total_prestations,
+        COALESCE(SUM(montant_assure),0) AS total_a_rembourser,
+        COALESCE(SUM(CASE WHEN statut='validee' THEN montant_assure ELSE 0 END),0) AS total_valide,
+        COALESCE(SUM(CASE WHEN statut='payee' THEN montant_assure ELSE 0 END),0) AS total_paye,
+        COALESCE(SUM(CASE WHEN statut='en_attente' THEN montant_assure ELSE 0 END),0) AS total_en_attente,
+        COALESCE(SUM(CASE WHEN statut='rejetee' THEN montant_assure ELSE 0 END),0) AS total_rejete,
+        COUNT(DISTINCT patient_id) AS nb_patients,
+        COUNT(DISTINCT prestataire_id) AS nb_prestataires
+      FROM factures_assurance
+      WHERE assureur_id=$1
+         OR compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1)
+    `, [uid]);
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.json({ success:true, data:{} }); }
+});
+
+// GET /api/assurance/solde-par-prestataire — répartition par prestataire
+app.get('/api/assurance/solde-par-prestataire', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const r = await db(`
+      SELECT
+        prestataire_nom, type_prestataire,
+        COUNT(*) AS nb_actes,
+        COALESCE(SUM(montant_total),0) AS total_prestations,
+        COALESCE(SUM(montant_assure),0) AS total_assure,
+        COALESCE(SUM(CASE WHEN statut='en_attente' THEN montant_assure ELSE 0 END),0) AS en_attente
+      FROM factures_assurance
+      WHERE assureur_id=$1 OR compagnie IN (SELECT prenom||' '||nom FROM utilisateurs WHERE id=$1)
+      GROUP BY prestataire_nom, type_prestataire
+      ORDER BY total_assure DESC
+    `, [uid]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// PATCH /api/assurance/factures/:id — valider ou rejeter une facture
+app.patch('/api/assurance/factures/:id', auth, async (req, res) => {
+  const { statut, motif_rejet } = req.body;
+  try {
+    const extra = statut === 'validee' ? ', validated_at=NOW()' : '';
+    const r = await db(`
+      UPDATE factures_assurance
+      SET statut=$1, motif_rejet=$2${extra}, updated_at=NOW()
+      WHERE id=$3 RETURNING *
+    `, [statut, motif_rejet||null, req.params.id]);
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// GET /api/assurance/patients — patients assurés de cette compagnie
+app.get('/api/assurance/patients', auth, async (req, res) => {
+app.get('/api/assurance/patients', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const { prestataire } = req.query;
+    const compRow = await db("SELECT prenom||' '||nom AS full_name FROM utilisateurs WHERE id=$1",[uid]).catch(()=>({rows:[]}));
+    const compagnie = compRow.rows[0]?.full_name||'';
+    const r = await db(`
+      SELECT DISTINCT p.*, u.prenom||' '||u.nom AS nom_complet, u.telephone,
+             COUNT(fa.id) AS nb_actes,
+             COALESCE(SUM(fa.montant_assure),0) AS total_rembourse
+      FROM patients p
+      LEFT JOIN utilisateurs u ON u.id=p.user_id
+      LEFT JOIN factures_assurance fa ON fa.patient_id=p.id
+      WHERE (p.assurance ILIKE '%'||$1||'%' OR fa.compagnie ILIKE '%'||$1||'%')
+      AND ($2::text IS NULL OR fa.prestataire_nom ILIKE '%'||$2||'%')
+      GROUP BY p.id, u.prenom, u.nom, u.telephone, p.prenom_patient, p.nom_patient
+      ORDER BY total_rembourse DESC LIMIT 100
+    `, [compagnie, prestataire||null]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// ── PHARMACIE commandes (ancienne route — conservée pour compatibilité) ───
+app.get('/api/pharmacie/commandes-legacy', auth, async (req, res) => {
   try {
     const { statut } = req.query;
     let sql = `SELECT c.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact
@@ -857,13 +1865,30 @@ app.delete('/api/cliniques/specialites/:id', auth, async (req, res) => {
 // GET /api/planning/stats
 app.get('/api/planning/stats', auth, async (req, res) => {
   try {
-    const mid   = req.user?.medecin_id || req.user?.id;
+    const uid   = req.user?.id;
+    const mid   = req.user?.medecin_id || uid;
+    const role  = req.user?.role;
     const today = new Date().toISOString().split('T')[0];
+
+    // Pour médecin indépendant : résoudre le vrai id dans medecins_independants
+    let rdvFilter, rdvId, rdvId2;
+    if (role === 'medecin_independant') {
+      const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [uid]).catch(()=>({rows:[]}));
+      const miId = miRow.rows[0]?.id || uid;
+      rdvFilter = `(medecin_independant_id=$1 OR medecin_id=$2)`;
+      rdvId  = miId;
+      rdvId2 = uid;
+    } else {
+      rdvFilter = `medecin_id=$1`;
+      rdvId  = mid || uid;
+      rdvId2 = mid || uid;
+    }
+
     const [rdvJ, rdvM, cons, dispo] = await Promise.all([
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE medecin_id=$1 AND date_rdv=$2 AND statut NOT IN ('annule')", [mid, today]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM rendez_vous WHERE medecin_id=$1 AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')", [mid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM consultations WHERE medecin_id=$1", [mid]).catch(()=>({rows:[{c:0}]})),
-      db("SELECT COUNT(*) c FROM disponibilites WHERE medecin_id=$1 AND statut='disponible' AND date>=CURRENT_DATE", [mid]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE ${rdvFilter} AND date_rdv=$3 AND statut NOT IN ('annule')`, role==='medecin_independant'?[rdvId,rdvId2,today]:[rdvId,today]).catch(()=>({rows:[{c:0}]})),
+      db(`SELECT COUNT(*) c FROM rendez_vous WHERE ${rdvFilter} AND date_rdv>=date_trunc('month',CURRENT_DATE) AND statut NOT IN ('annule')`, role==='medecin_independant'?[rdvId,rdvId2]:[rdvId]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM consultations WHERE medecin_id=$1", [uid]).catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM disponibilites WHERE medecin_id=$1 AND statut='disponible' AND date>=CURRENT_DATE", [uid]).catch(()=>({rows:[{c:0}]})),
     ]);
     res.json({ success:true, data:{
       rdv_aujourd_hui:     +rdvJ.rows[0]?.c || 0,
@@ -878,11 +1903,44 @@ app.get('/api/planning/stats', auth, async (req, res) => {
 app.get('/api/planning/rdvs', auth, async (req, res) => {
   try {
     const { date, statut } = req.query;
-    const mid = req.user?.medecin_id || req.user?.id;
-    let sql = 'SELECT * FROM rendez_vous WHERE medecin_id=$1'; const p = [mid];
-    if (date)   { p.push(date);   sql += ` AND date_rdv=$${p.length}`; }
-    if (statut) { p.push(statut); sql += ` AND statut=$${p.length}`; }
-    sql += ' ORDER BY date_rdv, heure_rdv LIMIT 100';
+    const uid = req.user?.id;
+    const mid = req.user?.medecin_id;
+    const role = req.user?.role;
+
+    // Pour médecin indépendant : chercher par user_id OU medecin_id (table medecins)
+    // Pour médecin clinique : chercher par medecin_id (table medecins)
+    let sql, p;
+    if (role === 'medecin_independant') {
+      // Résoudre le vrai id dans medecins_independants
+      const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [uid]).catch(()=>({rows:[]}));
+      const miId = miRow.rows[0]?.id;
+      sql = `
+        SELECT r.*,
+               u.prenom||' '||u.nom AS patient_nom_complet,
+               u.telephone AS patient_tel
+        FROM rendez_vous r
+        LEFT JOIN patients pat ON pat.id=r.patient_id
+        LEFT JOIN utilisateurs u ON u.id=pat.user_id
+        WHERE (r.medecin_independant_id=$1 OR r.medecin_id=$2)
+      `;
+      p = [miId||uid, uid];
+    } else {
+      // Médecin rattaché clinique
+      const effectiveMid = mid || uid;
+      sql = `
+        SELECT r.*,
+               u.prenom||' '||u.nom AS patient_nom_complet,
+               u.telephone AS patient_tel
+        FROM rendez_vous r
+        LEFT JOIN utilisateurs u ON u.id=r.patient_id
+        WHERE r.medecin_id=$1
+      `;
+      p = [effectiveMid];
+    }
+
+    if (date)   { p.push(date);   sql += ` AND r.date_rdv=$${p.length}`; }
+    if (statut) { p.push(statut); sql += ` AND r.statut=$${p.length}`; }
+    sql += ' ORDER BY r.date_rdv, r.heure_rdv LIMIT 100';
     const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
@@ -892,7 +1950,9 @@ app.get('/api/planning/rdvs', auth, async (req, res) => {
 app.get('/api/planning/disponibilites', auth, async (req, res) => {
   try {
     const { mois, annee } = req.query;
-    const mid = req.user?.medecin_id || req.user?.id;
+    const isIndep = req.user?.role === 'medecin_independant';
+    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const miId = isIndep ? req.user?.id : null;
     const m = mois  || new Date().getMonth() + 1;
     const a = annee || new Date().getFullYear();
     const r = await db(`
@@ -916,7 +1976,9 @@ app.post('/api/planning/disponibilites', auth, async (req, res) => {
     const { date, heure_debut, heure_fin, clinique_id, recurrent } = req.body;
     if (!date || !heure_debut || !heure_fin)
       return res.status(400).json({ success:false, message:'date, heure_debut et heure_fin requis' });
-    const mid = req.user?.medecin_id || req.user?.id;
+    const isIndep = req.user?.role === 'medecin_independant';
+    const mid  = isIndep ? null : (req.user?.medecin_id || req.user?.id);
+    const miId = isIndep ? req.user?.id : null;
     const exists = await db(
       'SELECT id FROM disponibilites WHERE medecin_id=$1 AND date=$2 AND heure_debut=$3',
       [mid, date, heure_debut]
@@ -942,7 +2004,27 @@ app.delete('/api/planning/disponibilites/:id', auth, async (req, res) => {
 // GET /api/planning/mes-patients
 app.get('/api/planning/mes-patients', auth, async (req, res) => {
   try {
-    const mid = req.user?.medecin_id || req.user?.id;
+    const role = req.user?.role;
+    const isIndep = role === 'medecin_independant';
+    const isClinique = role === 'clinique';
+    let mid = req.user?.medecin_id || null;
+    let miId = null;
+    if (isIndep) {
+      const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      miId = miRow.rows[0]?.id || null;
+      mid = null;
+    } else if (isClinique) {
+      mid = null;
+    }
+    let consultCliniqueId = null;
+    if (isClinique) {
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+      consultCliniqueId = clRow.rows[0]?.id || null;
+    } else if (!mid) {
+      // Médecin résident : chercher dans table medecins
+      const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      mid = mRow.rows[0]?.id || null;
+    }
     const r = await db(`
       SELECT DISTINCT p.*
       FROM patients p
@@ -968,30 +2050,66 @@ app.get('/api/planning/mes-cliniques', auth, async (req, res) => {
 // POST /api/consultations/depuis-rdv
 app.post('/api/consultations/depuis-rdv', auth, async (req, res) => {
   try {
-    const { rdv_id, patient_id, diagnostic, traitement, notes,
-            tension_arterielle, temperature, poids, taille,
-            pathologie, age_patient, sexe_patient, gravite, ordonnance } = req.body;
+    const { rdv_id, patient_id, motif, diagnostic, traitement, notes,
+            tension_arterielle, ta, fc, spo2, temperature, poids, taille,
+            pathologie, age_patient, sexe_patient, gravite, ordonnance,
+            code_cim10, examen_clinique, note_finale } = req.body;
     if (!diagnostic) return res.status(400).json({ success:false, message:'Diagnostic requis' });
-    const mid = req.user?.medecin_id || req.user?.id;
+    const role = req.user?.role;
+    const isIndep = role === 'medecin_independant';
+    const isClinique = role === 'clinique';
+    let mid = req.user?.medecin_id || null;
+    let miId = null;
+    if (isIndep) {
+      const miRow = await db('SELECT id FROM medecins_independants WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      miId = miRow.rows[0]?.id || null;
+      mid = null;
+    } else if (isClinique) {
+      mid = null;
+    }
+    let consultCliniqueId = null;
+    if (isClinique) {
+      const clRow = await db('SELECT id FROM cliniques WHERE user_id=$1 LIMIT 1',[req.user.id]).catch(()=>({rows:[]}));
+      consultCliniqueId = clRow.rows[0]?.id || null;
+    } else if (!mid) {
+      // Médecin résident : chercher dans table medecins
+      const mRow = await db('SELECT id FROM medecins WHERE user_id=$1 LIMIT 1', [req.user.id]).catch(()=>({rows:[]}));
+      mid = mRow.rows[0]?.id || null;
+    }
     const r = await db(
       `INSERT INTO consultations
-         (id,patient_id,medecin_id,rdv_id,diagnostic,traitement,notes,
-          tension_arterielle,temperature,poids,taille,pathologie,
+         (id,patient_id,clinique_id,medecin_id,medecin_independant_id,rdv_id,motif,date_consult,
+          diagnostic,code_cim10,examen_clinique,note_finale,
+          ta,fc,spo2,temperature,poids,taille,pathologie,
           age_patient,sexe_patient,gravite,pays_code)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CI')
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,CURRENT_DATE,
+               $7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'CI')
        RETURNING *`,
-      [patient_id||null, mid, rdv_id||null, diagnostic,
-       traitement||null, notes||null, tension_arterielle||null,
-       temperature||null, poids||null, taille||null,
+      [patient_id||null, consultCliniqueId, mid, miId, rdv_id||null, motif||diagnostic||'Consultation',
+       diagnostic, code_cim10||null, examen_clinique||traitement||null, note_finale||notes||null,
+       ta||tension_arterielle||null, fc||null, spo2||null, temperature||null, poids||null, taille||null,
        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere']
     );
     if (ordonnance?.medicaments) {
       await db(
-        'INSERT INTO ordonnances (id,patient_id,medecin_id,consultation_id,medicaments,posologie,duree) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6)',
-        [patient_id||null, mid, r.rows[0].id, ordonnance.medicaments, ordonnance.posologie||null, ordonnance.duree||null]
+        'INSERT INTO ordonnances (id,patient_id,medecin_id,consultation_id,medicament,posologie,duree) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6)',
+        [patient_id||null, mid, r.rows[0].id, ordonnance.medicaments||ordonnance.medicament, ordonnance.posologie||null, ordonnance.duree||null]
       ).catch(()=>{});
     }
     if (rdv_id) await db("UPDATE rendez_vous SET statut='termine' WHERE id=$1", [rdv_id]).catch(()=>{});
+    // Auto-facture assurance depuis RDV
+    if (patient_id) {
+      const patAss2 = await db('SELECT assurance FROM patients WHERE id=$1',[patient_id]).catch(()=>({rows:[]}));
+      const ass2 = patAss2.rows[0]?.assurance;
+      if (ass2 && ass2 !== 'Sans assurance') {
+        const pNom2 = await db('SELECT prenom FROM utilisateurs WHERE id=$1',[req.user.id]).catch(()=>({rows:[]}));
+        await createFactureAssurance({ patient_id, assurance:ass2, type_prestation:'consultation',
+          description:`Consultation — ${motif||diagnostic||'Acte médical'}`, montant_total:15000,
+          prestataire_id:req.user.id, prestataire_nom:pNom2.rows[0]?.prenom||'Prestataire',
+          type_prestataire: req.user.role==='clinique'?'clinique':'medecin',
+          consultation_id:r2.rows[0]?.id, rdv_id:rdv_id });
+      }
+    }
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
@@ -1167,6 +2285,324 @@ app.get('/api/ministere/geo-morbidite', auth, can('admin'), async (req, res) => 
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
+// ══════════════════════════════════════════════════════════════════
+// ASSURANCE — offres, souscriptions, tiers-payant
+// ══════════════════════════════════════════════════════════════════
+
+const logAudit = async (userId, action, tableName, recordId, changes, req) => {
+  try {
+    await db(
+      `INSERT INTO audit_logs (user_id,action,table_name,record_id,changes,ip_address,user_agent)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [userId||null, action, tableName||null, recordId||null,
+       changes ? JSON.stringify(changes) : null,
+       req?.ip||null, req?.headers?.['user-agent']||null]
+    );
+  } catch(e) { console.error('[audit_log]', e.message); }
+};
+
+app.get('/api/assurance/offres', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT o.id, o.nom, o.description, o.prix_mensuel, o.couverture_details,
+             o.franchise, o.plafond_annuel, o.delai_remboursement,
+             u.prenom||' '||u.nom AS assureur_nom
+      FROM offres_assurance o JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE o.actif=true ORDER BY o.prix_mensuel ASC
+    `);
+    res.json({ success:true, offres:r.rows });
+  } catch(e) { console.error('[GET /assurance/offres]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/offres/:id', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT o.*, u.prenom||' '||u.nom AS assureur_nom, u.telephone AS assureur_tel
+      FROM offres_assurance o JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE o.id=$1 AND o.actif=true
+    `, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error:'Offre introuvable' });
+    res.json({ success:true, offre:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/assurance/souscrire', auth, async (req, res) => {
+  const { offre_id } = req.body;
+  if (!offre_id) return res.status(400).json({ error:'offre_id requis' });
+  try {
+    const offre = await db('SELECT * FROM offres_assurance WHERE id=$1 AND actif=true', [offre_id]);
+    if (!offre.rows.length) return res.status(404).json({ error:'Offre introuvable' });
+    const existing = await db(
+      `SELECT id FROM souscriptions_assurance WHERE patient_id=$1 AND offre_id=$2 AND statut IN ('en_attente','active')`,
+      [req.user.id, offre_id]
+    );
+    if (existing.rows.length) return res.status(409).json({ error:'Souscription déjà active pour cette offre' });
+    const r = await db(
+      `INSERT INTO souscriptions_assurance (patient_id,offre_id,statut,date_debut) VALUES ($1,$2,'en_attente',CURRENT_DATE) RETURNING *`,
+      [req.user.id, offre_id]
+    );
+    await logAudit(req.user.id, 'SOUSCRIPTION_ASSURANCE', 'souscriptions_assurance', r.rows[0].id, {offre_id}, req);
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Souscription en cours',$2,$3)`,
+      [req.user.id, `Votre souscription à "${offre.rows[0].nom}" est en cours de traitement.`, r.rows[0].id]);
+    res.status(201).json({ success:true, souscription:r.rows[0] });
+  } catch(e) { console.error('[POST /assurance/souscrire]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/mes-souscriptions', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT s.*, o.nom AS offre_nom, o.prix_mensuel, o.couverture_details, o.plafond_annuel,
+             u.prenom||' '||u.nom AS assureur_nom
+      FROM souscriptions_assurance s
+      JOIN offres_assurance o ON o.id=s.offre_id
+      JOIN utilisateurs u ON u.id=o.assureur_id
+      WHERE s.patient_id=$1 ORDER BY s.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, souscriptions:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/assurance/tiers-payant', auth, async (req, res) => {
+  const { consultation_id, assureur_id, souscription_id, montant_total, clinique_id } = req.body;
+  if (!assureur_id || !montant_total) return res.status(400).json({ error:'assureur_id et montant_total requis' });
+  try {
+    const r = await db(`
+      INSERT INTO dossiers_tiers_payant (patient_id,clinique_id,assureur_id,consultation_id,souscription_id,montant_total,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,'soumis') RETURNING *
+    `, [req.user.id, clinique_id||null, assureur_id, consultation_id||null, souscription_id||null, montant_total]);
+    await logAudit(req.user.id, 'SOUMISSION_TIERS_PAYANT', 'dossiers_tiers_payant', r.rows[0].id, req.body, req);
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Nouveau dossier TP',$2,$3)`,
+      [assureur_id, `Nouveau dossier TP — Réf: ${r.rows[0].reference} — ${montant_total} FCFA`, r.rows[0].id]);
+    res.status(201).json({ success:true, dossier:r.rows[0] });
+  } catch(e) { console.error('[POST /assurance/tiers-payant]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/mes-dossiers-tp', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT d.*, u.prenom||' '||u.nom AS assureur_nom
+      FROM dossiers_tiers_payant d JOIN utilisateurs u ON u.id=d.assureur_id
+      WHERE d.patient_id=$1 ORDER BY d.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, dossiers:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/dossiers-tp', auth, can('assureur','admin'), async (req, res) => {
+  try {
+    const params = [req.user.id];
+    let q = `SELECT d.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS patient_tel
+             FROM dossiers_tiers_payant d JOIN utilisateurs u ON u.id=d.patient_id
+             WHERE d.assureur_id=$1`;
+    if (req.query.statut) { q += ` AND d.statut=$2`; params.push(req.query.statut); }
+    q += ` ORDER BY d.created_at DESC`;
+    const r = await db(q, params);
+    res.json({ success:true, dossiers:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/assurance/dossiers-tp/:id', auth, can('assureur','admin'), async (req, res) => {
+  const { statut, montant_pris_en_charge, motif_rejet } = req.body;
+  if (!['en_cours','valide','rembourse','rejete','litige'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
+  try {
+    const dossier = await db('SELECT * FROM dossiers_tiers_payant WHERE id=$1 AND assureur_id=$2', [req.params.id, req.user.id]);
+    if (!dossier.rows.length) return res.status(404).json({ error:'Dossier introuvable' });
+    const montantPatient = montant_pris_en_charge ? dossier.rows[0].montant_total - montant_pris_en_charge : null;
+    const r = await db(`
+      UPDATE dossiers_tiers_payant SET statut=$1,
+        montant_pris_en_charge=COALESCE($2,montant_pris_en_charge),
+        montant_patient=COALESCE($3,montant_patient),
+        motif_rejet=COALESCE($4,motif_rejet),
+        date_validation=CASE WHEN $1='valide' THEN NOW() ELSE date_validation END,
+        date_remboursement=CASE WHEN $1='rembourse' THEN NOW() ELSE date_remboursement END
+      WHERE id=$5 RETURNING *
+    `, [statut, montant_pris_en_charge||null, montantPatient, motif_rejet||null, req.params.id]);
+    await logAudit(req.user.id, 'TRAITEMENT_TIERS_PAYANT', 'dossiers_tiers_payant', req.params.id, {statut}, req);
+    const msgs = {
+      valide:`Dossier TP ${r.rows[0].reference} validé.`,
+      rembourse:`Remboursement de ${montant_pris_en_charge} FCFA — Réf: ${r.rows[0].reference}`,
+      rejete:`Dossier TP ${r.rows[0].reference} rejeté. Motif: ${motif_rejet||'Non précisé'}`
+    };
+    if (msgs[statut]) await db(
+      `INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Mise à jour dossier TP',$2,$3)`,
+      [dossier.rows[0].patient_id, msgs[statut], req.params.id]
+    );
+    res.json({ success:true, dossier:r.rows[0] });
+  } catch(e) { console.error('[PATCH /assurance/dossiers-tp]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/assurance/mes-offres', auth, can('assureur','admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT o.*, COUNT(s.id) AS nb_souscriptions
+      FROM offres_assurance o LEFT JOIN souscriptions_assurance s ON s.offre_id=o.id
+      WHERE o.assureur_id=$1 GROUP BY o.id ORDER BY o.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, offres:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/assurance/offres', auth, can('assureur','admin'), async (req, res) => {
+  const { nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel } = req.body;
+  if (!nom || !prix_mensuel) return res.status(400).json({ error:'nom et prix_mensuel requis' });
+  try {
+    const r = await db(`
+      INSERT INTO offres_assurance (assureur_id,nom,description,prix_mensuel,couverture_details,franchise,plafond_annuel)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+    `, [req.user.id, nom, description||null, prix_mensuel, couverture_details||{}, franchise||0, plafond_annuel||null]);
+    res.status(201).json({ success:true, offre:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/assurance/offres/:id', auth, can('assureur','admin'), async (req, res) => {
+  const { nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel, actif } = req.body;
+  try {
+    const r = await db(`
+      UPDATE offres_assurance SET
+        nom=COALESCE($1,nom), description=COALESCE($2,description),
+        prix_mensuel=COALESCE($3,prix_mensuel), couverture_details=COALESCE($4,couverture_details),
+        franchise=COALESCE($5,franchise), plafond_annuel=COALESCE($6,plafond_annuel), actif=COALESCE($7,actif)
+      WHERE id=$8 AND assureur_id=$9 RETURNING *
+    `, [nom, description, prix_mensuel, couverture_details, franchise, plafond_annuel, actif, req.params.id, req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ error:'Offre introuvable' });
+    res.json({ success:true, offre:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/assurance/souscriptions/:id', auth, can('assureur','admin'), async (req, res) => {
+  const { statut, date_fin } = req.body;
+  if (!['active','suspendue','resiliee'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
+  try {
+    const r = await db(`
+      UPDATE souscriptions_assurance SET statut=$1,
+        date_fin=COALESCE($2,date_fin),
+        date_debut=CASE WHEN $1='active' AND date_debut IS NULL THEN CURRENT_DATE ELSE date_debut END
+      WHERE id=$3 RETURNING *
+    `, [statut, date_fin||null, req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error:'Souscription introuvable' });
+    const msg = statut==='active' ? `Votre assurance ${r.rows[0].numero_police} est active.`
+               : statut==='suspendue' ? `Votre assurance a été suspendue.`
+               : `Votre assurance a été résiliée.`;
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Mise à jour assurance',$2,$3)`,
+      [r.rows[0].patient_id, msg, r.rows[0].id]);
+    res.json({ success:true, souscription:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+// BUSINESS DEVELOPER — dashboard, recrutements, commissions
+// ══════════════════════════════════════════════════════════════════
+
+app.get('/api/business-developer/dashboard', auth, can('business_developer','admin'), async (req, res) => {
+  const bdId = req.user.id;
+  try {
+    const [prest, comm, pat] = await Promise.all([
+      db(`SELECT COUNT(*) FILTER (WHERE is_active=true) AS total_actifs, COUNT(*) AS total,
+                 COUNT(*) FILTER (WHERE created_at>=DATE_TRUNC('month',NOW())) AS ce_mois
+          FROM utilisateurs WHERE recrute_par=$1`, [bdId]),
+      db(`SELECT SUM(montant) FILTER (WHERE statut='payee') AS total_percu,
+                 SUM(montant) FILTER (WHERE statut='en_attente') AS en_attente,
+                 SUM(montant) FILTER (WHERE statut='validee') AS a_percevoir,
+                 COUNT(*) AS total_transactions
+          FROM commissions_bd WHERE bd_id=$1`, [bdId]),
+      db(`SELECT COUNT(*) AS total_patients FROM commissions_bd WHERE bd_id=$1 AND type_commission='patient'`, [bdId])
+    ]);
+    res.json({ success:true, dashboard:{ prestataires:prest.rows[0], commissions:comm.rows[0], patients:pat.rows[0] } });
+  } catch(e) { console.error('[BD /dashboard]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/prestataires', auth, can('business_developer','admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT u.id, u.prenom, u.nom, u.email, u.telephone, u.role, u.ville, u.pays_code, u.is_active, u.created_at,
+             COALESCE(SUM(c.montant) FILTER (WHERE c.statut='payee'),0) AS commissions_generees
+      FROM utilisateurs u
+      LEFT JOIN commissions_bd c ON c.prestataire_id=u.id AND c.bd_id=$1
+      WHERE u.recrute_par=$1 GROUP BY u.id ORDER BY u.created_at DESC
+    `, [req.user.id]);
+    res.json({ success:true, prestataires:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/commissions', auth, can('business_developer','admin'), async (req, res) => {
+  const { statut, type_commission } = req.query;
+  const params = [req.user.id];
+  let q = `SELECT c.*, u.prenom||' '||u.nom AS prestataire_nom, u.role AS prestataire_role
+           FROM commissions_bd c LEFT JOIN utilisateurs u ON u.id=c.prestataire_id
+           WHERE c.bd_id=$1`;
+  if (statut) { q += ` AND c.statut=$${params.push(statut)}`; }
+  if (type_commission) { q += ` AND c.type_commission=$${params.push(type_commission)}`; }
+  q += ` ORDER BY c.created_at DESC`;
+  try {
+    const r = await db(q, params);
+    res.json({ success:true, commissions:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/commissions/resume', auth, can('business_developer','admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT DATE_TRUNC('month',created_at) AS mois, type_commission,
+             COUNT(*) AS nb, SUM(montant) AS total_fcfa,
+             SUM(montant) FILTER (WHERE statut='payee') AS percu,
+             SUM(montant) FILTER (WHERE statut='en_attente') AS en_attente
+      FROM commissions_bd WHERE bd_id=$1
+      GROUP BY DATE_TRUNC('month',created_at), type_commission ORDER BY mois DESC
+    `, [req.user.id]);
+    res.json({ success:true, resume:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.post('/api/business-developer/recruter', auth, can('business_developer','admin'), async (req, res) => {
+  const { prestataire_id } = req.body;
+  if (!prestataire_id) return res.status(400).json({ error:'prestataire_id requis' });
+  try {
+    const p = await db('SELECT id,prenom,nom,role,recrute_par FROM utilisateurs WHERE id=$1', [prestataire_id]);
+    if (!p.rows.length) return res.status(404).json({ error:'Prestataire introuvable' });
+    if (p.rows[0].recrute_par) return res.status(409).json({ error:'Déjà rattaché à un Business Developer' });
+    if (['patient','admin'].includes(p.rows[0].role)) return res.status(400).json({ error:'Ce profil ne peut pas être recruté' });
+    await db('UPDATE utilisateurs SET recrute_par=$1 WHERE id=$2', [req.user.id, prestataire_id]);
+    const r = await db(`
+      INSERT INTO commissions_bd (bd_id,prestataire_id,type_commission,montant,statut)
+      VALUES ($1,$2,'recrutement',25000,'en_attente') RETURNING *
+    `, [req.user.id, prestataire_id]);
+    await db(`INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Nouveau recrutement',$2,$3)`,
+      [req.user.id, `${p.rows[0].prenom} ${p.rows[0].nom} recruté. Commission 25 000 FCFA en attente.`, r.rows[0].id]);
+    res.status(201).json({ success:true, message:'Prestataire recruté', commission:r.rows[0] });
+  } catch(e) { console.error('[BD /recruter]', e.message); res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.get('/api/business-developer/notifications', auth, can('business_developer','admin'), async (req, res) => {
+  try {
+    const r = await db(`SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.user.id]);
+    res.json({ success:true, notifications:r.rows });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+app.patch('/api/business-developer/commissions/valider/:id', auth, can('admin'), async (req, res) => {
+  const { statut, reference_paiement } = req.body;
+  if (!['validee','payee','annulee'].includes(statut)) return res.status(400).json({ error:'Statut invalide' });
+  try {
+    const r = await db(
+      `UPDATE commissions_bd SET statut=$1, reference_paiement=COALESCE($2,reference_paiement) WHERE id=$3 RETURNING *`,
+      [statut, reference_paiement||null, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error:'Commission introuvable' });
+    if (statut==='payee') await db(
+      `INSERT INTO notifications (user_id,type,titre,contenu,reference) VALUES ($1,'in_app','Commission payée',$2,$3)`,
+      [r.rows[0].bd_id, `Commission de ${r.rows[0].montant} FCFA payée. Réf: ${reference_paiement||'N/A'}`, r.rows[0].id]
+    );
+    res.json({ success:true, commission:r.rows[0] });
+  } catch(e) { res.status(500).json({ error:'Erreur serveur' }); }
+});
+
+
+// ── CATCH-ALL 404 — doit rester en toute dernière position ────────
+app.use((req, res) => {
+  res.status(404).json({ success:false, message:`Route introuvable: ${req.method} ${req.originalUrl}` });
+});
+
 // ── DÉMARRAGE ─────────────────────────────────────────────────────
 initTables().catch(console.error);
 
@@ -1174,5 +2610,7 @@ if (!process.env.VERCEL) {
   const PORT = parseInt(process.env.PORT||'5000', 10);
   app.listen(PORT, () => console.log(`\n🚀 MediConnect — http://localhost:${PORT}/api/health`));
 }
+
+});
 
 module.exports = app;
