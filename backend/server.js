@@ -738,7 +738,7 @@ app.post('/api/public/rdv', async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
-// ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
+// ── CHATBOT ──────────────────────────────────────────────────────napp.use("/api/chatbot", require("./routes/chatbot"));nn// ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
   res.status(err.status||500).json({ success:false, message: isProd && (!err.status || err.status>=500) ? 'Erreur interne' : err.message });

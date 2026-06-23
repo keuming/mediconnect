@@ -32,7 +32,7 @@ const ROLES = [
     label: 'Médecin Résident',
     icon:  '🩺',
     color: C.teal,
-    desc:  'Médecin employé d'une clinique ou d'un hôpital',
+    desc:  "Medecin employe en clinique ou hopital",
     badge: 'MR',
   },
   {
@@ -97,42 +97,42 @@ const ROLES = [
 const EXTRA_FIELDS = {
   medecin_independant: [
     { key:'specialite',    label:'Spécialité *',          placeholder:'Médecine générale, Cardiologie...', required: true },
-    { key:'numero_ordre',  label:'N° Ordre des médecins', placeholder:'OM-CI-2024-00001...' },
-    { key:'tarif',         label:'Tarif consultation (FCFA)', placeholder:'Ex: 5000', keyboard:'numeric' },
+    { key:"numero_ordre",  label:"N° Ordre medecins", placeholder:"OM-CI-2024-00001..." },
+    { key:"tarif",         label:"Tarif consultation FCFA", placeholder:'Ex: 5000', keyboard:'numeric' },
   ],
   medecin: [
     { key:'specialite',    label:'Spécialité *',          placeholder:'Médecine générale, Chirurgie...', required: true },
-    { key:'nom_clinique',  label:'Nom clinique employeur',placeholder:'Polyclinique Sainte Marie...' },
-    { key:'numero_ordre',  label:'N° Ordre des médecins', placeholder:'OM-CI-2024-00001...' },
+    { key:"nom_clinique",  label:'Nom clinique employeur',placeholder:'Polyclinique Sainte Marie...' },
+    { key:"numero_ordre",  label:"N° Ordre medecins", placeholder:"OM-CI-2024-00001..." },
   ],
   pharmacie: [
     { key:'nom_pharmacie', label:'Nom de la pharmacie *', placeholder:'Pharmacie Centrale...', required: true },
-    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
-    { key:'num_autorisation', label:'N° Autorisation',    placeholder:'MSHP-2024-...' },
+    { key:"adresse",       label:'Adresse',               placeholder:'Quartier, Rue...' },
+    { key:"num_autorisation", label:"N° Autorisation",    placeholder:"MSHP-2024-..." },
   ],
   clinique: [
-    { key:'nom_clinique',  label:'Nom de la clinique *',  placeholder:'Polyclinique du Sud...', required: true },
-    { key:'type_clinique', label:'Type d'établissement', placeholder:'Clinique, Hôpital, Cabinet...' },
-    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+    { key:"nom_clinique",  label:'Nom de la clinique *',  placeholder:'Polyclinique du Sud...', required: true },
+    { key:"type_clinique", label:"Type etablissement", placeholder:'Clinique, Hôpital, Cabinet...' },
+    { key:"adresse",       label:'Adresse',               placeholder:'Quartier, Rue...' },
   ],
   assureur: [
     { key:'nom_assureur',  label:'Nom de la compagnie *', placeholder:'NSIA Assurances CI...', required: true },
     { key:'num_agrement',  label:'N° Agrément',           placeholder:'CIMA-2024-...' },
   ],
   imagerie: [
-    { key:'nom_etab',      label:'Nom de l'établissement *', placeholder:'Centre d'Imagerie...', required: true },
-    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+    { key:"nom_etab",      label:"Nom etablissement *", placeholder:"Centre Imagerie...", required: true },
+    { key:"adresse",       label:'Adresse',               placeholder:'Quartier, Rue...' },
   ],
   laboratoire: [
-    { key:'nom_etab',      label:'Nom du laboratoire *',  placeholder:'Laboratoire MediLab...', required: true },
-    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+    { key:"nom_etab",      label:'Nom laboratoire *',  placeholder:'Laboratoire MediLab...', required: true },
+    { key:"adresse",       label:'Adresse',               placeholder:'Quartier, Rue...' },
   ],
   optique: [
     { key:'nom_optique',   label:'Nom du cabinet *',      placeholder:'Vision Plus Optique...', required: true },
-    { key:'adresse',       label:'Adresse',               placeholder:'Quartier, Rue...' },
+    { key:"adresse",       label:'Adresse',               placeholder:'Quartier, Rue...' },
   ],
   livreur: [
-    { key:'num_permis',    label:'N° Permis de conduire', placeholder:'CI-2024-...' },
+    { key:"num_permis",    label:"N° Permis conduire", placeholder:"CI-2024-..." },
     { key:'type_vehicule', label:'Type de véhicule',      placeholder:'Moto, Voiture, Vélo...' },
   ],
 };
@@ -347,7 +347,7 @@ export default function RegisterScreen({ navigation }) {
               value={ville}
               options={villesOptions}
               onSelect={setVille}
-              placeholder={pays ? 'Sélectionner une ville...' : 'Choisissez d'abord un pays'}
+              placeholder={pays ? 'Sélectionner une ville...' : 'Choisir le pays d abord'}
             />
           </View>
 
