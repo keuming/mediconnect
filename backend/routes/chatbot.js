@@ -86,6 +86,60 @@ const KB_FAQ = [
     mots_cles: ["imagerie","radiologie","irm","scanner","radio","échographie"],
     reponse: "Le profil Imagerie Médicale permet de saisir et partager les bulletins et rapports de radiologie/IRM avec les médecins prescripteurs. Les résultats sont intégrés directement dans le dossier médical du patient. Tarif : 5 000 FCFA/mois."
   }
+  ,
+  {
+    mots_cles: ['facturation automatique','facture assurance','fin de mois','facture par assurance','délai facture','avant le 5','avant le 7','factures assurances','générer facture','comptabilité'],
+    reponse: 'MediConnect Africa résout l'un des plus grands problèmes des cliniques et pharmacies : la facturation par assurance en fin de mois.
+
+Sans MediConnect :
+• Chaque clinique/pharmacie travaille avec plusieurs assurances
+• Rédiger les factures par assurance en fin de mois est chronophage et épuisant
+• Les assurances imposent des délais stricts (avant le 5 ou 7 du mois)
+• Si la facture arrive en retard → paiement reporté au mois suivant
+• La comptabilité manuelle est source d'erreurs
+
+Avec MediConnect :
+✅ Génération automatique des factures par assurance
+✅ Chaque acte médical génère immédiatement sa ligne de facturation
+✅ En fin de mois : sélectionnez l'assurance → la facture est prête en 1 clic
+✅ Comptabilité intégrée automatiquement
+✅ Zéro saisie manuelle, zéro retard, zéro stress'
+  },
+  {
+    mots_cles: ['logiciel clinique','logiciel pharmacie','logiciel assurance','logiciel gestion','gestion clinique','gestion pharmacie','gestion assurance maladie','outil gestion'],
+    reponse: 'MediConnect Africa est bien plus qu'une plateforme de mise en relation. C'est un logiciel complet de gestion pour chaque acteur de la santé :
+
+🏥 Clinique → logiciel complet de gestion clinique (planning, dossiers patients, caisse, facturation, statistiques, médecins)
+
+💊 Pharmacie → logiciel complet de gestion pharmacie (ordonnances, stock, commandes, livraisons, facturation)
+
+🛡️ Assurance maladie → logiciel complet de gestion assurance (dossiers tiers-payant, suivi prestations en temps réel, remboursements, factures automatiques)
+
+Et surtout : les 3 sont interconnectés. Une consultation à la clinique → l'assurance voit la prestation en temps réel → la pharmacie reçoit l'ordonnance → la facture se génère automatiquement.'
+  },
+  {
+    mots_cles: ['interaction','interconnexion','clinique pharmacie assurance','ecosystème','réseau santé','acteurs connectés','travaillent ensemble'],
+    reponse: 'L'un des grands avantages de MediConnect Africa est l'interaction en temps réel entre tous les acteurs :
+
+• La clinique enregistre une consultation → l'assurance voit immédiatement la prestation
+• Le médecin rédige une ordonnance → la pharmacie la reçoit électroniquement
+• La pharmacie délivre les médicaments → la facture assurance est générée automatiquement
+• Le livreur prend en charge la commande → le patient est notifié
+
+Chaque clinique et pharmacie travaille généralement avec plusieurs compagnies d'assurance. MediConnect gère toutes ces relations simultanément, sans confusion ni erreur.'
+  },
+  {
+    mots_cles: ['tiers payant','remboursement pharmacie','remboursement clinique','prise en charge assurance','couverture maladie'],
+    reponse: 'Le système tiers-payant sur MediConnect Africa fonctionne ainsi :
+
+1. Le patient présente sa carte d'assurance lors de la consultation
+2. La clinique enregistre l'acte — la prise en charge assurance est identifiée automatiquement
+3. La prestation apparaît en temps réel dans le dashboard de l'assureur
+4. En fin de mois : la facture globale par assurance est générée automatiquement
+5. L'assureur valide et procède au remboursement
+
+Plus besoin de rédiger manuellement des dizaines de factures par assurance. Tout est automatisé — la clinique et la pharmacie peuvent se concentrer sur les soins.'
+  }
 ];
 
 function findBestAnswer(message) {
@@ -146,3 +200,4 @@ router.get('/health', (req, res) => {
 });
 
 module.exports = router;
+// ⚠️ NE PAS MODIFIER — ajout automatique de connaissances
