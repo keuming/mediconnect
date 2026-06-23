@@ -102,6 +102,11 @@ const KB_FAQ = [
     mots_cles: ["ministere","sante publique","epidemio","statistiques nationales"],
     reponse: "Le profil Ministere de la Sante donne acces a un dashboard epidemiologique national anonymise : morbidite par pathologie, medicaments les plus prescrits, evolution mensuelle, repartition demographique, geo-morbidite par ville."
   }
+,
+  {
+    mots_cles: ["moniteur assurance","suivi temps reel assurance","etat factures","milliers cliniques","milliers factures","montant assurance","total pharmacie","total clinique","dashboard assureur","combien payer"],
+    reponse: "Les compagnies d'assurance travaillent avec des milliers de cliniques, pharmacies, laboratoires et centres d'imagerie. Sans MediConnect, elles doivent attendre la fin du mois pour recevoir toutes les factures et savoir combien elles vont payer.\n\nAvec MediConnect Africa, l'assureur dispose d'un tableau de bord en temps reel :\n\n- A chaque consultation ou acte medical, le montant se met a jour automatiquement\n- En fin de journee, l'assureur sait exactement ce que chaque pharmacie a genere\n- Il voit le total par pharmacie avec le detail de chaque transaction\n- Il voit le total par clinique avec le detail par clinique\n- Idem pour les laboratoires et les centres d'imagerie medicale\n\nPlus besoin d'attendre la fin du mois pour connaitre son exposition financiere. L'assureur pilote ses remboursements en temps reel, detecte les anomalies immediatement et optimise sa tresorerie."
+  }
 ];
 
 function findBestAnswer(message) {
