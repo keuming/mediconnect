@@ -39,7 +39,7 @@ const KB_FAQ = [
     reponse: "Le tiers-payant sur MediConnect Africa est automatise :\n1. Patient presente sa couverture assurance\n2. La clinique enregistre - prise en charge identifiee automatiquement\n3. Prestation visible en temps reel dans le dashboard assureur\n4. Fin de mois : facture par assurance generee en 1 clic\n5. Assureur valide et rembourse\nPlus besoin de rediger manuellement des dizaines de factures."
   },
   {
-    mots_cles: ["pharmacie","medicament","ordonnance","livraison medicament","commande"],
+    mots_cles: ["pharmacie","ordonnance","commande pharmacie","gestion pharmacie"],
     reponse: "Les pharmacies recoivent les ordonnances electroniques des medecins, gerent les commandes et le stock. La livraison a domicile est integree via les livreurs MediConnect. Tarif : 10 000 FCFA/mois."
   },
   {
@@ -87,7 +87,7 @@ const KB_FAQ = [
     reponse: "MediConnect Africa digitalise entierement le dossier medical :\n\n- Le medecin saisit les donnees de consultation dans son logiciel\n- Le dossier est accessible depuis n'importe quelle ville ou pays\n- Si le patient voyage (ex : de Man a Abidjan), le nouveau medecin peut consulter le dossier complet avec le code secret du patient\n- Contenu : diagnostics, ordonnances, constantes vitales, antecedents, allergies\n\nLe code secret garantit que seul le patient decide qui accede a ses donnees."
   },
   {
-    mots_cles: ["ordonnance electronique","pharmacie proche","mobilepay","wallet","livreur medicament","algo pharmacie","lien paiement","livrer","domicile","recevoir medicament","commander medicament"],
+    mots_cles: ["ordonnance electronique","pharmacie proche","mobilepay","wallet","livreur medicament","algo pharmacie","lien paiement","livrer","domicile","recevoir medicament","commander medicament","medicament","livraison medicament","livraison","me livrer"],
     reponse: "MediConnect couvre tout le parcours de la prescription a la livraison :\n\n1. Le medecin redige l'ordonnance electronique dans son logiciel\n2. L'algorithme identifie la pharmacie partenaire la plus proche\n3. La pharmacie recoit l'ordonnance et prepare les medicaments\n4. Elle envoie une facture avec lien de paiement au patient\n5. Le patient paie via MobilePay (Wave, Orange Money, MTN MoMo...)\n6. Le livreur MediConnect est alerte automatiquement\n7. Il livre les medicaments a domicile\n\nDe la consultation a la livraison : tout dans un seul ecosysteme, sans papier."
   },
   {
