@@ -3,7 +3,7 @@ const router = express.Router();
 
 const KB_FAQ = [
   {
-    mots_cles: ["presentation","plateforme","mediconnect","cest quoi","quest-ce"],
+    mots_cles: ["cest quoi mediconnect","quest-ce que mediconnect","presentation generale"],
     reponse: "MediConnect Africa est une plateforme de sante numerique panafricaine (v3.0, en production depuis mai 2026). Elle connecte patients, medecins, cliniques, pharmacies, livreurs, assureurs, cabinets optiques et ministeres de la sante dans un ecosysteme numerique unifie. Elle couvre 14 pays UEMOA/CEMAC et 843 villes. Proprietaire : CDC Compagnie des Services Numeriques, gerant : M. TOMA KEUMINGO REMI."
   },
   {
@@ -35,7 +35,7 @@ const KB_FAQ = [
     reponse: "Le Medecin Conseil (MC) est independant, non rattache a une clinique. Il a son propre planning en ligne, ses patients prennent RDV directement, et il gere ses consultations et ordonnances de facon autonome. Tarif : 5 000 FCFA/mois."
   },
   {
-    mots_cles: ["assurance","tiers-payant","remboursement","mutuelle","prise en charge"],
+    mots_cles: ["avantages assurance","avantages pour assurance","pourquoi assurance","assurance rejoindre","assurance tiers-payant","remboursement","mutuelle","prise en charge"],
     reponse: "Le tiers-payant sur MediConnect Africa est automatise :\n1. Patient presente sa couverture assurance\n2. La clinique enregistre - prise en charge identifiee automatiquement\n3. Prestation visible en temps reel dans le dashboard assureur\n4. Fin de mois : facture par assurance generee en 1 clic\n5. Assureur valide et rembourse\nPlus besoin de rediger manuellement des dizaines de factures."
   },
   {
