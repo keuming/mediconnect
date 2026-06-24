@@ -169,18 +169,33 @@ function findBestAnswer(message) {
     return "Avec plaisir ! Pour creer votre compte : manager.mediconnect4africa.cloud/register";
   }
   if (/(au revoir|bye|bonne soiree|a bientot)/.test(msg)) {
-    return "A bientot ! Contact : keumingo@gmail.com";
+    return "A bientot ! Contact : info@nexova.com";
   }
+
+  // Score par mots individuels du message
+  const words = msg.replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3);
 
   let bestMatch = null;
   let bestScore = 0;
+
   for (const item of KB_FAQ) {
-    const score = item.mots_cles.filter(k => msg.includes(k)).length;
+    let score = 0;
+    // Matching exact sur les mots-cles complets
+    for (const k of item.mots_cles) {
+      if (msg.includes(k)) score += 3;
+    }
+    // Matching par mots individuels du message contre mots-cles
+    for (const w of words) {
+      for (const k of item.mots_cles) {
+        if (k.includes(w) || w.includes(k)) score += 1;
+      }
+    }
     if (score > bestScore) { bestScore = score; bestMatch = item; }
   }
-  if (bestMatch && bestScore >= 1) return bestMatch.reponse;
 
-  return "Je n'ai pas trouve de reponse precise. Essayez : tarifs, profils, pays, carte, tests, inscription. Ou contactez-nous : keumingo@gmail.com";
+  if (bestMatch && bestScore >= 2) return bestMatch.reponse;
+
+  return "Je n'ai pas trouve de reponse precise. Essayez : tarifs, profils, pays, carte, tests, inscription. Ou contactez-nous : info@nexova.com";
 }
 
 router.post('/send', (req, res) => {
