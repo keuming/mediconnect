@@ -740,6 +740,7 @@ app.post('/api/public/rdv', async (req, res) => {
 
 // ── CHATBOT
 app.use("/api/chatbot", require("./routes/chatbot"));
+app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
