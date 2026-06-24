@@ -157,6 +157,47 @@ const KB_FAQ = [
     mots_cles: ["avantages livreur","avantages pour livreur","pourquoi livreur","livreur rejoindre","avantages mediconnect livreur"],
     reponse: "Avantages de MediConnect Africa pour un livreur :\n\n1. ALERTES AUTOMATIQUES\nRecevez les commandes de livraison directement sur votre application mobile sans chercher du travail.\n\n2. FLUX SIMPLE\nRecuperez les medicaments a la pharmacie et livrez au domicile du patient. Tout est guide par l'application.\n\n3. REMUNERATION CLAIRE\n1 000 FCFA par livraison effectuee. Historique de vos gains en temps reel.\n\n4. INSCRIPTION GRATUITE\nAucun investissement initial. Un smartphone Android suffit.\n\nFrais de mise en service : 2 500 FCFA uniquement"
   }
+,
+  {
+    mots_cles: ["parcours client","parcours patient","comment ca marche","etapes fonctionnement","exemple parcours","9 etapes"],
+    reponse: "Parcours client complet sur MediConnect Africa :\n\n1. Le patient prend RDV en ligne → Medecin et Clinique notifies\n2. Il arrive et scanne le QR Code d'accueil → File d'attente digitalisee\n3. Le medecin consulte et saisit le diagnostic → Dossier patient mis a jour\n4. L'ordonnance electronique est generee → Pharmacie la plus proche notifiee\n5. La pharmacie envoie un devis + lien de paiement → Patient notifie\n6. Le patient paie via MobilePay → Pharmacie confirmee\n7. Le livreur est alerte automatiquement → Livraison a domicile\n8. L'assureur enregistre la prestation en temps reel → Facturation auto generee\n9. Fin de mois : facture par assurance en 1 clic → Clinique et Pharmacie regles\n\nTout ce parcours se deroule dans un seul ecosysteme numerique, sans papier et sans intervention manuelle."
+  },
+  {
+    mots_cles: ["recapitulatif tarifs","tous les tarifs","tableau tarifs","grille tarifaire","resume tarifs","tarif complet","tous les prix"],
+    reponse: "Recapitulatif complet des tarifs MediConnect Africa :\n\nPatient             : 1 000 FCFA (mise en service) + 500 FCFA/mois\nClinique / Hopital  : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nPharmacie           : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nCompagnie Assurance : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nLaboratoire Medical : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nImagerie Medicale   : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nCabinet Optique     : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nLivreur             : 2 500 FCFA (mise en service) + 1 000 FCFA/livraison\n\nInscription : manager.mediconnect4africa.cloud/register\nContact : info@nexova.com | +225 05 07 10 86 48"
+  },
+  {
+    mots_cles: ["detail patient","fonctionnalites patient","services patient","que fait patient","acces patient"],
+    reponse: "Detail complet du profil Patient sur MediConnect Africa :\n\n1. Trouver le bon medecin avant de se deplacer\n- Specialites disponibles dans chaque clinique consultables depuis le telephone\n- Horaires et disponibilites des medecins en temps reel\n\n2. RDV en ligne 24h/24 et 7j/7\n- Reservation en quelques clics, confirmation instantanee, rappel automatique\n\n3. File d'attente digitalisee\n- Scan QR Code a l'accueil, rang affiche en temps reel sur le telephone\n\n4. Dossier medical numerique et securise\n- Diagnostics, ordonnances, constantes vitales, antecedents, allergies\n- Accessible depuis n'importe quelle ville via code secret\n\n5. Livraison de medicaments a domicile\n- Ordonnance electronique → devis → paiement en ligne → livraison\n\n6. MediConnect Card\n- Carte prepayee avec QR Code urgence, compte famille jusqu'a 10 membres\n\nTarif : 1 000 FCFA (mise en service) + 500 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail clinique","fonctionnalites clinique","tableau de bord clinique","que fait clinique","acces clinique"],
+    reponse: "Detail complet du profil Clinique sur MediConnect Africa :\n\n1. Tableau de bord complet : planning medecins, dossiers patients, caisse, statistiques, specialites\n\n2. Visibilite patients : specialites, medecins et horaires publies sur la plateforme\n\n3. RDV en ligne automatique : patients reservent 24h/24, medecin notifie immediatement\n\n4. Facturation automatique multi-assurances : chaque acte genere sa ligne, facture en 1 clic en fin de mois\n\n5. Ecosysteme connecte : assureur voit les prestations temps reel, ordonnances vers pharmacie, resultats labo dans dossier patient\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail pharmacie","fonctionnalites pharmacie","que fait pharmacie","acces pharmacie"],
+    reponse: "Detail complet du profil Pharmacie sur MediConnect Africa :\n\n1. Ordonnances electroniques : receptions depuis les medecins, plus de perte ni falsification\n\n2. Gestion de stock intelligente : suivi temps reel, alertes sur seuils minimums\n\n3. Livraison a domicile integree : patient paie en ligne via MobilePay, livreur alerte automatiquement\n\n4. Facturation automatique assurances : fin de mois, facture par assurance en 1 clic, envoi direct\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail assurance","fonctionnalites assurance","dashboard assurance","que fait assurance","acces assurance"],
+    reponse: "Detail complet du profil Assurance sur MediConnect Africa :\n\n1. Tableau de bord temps reel : montant mis a jour a chaque acte, total par pharmacie/clinique/labo/imagerie\n\n2. Factures automatiques standardisees : chaque prestataire genere sa facture en 1 clic, format uniforme\n\n3. Paiement via MobilePay : validation tiers-payant et reglement des prestataires en ligne\n\n4. Controle et conformite : audit trail horodate, detection fraudes, optimisation tresorerie\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail laboratoire","fonctionnalites laboratoire","que fait laboratoire","acces laboratoire"],
+    reponse: "Detail complet du profil Laboratoire sur MediConnect Africa :\n\n1. Demandes electroniques : recues directement depuis les medecins, priorisation selon urgence\n\n2. Resultats en temps reel : saisie dans le dashboard, transmission instantanee medecin et patient\n\n3. Gestion administrative : agenda prelevements, facturation auto, integration assurances\n\n4. Securite totale : chiffrement TLS 1.3, acces reserve aux acteurs autorises, audit trail\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail imagerie","fonctionnalites imagerie","que fait imagerie","acces imagerie","radio numerique"],
+    reponse: "Detail complet du profil Imagerie Medicale sur MediConnect Africa :\n\n1. Demandes electroniques : prescriptions (radio, echo, scanner, IRM) recues depuis les medecins\n\n2. Transmission des rapports : compte rendu redige dans l'interface, transmis instantanement au medecin, integre dans le dossier patient\n\n3. Gestion et facturation : agenda examens, facturation auto, integration assurances\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail optique","fonctionnalites optique","que fait optique","acces optique"],
+    reponse: "Detail complet du profil Cabinet Optique sur MediConnect Africa :\n\n1. Gestion stock : inventaire temps reel montures/verres/lentilles/accessoires, alertes seuils critiques\n\n2. Ordonnances optiques numeriques : reception depuis ophtalmologues, archivage prescriptions, dossier patient optique\n\n3. Ventes et facturation : devis/factures depuis le dashboard, facturation automatique assurances optiques\n\n4. Gestion fournisseurs : suivi commandes et delais de livraison\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail livreur","fonctionnalites livreur","que fait livreur","acces livreur","devenir livreur"],
+    reponse: "Detail complet du profil Livreur sur MediConnect Africa :\n\n1. Flux automatise : alerte reception commande → recuperation pharmacie → livraison domicile → confirmation application\n\n2. Remuneration : 1 000 FCFA par livraison (500 FCFA plateforme), historique gains temps reel\n\n3. Ecosysteme de confiance : livraisons tracees, patient informe en temps reel\n\nFrais de mise en service : 2 500 FCFA uniquement (pas d'abonnement mensuel)\nInscription gratuite : manager.mediconnect4africa.cloud/register"
+  }
 ];
 
 function findBestAnswer(message) {
