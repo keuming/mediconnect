@@ -198,6 +198,47 @@ const KB_FAQ = [
     mots_cles: ["detail livreur","fonctionnalites livreur","que fait livreur","acces livreur","devenir livreur"],
     reponse: "Detail complet du profil Livreur sur MediConnect Africa :\n\n1. Flux automatise : alerte reception commande → recuperation pharmacie → livraison domicile → confirmation application\n\n2. Remuneration : 1 000 FCFA par livraison (500 FCFA plateforme), historique gains temps reel\n\n3. Ecosysteme de confiance : livraisons tracees, patient informe en temps reel\n\nFrais de mise en service : 2 500 FCFA uniquement (pas d'abonnement mensuel)\nInscription gratuite : manager.mediconnect4africa.cloud/register"
   }
+,
+  {
+    mots_cles: ["parcours client","parcours patient","comment ca marche","etapes fonctionnement","exemple parcours","9 etapes"],
+    reponse: "Parcours client complet sur MediConnect Africa :\n\n1. Le patient prend RDV en ligne → Medecin et Clinique notifies\n2. Il arrive et scanne le QR Code a l'accueil → File d'attente digitalisee\n3. Le medecin consulte et saisit le diagnostic → Dossier patient mis a jour\n4. L'ordonnance electronique est generee → Pharmacie la plus proche notifiee\n5. La pharmacie envoie un devis + lien de paiement → Patient notifie\n6. Le patient paie via MobilePay → Pharmacie confirmee\n7. Le livreur est alerte automatiquement → Livraison a domicile\n8. L'assureur enregistre la prestation en temps reel → Facturation auto generee\n9. Fin de mois : facture par assurance en 1 clic → Clinique et Pharmacie regles"
+  },
+  {
+    mots_cles: ["recapitulatif tarifs","tous les tarifs","grille tarifaire","tarif complet","tous les prix"],
+    reponse: "Recapitulatif complet des tarifs MediConnect Africa :\n\nPatient             : 1 000 FCFA (mise en service) + 500 FCFA/mois\nClinique / Hopital  : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nPharmacie           : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nCompagnie Assurance : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nLaboratoire Medical : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nImagerie Medicale   : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nCabinet Optique     : 250 000 FCFA (mise en service) + 10 000 FCFA/mois\nLivreur             : 2 500 FCFA (mise en service) + 1 000 FCFA/livraison\n\nContact : info@nexova.com | +225 05 07 10 86 48"
+  },
+  {
+    mots_cles: ["detail patient","fonctionnalites patient","services patient","que fait patient"],
+    reponse: "Detail profil Patient :\n\n1. Trouver le bon medecin : specialites et disponibilites consultables depuis le telephone\n2. RDV en ligne 24h/24 : reservation, confirmation instantanee, rappel automatique\n3. File d'attente digitalisee : QR Code a l'accueil, rang en temps reel\n4. Dossier medical securise : accessible via code secret depuis n'importe quelle ville\n5. Livraison medicaments : ordonnance → devis → paiement → livraison domicile\n6. MediConnect Card : carte prepayee, QR urgence, compte famille 10 membres max\n\nTarif : 1 000 FCFA (mise en service) + 500 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail clinique","fonctionnalites clinique","tableau de bord clinique","que fait clinique"],
+    reponse: "Detail profil Clinique :\n\n1. Tableau de bord : planning medecins, dossiers patients, caisse, statistiques, specialites\n2. Visibilite : specialites et horaires publies sur la plateforme, patients trouvent la clinique en ligne\n3. RDV automatique : patients reservent 24h/24, medecin notifie immediatement\n4. Facturation multi-assurances : chaque acte genere sa ligne, facture complete en 1 clic fin de mois\n5. Ecosysteme : assureur voit prestations temps reel, ordonnances vers pharmacie, resultats labo dans dossier\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail pharmacie","fonctionnalites pharmacie","que fait pharmacie"],
+    reponse: "Detail profil Pharmacie :\n\n1. Ordonnances electroniques : recues depuis les medecins, plus de perte ni falsification\n2. Gestion stock : suivi temps reel, alertes seuils minimums\n3. Livraison domicile : patient paie via MobilePay, livreur alerte automatiquement\n4. Facturation assurances : facture par assurance en 1 clic fin de mois, envoi direct\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail assurance","fonctionnalites assurance maladie","dashboard assurance detail","que fait assurance"],
+    reponse: "Detail profil Assurance Maladie :\n\n1. Tableau de bord temps reel : montant mis a jour a chaque acte, total par pharmacie/clinique/labo/imagerie\n2. Factures standardisees : chaque prestataire genere sa facture en 1 clic, format uniforme\n3. Paiement MobilePay : validation tiers-payant et reglement des prestataires en ligne\n4. Controle : audit trail horodate, detection fraudes, optimisation tresorerie\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail laboratoire","fonctionnalites laboratoire","que fait laboratoire"],
+    reponse: "Detail profil Laboratoire :\n\n1. Demandes electroniques : recues depuis les medecins, priorisation selon urgence\n2. Resultats temps reel : transmission instantanee au medecin et au patient, integration dossier\n3. Gestion administrative : agenda prelevements, facturation auto, integration assurances\n4. Securite : chiffrement TLS 1.3, audit trail complet\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail imagerie","fonctionnalites imagerie","que fait imagerie","radio numerique"],
+    reponse: "Detail profil Imagerie Medicale :\n\n1. Demandes electroniques : prescriptions (radio, echo, scanner, IRM) recues depuis les medecins\n2. Rapports instantanes : compte rendu transmis immediatement au medecin, integre dans le dossier patient\n3. Gestion : agenda examens, facturation auto, integration assurances\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail optique","fonctionnalites optique","que fait optique"],
+    reponse: "Detail profil Cabinet Optique :\n\n1. Stock : inventaire temps reel montures/verres/lentilles, alertes seuils critiques\n2. Ordonnances optiques : recues depuis ophtalmologues, dossier patient complet\n3. Ventes et facturation : devis/factures, facturation auto assurances optiques, MobilePay\n4. Fournisseurs : suivi commandes et delais\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
+  },
+  {
+    mots_cles: ["detail livreur","fonctionnalites livreur","que fait livreur","devenir livreur"],
+    reponse: "Detail profil Livreur :\n\n1. Flux automatise : alerte → recuperation pharmacie → livraison domicile → confirmation\n2. Remuneration : 1 000 FCFA par livraison, historique gains temps reel, aucune commission cachee\n3. Ecosysteme : livraisons tracees, patient informe en temps reel\n\nFrais de mise en service : 2 500 FCFA (pas d'abonnement mensuel)\nInscription : manager.mediconnect4africa.cloud/register"
+  }
 ];
 
 function findBestAnswer(message) {
