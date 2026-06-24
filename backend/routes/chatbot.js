@@ -35,7 +35,7 @@ const KB_FAQ = [
     reponse: "Le Medecin Conseil (MC) est independant, non rattache a une clinique. Il a son propre planning en ligne, ses patients prennent RDV directement, et il gere ses consultations et ordonnances de facon autonome. Tarif : 5 000 FCFA/mois."
   },
   {
-    mots_cles: ["avantages assurance","avantages pour assurance","pourquoi assurance","assurance rejoindre","assurance tiers-payant","remboursement","mutuelle","prise en charge"],
+    mots_cles: ["tiers-payant","remboursement assurance","mutuelle","prise en charge assurance","couverture maladie"],
     reponse: "Le tiers-payant sur MediConnect Africa est automatise :\n1. Patient presente sa couverture assurance\n2. La clinique enregistre - prise en charge identifiee automatiquement\n3. Prestation visible en temps reel dans le dashboard assureur\n4. Fin de mois : facture par assurance generee en 1 clic\n5. Assureur valide et rembourse\nPlus besoin de rediger manuellement des dizaines de factures."
   },
   {
@@ -126,7 +126,7 @@ const KB_FAQ = [
   }
 ,
   {
-    mots_cles: ["avantages assurance","avantages pour assurance","pourquoi assurance","assurance rejoindre","assurance benefice","avantages mediconnect assurance","mediconnect assurance"],
+    mots_cles: ["avantages assurance","avantages pour assurance","pourquoi assurance","assurance rejoindre","assurance benefice","avantages mediconnect assurance","mediconnect assurance","avantages compagnie","avantages pour compagnie","interet assurance","assurance maladie avantages"],
     reponse: "Avantages de MediConnect Africa pour une compagnie d'assurance maladie :\n\n1. SUIVI EN TEMPS REEL\nA chaque consultation ou acte medical chez un prestataire partenaire, votre tableau de bord se met a jour automatiquement. En fin de journee, vous connaissez le total exact genere par chaque pharmacie, chaque clinique, chaque laboratoire et chaque centre d'imagerie. Plus besoin d'attendre la fin du mois pour decouvrir votre exposition financiere.\n\n2. FACTURES AUTOMATIQUES STANDARDISEES\nChaque prestataire genere sa facture en 1 clic en fin de mois. Elle arrive directement dans votre tableau de bord au format standardise. Fini les factures papier, les emails multiples et les formats disparates entre prestataires.\n\n3. PAIEMENT SIMPLIFIE VIA MOBILEPAY\nValidez les dossiers de tiers-payant et reglez vos prestataires directement via le wallet multicanal MobilePay (Wave, Orange Money, MTN MoMo). Tracabilite complete de chaque paiement effectue.\n\n4. DETECTION IMMEDIATE DES ANOMALIES\nChaque prestation est tracee et horodatee. L'audit trail complet vous permet de detecter immediatement les anomalies et les abus, sans attendre la fin du mois.\n\n5. OPTIMISATION DE LA TRESORERIE\nAnticipez vos decaissements, optimisez vos provisions et negociez mieux avec vos prestataires grace aux statistiques de consommation en temps reel.\n\nTarif : 250 000 FCFA (mise en service) + 10 000 FCFA/mois"
   },
   {
