@@ -5,7 +5,7 @@ const { v4: uuid } = require('uuid');
 const jwt = require('jsonwebtoken');
 
 const ADMIN_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
-const CARD_ADMIN_PASSWORD = process.env.CARD_ADMIN_PASSWORD || 'nexova_card_2024';
+const CARD_ADMIN_PASSWORD = process.env.CARD_ADMIN_PASSWORD || 'Insitu@30121978';
 
 // ── Middleware auth card admin ────────────────────────────────────
 function cardAuth(req, res, next) {
