@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useAuthStore from '../context/authStore';
 
@@ -23,6 +23,24 @@ export default function Login() {
   const [show, setShow]  = useState(false);
   const { login, loading } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Auto-login si token passe en URL depuis la vitrine
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      try {
+        const payload = JSON.parse(atob(urlToken.split('.')[1]));
+        const user = { id: payload.id, role: payload.role, patient_id: payload.patient_id };
+        useAuthStore.setState({ token: urlToken, user });
+        const dest = ROLE_ROUTES[payload.role] || '/patient';
+        navigate(dest, { replace: true });
+      } catch(e) {
+        console.error('Token URL invalide', e);
+      }
+    }
+  }, []);
 
   const ROLE_ROUTES = {
     patient:             '/patient',
