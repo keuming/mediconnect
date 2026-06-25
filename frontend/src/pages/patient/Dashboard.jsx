@@ -215,6 +215,7 @@ function PageHome(){
             </div>
           )}
           <Btn onClick={()=>setShowRdv(true)}>+ Prendre RDV</Btn>
+          <Btn onClick={()=>window.open('https://www.mediconnect4africa.cloud/avantages-patient.html','_blank')} style={{background:'transparent',border:'1px solid rgba(10,143,88,.4)',color:'#34D399',fontSize:12}}>📋 Mes avantages</Btn>
         </div>
       </div>
 
