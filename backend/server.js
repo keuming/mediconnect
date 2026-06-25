@@ -753,6 +753,8 @@ app.post('/api/admin/patch-patient', async (req, res) => {
     "ALTER TABLE utilisateurs DROP CONSTRAINT IF EXISTS utilisateurs_role_check",
     "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS patient_id UUID",
     "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS pays_code VARCHAR(5) DEFAULT 'CI'",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS prenom VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS nom VARCHAR(100)",
     "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone VARCHAR(30)",
     "ALTER TABLE patients ADD COLUMN IF NOT EXISTS email VARCHAR(200)",
     "ALTER TABLE patients ADD COLUMN IF NOT EXISTS ville VARCHAR(100)",
