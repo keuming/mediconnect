@@ -760,6 +760,8 @@ app.post('/api/admin/patch-patient', async (req, res) => {
     "ALTER TABLE patients ADD COLUMN IF NOT EXISTS ville VARCHAR(100)",
     "ALTER TABLE patients ADD COLUMN IF NOT EXISTS taille VARCHAR(10)",
     "ALTER TABLE patients ADD COLUMN IF NOT EXISTS poids VARCHAR(10)",
+    "ALTER TABLE patients ALTER COLUMN code_secret DROP NOT NULL",
+    "ALTER TABLE patients ALTER COLUMN user_id DROP NOT NULL",
   ];
   for (const op of ops) {
     try {
