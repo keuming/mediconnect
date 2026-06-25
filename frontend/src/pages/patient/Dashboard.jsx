@@ -45,6 +45,11 @@ const pAPI = {
   cliniques:  ()      => fetchPublic('/public/cliniques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   medecins:   (cid)   => fetchPublic(`/public/medecins${cid?`?clinique_id=${cid}`:''}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   medecinsMI: ()      => fetchPublic('/public/medecins-independants').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  pharmacies: ()      => fetchPublic('/public/pharmacies').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  assureurs:  ()      => fetchPublic('/public/assureurs').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  laboratoires:()     => fetchPublic('/public/laboratoires').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  imageries:  ()      => fetchPublic('/public/imageries').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  optiques:   ()      => fetchPublic('/public/optiques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures").catch(()=>({data:{data:[]}}))),
   addCommande:(d)     => api.post("/commandes", d),
   commandes:  ()      => api.get("/commandes").catch(()=>({data:{data:[]}})),
@@ -426,64 +431,170 @@ function PageRdvs(){
 //  RECHERCHE MÉDECIN
 // ════════════════════════════════════════════════════════════════════
 function PageRecherche(){
-  const [search,setSearch]=useState(""); const [cliniqueFilter,setCliFilter]=useState(""); const [specFilter,setSpecFilter]=useState(""); const [selectedMed,setSelectedMed]=useState(null);
+  const [search,setSearch]=useState("");
+  const [onglet,setOnglet]=useState("medecins");
+  const [cliniqueFilter,setCliFilter]=useState("");
+  const [specFilter,setSpecFilter]=useState("");
+  const [selectedMed,setSelectedMed]=useState(null);
+
   const {data:cliniquesData}=useQuery({queryKey:["pub-cliniques"],queryFn:()=>pAPI.cliniques().then(r=>r.data?.data||r.data||[]),retry:2});
-  const {data:medecinsData,isLoading}=useQuery({queryKey:["pub-medecins",cliniqueFilter],queryFn:()=>pAPI.medecins(cliniqueFilter).then(r=>r.data.data||[])});
+  const {data:medecinsData,isLoading:loadMed}=useQuery({queryKey:["pub-medecins",cliniqueFilter],queryFn:()=>pAPI.medecins(cliniqueFilter).then(r=>r.data.data||[])});
+  const {data:miData}=useQuery({queryKey:["pub-mi"],queryFn:()=>pAPI.medecinsMI().then(r=>r.data.data||[])});
+  const {data:pharmaData}=useQuery({queryKey:["pub-pharma"],queryFn:()=>pAPI.pharmacies().then(r=>r.data.data||[])});
+  const {data:assData}=useQuery({queryKey:["pub-ass"],queryFn:()=>pAPI.assureurs().then(r=>r.data.data||[])});
+  const {data:labData}=useQuery({queryKey:["pub-lab"],queryFn:()=>pAPI.laboratoires().then(r=>r.data.data||[])});
+  const {data:imgData}=useQuery({queryKey:["pub-img"],queryFn:()=>pAPI.imageries().then(r=>r.data.data||[])});
+  const {data:optData}=useQuery({queryKey:["pub-opt"],queryFn:()=>pAPI.optiques().then(r=>r.data.data||[])});
+
   const cliniques=cliniquesData||[];
   const specs=[...new Set((medecinsData||[]).map(m=>m.specialite).filter(Boolean))];
   const medecins=(medecinsData||[]).filter(m=>(!search||`${m.prenom} ${m.nom} ${m.specialite||""}`.toLowerCase().includes(search.toLowerCase()))&&(!specFilter||m.specialite===specFilter));
+  const miList=(miData||[]).filter(m=>!search||`${m.prenom} ${m.nom} ${m.specialite||""}`.toLowerCase().includes(search.toLowerCase()));
+  const filterList=(list)=>!search?list:list.filter(e=>`${e.nom||""} ${e.ville||""}`.toLowerCase().includes(search.toLowerCase()));
+
+  const ONGLETS=[
+    {key:"medecins",label:"Médecins",icon:"👨‍⚕️",count:(medecinsData||[]).length},
+    {key:"mi",label:"Médecins Indép.",icon:"⭐",count:(miData||[]).length},
+    {key:"cliniques",label:"Cliniques",icon:"🏥",count:cliniques.length},
+    {key:"pharmacies",label:"Pharmacies",icon:"💊",count:(pharmaData||[]).length},
+    {key:"assureurs",label:"Assurances",icon:"🛡️",count:(assData||[]).length},
+    {key:"laboratoires",label:"Laboratoires",icon:"🧪",count:(labData||[]).length},
+    {key:"imageries",label:"Imagerie",icon:"🩻",count:(imgData||[]).length},
+    {key:"optiques",label:"Optique",icon:"🔭",count:(optData||[]).length},
+  ];
+
+  const CardEtab=({icon,nom,ville,telephone,email,adresse,badge,onRdv})=>(
+    <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:12,padding:16,display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:22}}>{icon}</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text}}>{nom}</div>
+          {badge&&<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"rgba(10,143,88,.15)",color:C.green}}>{badge}</span>}
+        </div>
+      </div>
+      {ville&&<div style={{fontSize:12,color:C.muted}}>📍 {ville}{adresse?` · ${adresse}`:""}</div>}
+      {telephone&&<div style={{fontSize:12,color:C.muted}}>📞 {telephone}</div>}
+      {email&&<div style={{fontSize:12,color:C.dim}}>✉️ {email}</div>}
+      {onRdv&&<button onClick={onRdv} style={{marginTop:4,padding:"7px 14px",background:C.green,border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Prendre RDV →</button>}
+    </div>
+  );
 
   return(
     <div>
-      <PageHeader title="🔍 Trouver un médecin" subtitle="Filtrez par clinique ou spécialité"/>
+      <PageHeader title="🔍 Annuaire MediConnect" subtitle="Médecins, cliniques et tous les prestataires de santé"/>
+      {/* Barre recherche */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher par nom, ville, spécialité..."
+        style={{width:"100%",padding:"11px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",marginBottom:16,boxSizing:"border-box"}}/>
+      {/* Onglets */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+        {ONGLETS.map(o=>(
+          <button key={o.key} onClick={()=>setOnglet(o.key)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${onglet===o.key?C.green:C.border}`,background:onglet===o.key?"rgba(10,143,88,.15)":C.input,color:onglet===o.key?C.green:C.muted,fontWeight:onglet===o.key?700:400,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+            <span>{o.icon}</span>{o.label}
+            <span style={{background:onglet===o.key?C.green:"rgba(255,255,255,.1)",color:"#fff",borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:700}}>{o.count}</span>
+          </button>
+        ))}
+      </div>
       {/* Filtres */}
       <Grid cols={2} gap={12} style={{marginBottom:16}}>
         <Inp value={search} onChange={e=>setSearch(e.target.value)} placeholder="Dr. Koné, Cardiologue…" label="Nom ou spécialité"/>
         <Sel label="Spécialité" value={specFilter} onChange={e=>setSpecFilter(e.target.value)} options={[{v:"",l:"Toutes"}, ...specs.map(s=>({v:s,l:s}))]}/>
       </Grid>
-      {/* Chips cliniques */}
-      <div style={{marginBottom:20}}>
-        <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:10}}>🏥 Filtrer par clinique</div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button onClick={()=>setCliFilter("")} style={{background:!cliniqueFilter?"rgba(10,143,88,.15)":C.input,border:`1.5px solid ${!cliniqueFilter?C.green:C.border}`,borderRadius:20,padding:"6px 16px",cursor:"pointer",fontSize:12,fontWeight:!cliniqueFilter?700:400,color:!cliniqueFilter?C.green:C.muted,fontFamily:"inherit"}}>Toutes</button>
+      {/* Médecins cliniques */}
+      {onglet==="medecins"&&<>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+          <button onClick={()=>setCliFilter("")} style={{background:!cliniqueFilter?"rgba(10,143,88,.15)":C.input,border:`1.5px solid ${!cliniqueFilter?C.green:C.border}`,borderRadius:20,padding:"5px 14px",cursor:"pointer",fontSize:11,fontWeight:!cliniqueFilter?700:400,color:!cliniqueFilter?C.green:C.muted,fontFamily:"inherit"}}>Toutes cliniques</button>
           {cliniques.map(cl=>(
-            <button key={cl.id} onClick={()=>setCliFilter(cliniqueFilter===cl.id?"":cl.id)} style={{background:cliniqueFilter===cl.id?"rgba(10,143,88,.15)":C.input,border:`1.5px solid ${cliniqueFilter===cl.id?C.green:C.border}`,borderRadius:20,padding:"6px 16px",cursor:"pointer",fontSize:12,fontWeight:cliniqueFilter===cl.id?700:400,color:cliniqueFilter===cl.id?C.green:C.muted,fontFamily:"inherit"}}>
-              {cl.nom||"Clinique"}
-            </button>
+            <button key={cl.id} onClick={()=>setCliFilter(cliniqueFilter===cl.id?"":cl.id)} style={{background:cliniqueFilter===cl.id?"rgba(10,143,88,.15)":C.input,border:`1.5px solid ${cliniqueFilter===cl.id?C.green:C.border}`,borderRadius:20,padding:"5px 14px",cursor:"pointer",fontSize:11,fontWeight:cliniqueFilter===cl.id?700:400,color:cliniqueFilter===cl.id?C.green:C.muted,fontFamily:"inherit"}}>{cl.nom}</button>
           ))}
         </div>
-      </div>
-      {/* Liste médecins */}
-      {isLoading?<Loader/>:medecins.length===0?<Empty icon="👨‍⚕️" title="Aucun médecin trouvé" subtitle="Essayez d'autres filtres"/>
-        :medecins.map(m=>(
-          <div key={m.id} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:20,marginBottom:14,transition:"all .15s"}}
-            onMouseOver={e=>{e.currentTarget.style.borderColor=C.green;e.currentTarget.style.transform="translateY(-1px)";}}
-            onMouseOut={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
-            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:12}}>
-              <div style={{width:52,height:52,background:`linear-gradient(135deg,${C.purple},${C.teal})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:18,flexShrink:0}}>
-                {m.prenom?.[0]}{m.nom?.[0]}
+        {loadMed?<Loader/>:medecins.length===0?<Empty icon="👨‍⚕️" title="Aucun médecin trouvé" subtitle="Essayez d'autres filtres"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {medecins.map(m=>(
+              <div key={m.id} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:12,padding:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(10,143,88,.15)",border:`1.5px solid ${C.green}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👨‍⚕️</div>
+                  <div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  {m.specialite&&<div style={{fontSize:11,color:C.green,fontWeight:600}}>{m.specialite}</div>}</div>
+                </div>
+                {m.clinique_nom&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}>🏥 {m.clinique_nom}</div>}
+                {m.telephone&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}>📞 {m.telephone}</div>}
+                {m.tarif&&<div style={{fontSize:12,color:C.amber,marginBottom:8}}>💰 {Number(m.tarif).toLocaleString("fr-CI")} FCFA</div>}
+                <button onClick={()=>setSelectedMed(m)} style={{width:"100%",padding:"7px",background:C.green,border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Prendre RDV →</button>
               </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
-                <div style={{fontSize:13,color:C.teal,fontWeight:600}}>{m.specialite||"Médecin"}</div>
-                {m.jours_travail&&<div style={{fontSize:11,color:C.dim,marginTop:2}}>📅 {m.jours_travail} · {m.horaires_debut?.slice(0,5)||"08:00"}–{m.horaires_fin?.slice(0,5)||"17:00"}</div>}
+            ))}
+          </div>}
+      </>}
+
+      {/* Médecins indépendants */}
+      {onglet==="mi"&&<>
+        {miList.length===0?<Empty icon="⭐" title="Aucun médecin indépendant" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {miList.map(m=>(
+              <div key={m.id} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:12,padding:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(124,58,237,.15)",border:"1.5px solid #7C3AED",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>⭐</div>
+                  <div><div style={{fontSize:14,fontWeight:700,color:C.text}}>Dr. {m.prenom} {m.nom}</div>
+                  {m.specialite&&<div style={{fontSize:11,color:"#7C3AED",fontWeight:600}}>{m.specialite}</div>}</div>
+                </div>
+                {m.ville&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}>📍 {m.ville}</div>}
+                {m.telephone&&<div style={{fontSize:12,color:C.muted,marginBottom:4}}>📞 {m.telephone}</div>}
+                {m.tarif&&<div style={{fontSize:12,color:C.amber,marginBottom:4}}>💰 {Number(m.tarif).toLocaleString("fr-CI")} FCFA</div>}
+                {m.experience_ans&&<div style={{fontSize:11,color:C.dim,marginBottom:8}}>🏅 {m.experience_ans} ans d'expérience</div>}
+                <button onClick={()=>setSelectedMed(m)} style={{width:"100%",padding:"7px",background:"#7C3AED",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Prendre RDV →</button>
               </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                {m.tarif&&<><div style={{fontSize:16,fontWeight:800,color:C.green}}>{fmt(m.tarif)} F</div><div style={{fontSize:10,color:C.dim}}>consult.</div></>}
-                <div style={{marginTop:4}}><Badge color={{Disponible:"green","En consultation":"amber",Absent:"red"}[m.statut]||"gray"}>{m.statut||"—"}</Badge></div>
-              </div>
-            </div>
-            <div style={{background:C.hover,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:C.muted}}>
-              💰 Frais estimés : <strong style={{color:C.text}}>{fmt(TARIFS.abonnement_standard)} F</strong> (MediConnect) {m.tarif&&`+ `}<strong style={{color:m.tarif?C.amber:C.dim}}>{m.tarif?`${fmt(m.tarif)} F`:"tarif sur place"}</strong> {m.tarif&&"(consultation)"}
-            </div>
-            <Btn style={{width:"100%"}} onClick={()=>setSelectedMed(m)} disabled={m.statut==="Absent"}>
-              {m.statut==="Absent"?"❌ Absent — indisponible":"📅 Prendre rendez-vous"}
-            </Btn>
-          </div>
-        ))
-      }
-      <Modal open={!!selectedMed} onClose={()=>setSelectedMed(null)} title={`📅 RDV — Dr. ${selectedMed?.prenom} ${selectedMed?.nom}`} width={560}>
-        <FormPriseRdv medecinPreselect={selectedMed} onClose={()=>setSelectedMed(null)} onSuccess={()=>setSelectedMed(null)}/>
+            ))}
+          </div>}
+      </>}
+
+      {/* Cliniques */}
+      {onglet==="cliniques"&&<>
+        {filterList(cliniques).length===0?<Empty icon="🏥" title="Aucune clinique" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {filterList(cliniques).map(e=><CardEtab key={e.id} icon="🏥" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse} badge={e.type}/>)}
+          </div>}
+      </>}
+
+      {/* Pharmacies */}
+      {onglet==="pharmacies"&&<>
+        {filterList(pharmaData||[]).length===0?<Empty icon="💊" title="Aucune pharmacie" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {filterList(pharmaData||[]).map(e=><CardEtab key={e.id} icon="💊" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse}/>)}
+          </div>}
+      </>}
+
+      {/* Assureurs */}
+      {onglet==="assureurs"&&<>
+        {filterList(assData||[]).length===0?<Empty icon="🛡️" title="Aucune compagnie d'assurance" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {filterList(assData||[]).map(e=><CardEtab key={e.id} icon="🛡️" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse}/>)}
+          </div>}
+      </>}
+
+      {/* Laboratoires */}
+      {onglet==="laboratoires"&&<>
+        {filterList(labData||[]).length===0?<Empty icon="🧪" title="Aucun laboratoire" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {filterList(labData||[]).map(e=><CardEtab key={e.id} icon="🧪" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse}/>)}
+          </div>}
+      </>}
+
+      {/* Imagerie */}
+      {onglet==="imageries"&&<>
+        {filterList(imgData||[]).length===0?<Empty icon="🩻" title="Aucun centre d'imagerie" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {filterList(imgData||[]).map(e=><CardEtab key={e.id} icon="🩻" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse}/>)}
+          </div>}
+      </>}
+
+      {/* Optique */}
+      {onglet==="optiques"&&<>
+        {filterList(optData||[]).length===0?<Empty icon="🔭" title="Aucun cabinet optique" subtitle="Revenez prochainement"/>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {filterList(optData||[]).map(e=><CardEtab key={e.id} icon="🔭" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse}/>)}
+          </div>}
+      </>}
+
+              <FormPriseRdv medecinPreselect={selectedMed} onClose={()=>setSelectedMed(null)} onSuccess={()=>setSelectedMed(null)}/>
       </Modal>
     </div>
   );
