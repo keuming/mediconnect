@@ -742,6 +742,34 @@ app.post('/api/public/rdv', async (req, res) => {
 app.use("/api/chatbot", require("./routes/chatbot"));
 app.use("/api/cards-admin", require("./routes/cards_admin"));
 
+
+// ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
+app.post('/api/admin/patch-patient', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  const results = [];
+  const ops = [
+    "ALTER TABLE utilisateurs DROP CONSTRAINT IF EXISTS utilisateurs_role_check",
+    "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS patient_id UUID",
+    "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS pays_code VARCHAR(5) DEFAULT 'CI'",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS email VARCHAR(200)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS ville VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS taille VARCHAR(10)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS poids VARCHAR(10)",
+  ];
+  for (const op of ops) {
+    try {
+      await db(op);
+      results.push({ ok: true, op });
+    } catch(e) {
+      results.push({ ok: false, op, err: e.message });
+    }
+  }
+  res.json({ success: true, results });
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
