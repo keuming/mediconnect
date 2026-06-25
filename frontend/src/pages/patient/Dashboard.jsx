@@ -50,11 +50,13 @@ const pAPI = {
   laboratoires:()     => fetchPublic('/public/laboratoires').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   imageries:  ()      => fetchPublic('/public/imageries').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   optiques:   ()      => fetchPublic('/public/optiques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  etablissements: (q,ville,type) => fetchPublic(`/public/etablissements${q||ville||type?`?${q?`q=${q}`:''}${ville?`&ville=${ville}`:''}${type?`&type=${type}`:''}`:`?limite=100`}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   pharmacies: ()      => fetchPublic('/public/pharmacies').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   assureurs:  ()      => fetchPublic('/public/assureurs').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   laboratoires:()     => fetchPublic('/public/laboratoires').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   imageries:  ()      => fetchPublic('/public/imageries').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   optiques:   ()      => fetchPublic('/public/optiques').then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
+  etablissements: (q,ville,type) => fetchPublic(`/public/etablissements${q||ville||type?`?${q?`q=${q}`:''}${ville?`&ville=${ville}`:''}${type?`&type=${type}`:''}`:`?limite=100`}`).then(r=>({data:{data:r.data||[]}})).catch(()=>({data:{data:[]}})),
   factures:   ()      => api.get("/factures/patient").catch(()=>api.get("/factures").catch(()=>({data:{data:[]}}))),
   addCommande:(d)     => api.post("/commandes", d),
   commandes:  ()      => api.get("/commandes").catch(()=>({data:{data:[]}})),
@@ -457,6 +459,10 @@ function PageRecherche(){
   const miList=(miData||[]).filter(m=>!search||`${m.prenom} ${m.nom} ${m.specialite||""}`.toLowerCase().includes(search.toLowerCase()));
   const filterList=(list)=>!search?list:list.filter(e=>`${e.nom||""} ${e.ville||""}`.toLowerCase().includes(search.toLowerCase()));
 
+  const [searchEtab,setSearchEtab]=useState("");
+  const [typeEtab,setTypeEtab]=useState("");
+  const {data:etabData,isLoading:loadEtab}=useQuery({queryKey:["pub-etab",searchEtab,typeEtab],queryFn:()=>pAPI.etablissements(searchEtab||undefined,undefined,typeEtab||undefined).then(r=>r.data.data||[]),enabled:onglet==="annuaire"});
+
   const ONGLETS=[
     {key:"medecins",label:"Médecins",icon:"👨‍⚕️",count:(medecinsData||[]).length},
     {key:"mi",label:"Médecins Indép.",icon:"⭐",count:(miData||[]).length},
@@ -466,6 +472,7 @@ function PageRecherche(){
     {key:"laboratoires",label:"Laboratoires",icon:"🧪",count:(labData||[]).length},
     {key:"imageries",label:"Imagerie",icon:"🩻",count:(imgData||[]).length},
     {key:"optiques",label:"Optique",icon:"🔭",count:(optData||[]).length},
+    {key:"annuaire",label:"Annuaire CI",icon:"📋",count:862},
   ];
 
   const CardEtab=({icon,nom,ville,telephone,email,adresse,badge,onRdv})=>(
@@ -596,6 +603,60 @@ function PageRecherche(){
         {filterList(optData||[]).length===0?<Empty icon="🔭" title="Aucun cabinet optique" subtitle="Revenez prochainement"/>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
             {filterList(optData||[]).map(e=><CardEtab key={e.id} icon="🔭" nom={e.nom} ville={e.ville} telephone={e.telephone} email={e.email} adresse={e.adresse}/>)}
+          </div>}
+      </>}
+
+      {/* Annuaire National */}
+      {onglet==="annuaire"&&<>
+        <div style={{marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+          <input value={searchEtab} onChange={e=>setSearchEtab(e.target.value)} placeholder="Rechercher par nom, ville, spécialité..."
+            style={{flex:1,minWidth:200,padding:"9px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none"}}/>
+          <select value={typeEtab} onChange={e=>setTypeEtab(e.target.value)}
+            style={{padding:"9px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none"}}>
+            <option value="">Tous types</option>
+            <option value="clinique">Cliniques</option>
+            <option value="pharmacie">Pharmacies</option>
+            <option value="laboratoire">Laboratoires</option>
+            <option value="imagerie">Imagerie</option>
+            <option value="cabinet_dentaire">Cabinets dentaires</option>
+            <option value="centre_sante_public">Centres de santé publics</option>
+          </select>
+        </div>
+        {loadEtab?<Loader/>:(etabData||[]).length===0?<Empty icon="📋" title="Aucun résultat" subtitle="Essayez d'autres termes"/>
+          :<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {(etabData||[]).map(e=>(
+              <div key={e.id} style={{background:C.input,border:`1.5px solid ${e.membre_mediconnect?C.green:C.border}`,borderRadius:12,padding:"14px 16px",display:"flex",gap:14,alignItems:"flex-start",flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontSize:13,fontWeight:700,color:C.text}}>{e.nom}</span>
+                    {e.membre_mediconnect
+                      ?<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"rgba(10,143,88,.2)",color:C.green}}>✓ Membre MediConnect</span>
+                      :<span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:"rgba(245,158,11,.15)",color:C.amber}}>Non membre</span>
+                    }
+                  </div>
+                  <div style={{fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap"}}>
+                    {e.ville&&<span>📍 {e.ville}</span>}
+                    {e.telephone&&<span>📞 {e.telephone}</span>}
+                    {e.type&&<span style={{textTransform:"capitalize"}}>🏷️ {e.type.replace(/_/g," ")}</span>}
+                  </div>
+                  {e.specialites&&<div style={{fontSize:11,color:C.dim,marginTop:4}}>{e.specialites.slice(0,100)}{e.specialites.length>100?"...":""}</div>}
+                  {!e.membre_mediconnect&&(
+                    <div style={{marginTop:8,padding:"8px 12px",background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8}}>
+                      <p style={{fontSize:11,color:C.amber,lineHeight:1.6}}>
+                        Cet établissement n'est pas encore membre de MediConnect Africa. Vous pouvez les contacter et les inviter à rejoindre le réseau MediConnect pour bénéficier de tous nos services numériques.
+                        {e.telephone&&<><br/><strong>Contact : {e.telephone}</strong></>}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {!e.membre_mediconnect&&e.telephone&&(
+                  <a href={`tel:${e.telephone.split('/')[0].trim()}`}
+                    style={{padding:"8px 16px",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.3)",borderRadius:8,color:C.amber,fontWeight:700,fontSize:12,textDecoration:"none",flexShrink:0,alignSelf:"flex-start"}}>
+                    📞 Appeler
+                  </a>
+                )}
+              </div>
+            ))}
           </div>}
       </>}
 
