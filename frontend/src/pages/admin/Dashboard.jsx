@@ -15,6 +15,11 @@ const aAPI={
   addUser:d=>api.post("/auth/register",d),
   toggleUser:(id,v)=>api.put(`/utilisateurs/${id}`,{is_active:v}),
   cliniques:()=>api.get("/cliniques"),
+  pharmacies:()=>api.get("/pharmacies").catch(()=>({data:{data:[]}})),
+  laboratoires:()=>api.get("/laboratoires").catch(()=>({data:{data:[]}})),
+  imageries:()=>api.get("/imageries").catch(()=>({data:{data:[]}})),
+  optiques:()=>api.get("/cabinets-optiques").catch(()=>({data:{data:[]}})),
+  etablissements:()=>api.get("/public/etablissements?limite=200").catch(()=>({data:{data:[]}})),
   patients:()=>api.get("/patients"),
   commandes:()=>api.get("/commandes"),
   medecins:()=>api.get("/medecins"),
@@ -130,6 +135,11 @@ function PageHome(){
     {icon:"📊",label:"Statistiques",path:"statistiques",color:C.green,stat:"Rapports & analyses"},
     {icon:"🛡️",label:"Assurances (DME)",path:"assurances",color:C.blue,stat:"Tiers-payant cliniques"},
     {icon:"⚙️",label:"Configuration",path:"configuration",color:C.muted,stat:"Paramètres"},
+    {icon:"💊",label:"Pharmacies",path:"pharmacies",color:C.teal,stat:"Liste & gestion"},
+    {icon:"🧪",label:"Laboratoires",path:"laboratoires",color:C.purple,stat:"Liste & gestion"},
+    {icon:"🩻",label:"Imagerie",path:"imageries",color:C.blue,stat:"Liste & gestion"},
+    {icon:"🔭",label:"Optique",path:"optiques",color:C.teal,stat:"Liste & gestion"},
+    {icon:"📋",label:"Annuaire CI",path:"annuaire",color:C.amber,stat:"862 établissements"},
   ];
   return(
     <div>
@@ -1509,6 +1519,122 @@ function PageMediConnectCard() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+
+// ── PAGE GÉNÉRIQUE PRESTATAIRES ──────────────────────────────────
+function PagePrestataires({title, icon, queryKey, apiFn, nomField="nom", emailField="email", telField="telephone", villeField="ville"}){
+  const {data,isLoading}=useQuery({queryKey:[queryKey],queryFn:()=>apiFn().then(r=>r.data?.data||r.data||[])});
+  const list=data||[];
+  const [search,setSearch]=useState("");
+  const filtered=list.filter(e=>`${e[nomField]||""} ${e[villeField]||""} ${e[emailField]||""}`.toLowerCase().includes(search.toLowerCase()));
+  return(
+    <div>
+      <PageHeader title={`${icon} ${title}`} subtitle={`${list.length} ${title.toLowerCase()} enregistrées`}/>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..."
+        style={{width:"100%",padding:"10px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none",marginBottom:16,boxSizing:"border-box"}}/>
+      {isLoading?<Loader/>:filtered.length===0?<Empty icon={icon} title={`Aucune ${title.toLowerCase()}`}/>:(
+        <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead>
+              <tr style={{background:"rgba(255,255,255,.04)"}}>
+                {["Nom","Email","Téléphone","Ville","Statut"].map(h=>(
+                  <th key={h} style={{padding:"10px 14px",textAlign:"left",fontSize:11,fontWeight:700,color:C.dim,textTransform:"uppercase",letterSpacing:".5px"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((e,i)=>(
+                <tr key={e.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":"rgba(255,255,255,.01)"}}>
+                  <td style={{padding:"10px 14px",fontWeight:600,color:C.text}}>{e[nomField]||"—"}</td>
+                  <td style={{padding:"10px 14px",color:C.muted}}>{e[emailField]||"—"}</td>
+                  <td style={{padding:"10px 14px",color:C.muted}}>{e[telField]||"—"}</td>
+                  <td style={{padding:"10px 14px",color:C.muted}}>{e[villeField]||"—"}</td>
+                  <td style={{padding:"10px 14px"}}>
+                    <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,background:e.is_active===false?"rgba(239,68,68,.15)":"rgba(10,143,88,.15)",color:e.is_active===false?C.red:C.green}}>
+                      {e.is_active===false?"Inactif":"Actif"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PagePharmacies(){ return <PagePrestataires title="Pharmacies" icon="💊" queryKey="adm-pharma" apiFn={aAPI.pharmacies}/>; }
+function PageLaboratoires(){ return <PagePrestataires title="Laboratoires" icon="🧪" queryKey="adm-labo" apiFn={aAPI.laboratoires}/>; }
+function PageImageries(){ return <PagePrestataires title="Imageries Médicales" icon="🩻" queryKey="adm-img" apiFn={aAPI.imageries}/>; }
+function PageOptiques(){ return <PagePrestataires title="Cabinets Optiques" icon="🔭" queryKey="adm-opt" apiFn={aAPI.optiques}/>; }
+
+function PageAnnuaire(){
+  const {data,isLoading}=useQuery({queryKey:["adm-annuaire"],queryFn:()=>fetch("https://mediconnect-backend-v2.vercel.app/api/public/etablissements?limite=200").then(r=>r.json()).then(d=>d.data||[])});
+  const list=data||[];
+  const [search,setSearch]=useState("");
+  const [typeF,setTypeF]=useState("");
+  const filtered=list.filter(e=>{
+    const ms=`${e.nom||""} ${e.ville||""} ${e.type||""}`.toLowerCase().includes(search.toLowerCase());
+    const mt=!typeF||e.type===typeF;
+    return ms&&mt;
+  });
+  const membres=list.filter(e=>e.membre_mediconnect).length;
+  return(
+    <div>
+      <PageHeader title="📋 Annuaire National" subtitle={`${list.length} établissements CI · ${membres} membres MediConnect`}/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
+        <Card label="Total" value={list.length} icon="📋" color={C.teal}/>
+        <Card label="Membres" value={membres} icon="✅" color={C.green}/>
+        <Card label="À démarcher" value={list.length-membres} icon="🎯" color={C.amber}/>
+      </div>
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..."
+          style={{flex:1,minWidth:200,padding:"9px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none"}}/>
+        <select value={typeF} onChange={e=>setTypeF(e.target.value)}
+          style={{padding:"9px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none"}}>
+          <option value="">Tous types</option>
+          <option value="clinique">Cliniques</option>
+          <option value="pharmacie">Pharmacies</option>
+          <option value="laboratoire">Laboratoires</option>
+          <option value="cabinet_dentaire">Cabinets dentaires</option>
+          <option value="centre_sante_public">Centres santé publics</option>
+        </select>
+      </div>
+      {isLoading?<Loader/>:filtered.length===0?<Empty icon="📋" title="Aucun résultat"/>:(
+        <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,overflow:"hidden"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{background:"rgba(255,255,255,.04)"}}>
+                {["Code","Nom","Type","Ville","Téléphone","Statut"].map(h=>(
+                  <th key={h} style={{padding:"9px 12px",textAlign:"left",fontSize:10,fontWeight:700,color:C.dim,textTransform:"uppercase"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((e,i)=>(
+                <tr key={e.id} style={{borderTop:`1px solid ${C.border}`,background:i%2===0?"transparent":"rgba(255,255,255,.01)"}}>
+                  <td style={{padding:"9px 12px",color:C.dim,fontFamily:"monospace",fontSize:11}}>{e.code}</td>
+                  <td style={{padding:"9px 12px",fontWeight:600,color:C.text}}>{e.nom}</td>
+                  <td style={{padding:"9px 12px",color:C.muted,textTransform:"capitalize"}}>{(e.type||"").replace(/_/g," ")}</td>
+                  <td style={{padding:"9px 12px",color:C.muted}}>{e.ville||"—"}</td>
+                  <td style={{padding:"9px 12px",color:C.muted}}>{e.telephone||"—"}</td>
+                  <td style={{padding:"9px 12px"}}>
+                    <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:20,
+                      background:e.membre_mediconnect?"rgba(10,143,88,.15)":"rgba(245,158,11,.15)",
+                      color:e.membre_mediconnect?C.green:C.amber}}>
+                      {e.membre_mediconnect?"✓ Membre":"À démarcher"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard(){
   return(
     <Routes>
@@ -1525,6 +1651,11 @@ export default function Dashboard(){
       <Route path="livreurs"                element={<PageLivreurs/>}/>
       <Route path="assurances"              element={<PageAssurances/>}/>
       <Route path="statistiques"            element={<PageStatistiques/>}/>
+      <Route path="pharmacies"              element={<PagePharmacies/>}/>
+      <Route path="laboratoires"            element={<PageLaboratoires/>}/>
+      <Route path="imageries"               element={<PageImageries/>}/>
+      <Route path="optiques"                element={<PageOptiques/>}/>
+      <Route path="annuaire"                element={<PageAnnuaire/>}/>
         <Route path="mediconnect-card"         element={<PageMediConnectCard/>}/>
       <Route path="configuration"           element={<PageConfiguration/>}/>
       <Route path="patients"                element={<PageCliniques/>}/>
