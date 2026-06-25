@@ -810,6 +810,64 @@ app.post('/api/admin/patch-patient', async (req, res) => {
   res.json({ success: true, results });
 });
 
+
+// ── ROUTES PUBLIQUES ETABLISSEMENTS ──────────────────────────────
+app.get('/api/public/pharmacies', async (req, res) => {
+  try {
+    const r = await db(`SELECT p.id, p.nom, p.adresse, p.ville, p.telephone, p.email,
+      u.is_active FROM pharmacies p LEFT JOIN utilisateurs u ON u.id=p.user_id
+      WHERE u.is_active IS NOT false ORDER BY p.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/assureurs', async (req, res) => {
+  try {
+    const r = await db(`SELECT a.id, a.nom, a.adresse, a.ville, a.telephone, a.email
+      FROM assureurs a LEFT JOIN utilisateurs u ON u.id=a.user_id
+      WHERE u.is_active IS NOT false ORDER BY a.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/laboratoires', async (req, res) => {
+  try {
+    const r = await db(`SELECT l.id, l.nom, l.adresse, l.ville, l.telephone, l.email
+      FROM laboratoires l LEFT JOIN utilisateurs u ON u.id=l.user_id
+      WHERE u.is_active IS NOT false ORDER BY l.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/imageries', async (req, res) => {
+  try {
+    const r = await db(`SELECT i.id, i.nom, i.adresse, i.ville, i.telephone, i.email
+      FROM imageries i LEFT JOIN utilisateurs u ON u.id=i.user_id
+      WHERE u.is_active IS NOT false ORDER BY i.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/optiques', async (req, res) => {
+  try {
+    const r = await db(`SELECT c.id, c.nom, c.adresse, c.ville, c.telephone, c.email
+      FROM cabinets_optiques c LEFT JOIN utilisateurs u ON u.id=c.user_id
+      WHERE u.is_active IS NOT false ORDER BY c.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/medecins-independants', async (req, res) => {
+  try {
+    const r = await db(`SELECT m.id, m.prenom, m.nom, m.specialite, m.telephone,
+      m.email, m.ville, m.tarif, m.experience_ans, m.statut
+      FROM medecins m LEFT JOIN utilisateurs u ON u.id=m.user_id
+      WHERE u.role IN ('medecin_independant','medecin_conseil','medecin_prive')
+      AND u.is_active IS NOT false ORDER BY m.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
