@@ -5,7 +5,7 @@ const { v4: uuid } = require('uuid');
 const { db }  = require('../config/db');
 const JWT_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
 
-// POST /api/auth/login
+// ── POST /api/auth/login (tous profils par email) ─────────────────
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
@@ -31,7 +31,37 @@ router.post('/login', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// POST /api/auth/register
+// ── POST /api/auth/login-patient (telephone + PIN 4 chiffres) ─────
+router.post('/login-patient', async (req, res) => {
+  const { telephone, pin } = req.body;
+  if (!telephone || !pin)
+    return res.status(400).json({ success: false, message: 'Téléphone et PIN requis' });
+  if (!/^\d{4}$/.test(pin))
+    return res.status(400).json({ success: false, message: 'PIN doit être 4 chiffres' });
+  try {
+    const r = await db(
+      `SELECT u.*, p.id as pid, p.groupe_sanguin, p.allergies, p.date_naissance
+       FROM utilisateurs u
+       LEFT JOIN patients p ON p.user_id = u.id
+       WHERE u.telephone=$1 AND u.role='patient' AND u.is_active IS NOT false LIMIT 1`,
+      [telephone]
+    );
+    if (!r.rows.length)
+      return res.status(401).json({ success: false, message: 'Numéro de téléphone non trouvé' });
+    const user = r.rows[0];
+    const ok = await bcrypt.compare(pin, user.password);
+    if (!ok)
+      return res.status(401).json({ success: false, message: 'PIN incorrect' });
+    const token = jwt.sign(
+      { id: user.id, role: 'patient', patient_id: user.patient_id || user.pid },
+      JWT_SECRET, { expiresIn: '30d' }
+    );
+    const { password: _, ...u } = user;
+    res.json({ success: true, token, user: u });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── POST /api/auth/register (tous profils) ────────────────────────
 router.post('/register', async (req, res) => {
   const { email, password, prenom, nom, role, telephone, pays_code, ville } = req.body;
   if (!email || !password)
@@ -50,6 +80,107 @@ router.post('/register', async (req, res) => {
     const { password: _, ...u } = r.rows[0];
     res.status(201).json({ success: true, token, user: u });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── POST /api/auth/register-patient ──────────────────────────────
+// Login : telephone + PIN 4 chiffres
+// Crée : utilisateurs + patients + mediconnect_card_requests
+router.post('/register-patient', async (req, res) => {
+  const {
+    prenom, nom, telephone, pin,
+    date_naissance, groupe_sanguin, allergies,
+    email, ville, pays_code,
+    taille, poids, contact_urgence, contact_parent, telephone_parent
+  } = req.body;
+
+  // Validations
+  if (!prenom || !nom || !telephone || !pin)
+    return res.status(400).json({ success: false, message: 'Prénom, nom, téléphone et PIN requis' });
+  if (!/^\d{4}$/.test(pin))
+    return res.status(400).json({ success: false, message: 'Le PIN doit être exactement 4 chiffres' });
+
+  try {
+    // Vérifier si téléphone déjà utilisé
+    const existsTel = await db(
+      'SELECT id FROM utilisateurs WHERE telephone=$1 AND role=$2',
+      [telephone, 'patient']
+    );
+    if (existsTel.rows.length)
+      return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé' });
+
+    // Vérifier email si fourni
+    if (email) {
+      const existsEmail = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+      if (existsEmail.rows.length)
+        return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé' });
+    }
+
+    const hash = await bcrypt.hash(pin, 10);
+    const userId = uuid();
+    const patientId = uuid();
+    const pc = pays_code || 'CI';
+
+    // Email de substitution si non fourni
+    const emailFinal = email || `${telephone}@mediconnect.patient`;
+
+    // ── 1. Créer utilisateur ──────────────────────────────────────
+    await db(
+      `INSERT INTO utilisateurs
+       (id, email, password, prenom, nom, role, telephone, pays_code, ville, patient_id)
+       VALUES ($1,$2,$3,$4,$5,'patient',$6,$7,$8,$9)`,
+      [userId, emailFinal, hash, prenom, nom, telephone, pc, ville||null, patientId]
+    );
+
+    // ── 2. Créer profil patient ───────────────────────────────────
+    await db(
+      `INSERT INTO patients
+       (id, user_id, prenom, nom, telephone, email, date_naissance,
+        groupe_sanguin, allergies, ville)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [patientId, userId, prenom, nom, telephone, email||null,
+       date_naissance||null, groupe_sanguin||null, allergies||null, ville||null]
+    );
+
+    // ── 3. Générer numéro de carte unique ─────────────────────────
+    const count = await db('SELECT COUNT(*) FROM mediconnect_card_requests');
+    const seq = String(parseInt(count.rows[0].count) + 1).padStart(6, '0');
+    const numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${seq}`;
+
+    // ── 4. Créer demande MediConnect Card ─────────────────────────
+    await db(
+      `INSERT INTO mediconnect_card_requests
+       (id, numero_carte, prenom, nom, date_naissance, groupe_sanguin, allergies,
+        contact_urgence, email, telephone, ville, pays_code,
+        contact_parent, telephone_parent, taille, poids, statut)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'en_attente')`,
+      [uuid(), numeroCarte, prenom, nom, date_naissance||null, groupe_sanguin||null,
+       allergies||null, contact_urgence||null, email||null, telephone,
+       ville||null, pc, contact_parent||null, telephone_parent||null,
+       taille||null, poids||null]
+    );
+
+    // ── 5. Générer token JWT ──────────────────────────────────────
+    const token = jwt.sign(
+      { id: userId, role: 'patient', patient_id: patientId },
+      JWT_SECRET, { expiresIn: '30d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      token,
+      message: 'Compte patient créé avec succès',
+      data: {
+        user_id: userId,
+        patient_id: patientId,
+        numero_carte: numeroCarte,
+        prenom, nom, telephone
+      }
+    });
+
+  } catch(e) {
+    console.error('register-patient error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 module.exports = router;
