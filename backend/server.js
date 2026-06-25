@@ -868,6 +868,87 @@ app.get('/api/public/medecins-independants', async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
+
+// ── TABLE ETABLISSEMENTS SANTE ────────────────────────────────────
+app.post('/api/admin/init-etablissements', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS etablissements_sante (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code VARCHAR(20) UNIQUE NOT NULL,
+      nom VARCHAR(300) NOT NULL,
+      responsable VARCHAR(200),
+      email VARCHAR(200),
+      telephone VARCHAR(100),
+      ville VARCHAR(100),
+      adresse TEXT,
+      specialites TEXT,
+      type VARCHAR(50) DEFAULT 'clinique',
+      secteur VARCHAR(100),
+      membre_mediconnect BOOLEAN DEFAULT false,
+      user_id UUID,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_etab_ville ON etablissements_sante(ville)');
+    await db('CREATE INDEX IF NOT EXISTS idx_etab_type ON etablissements_sante(type)');
+    await db('CREATE INDEX IF NOT EXISTS idx_etab_membre ON etablissements_sante(membre_mediconnect)');
+    res.json({ success: true, message: 'Table etablissements_sante creee' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/admin/import-etablissements', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  const { etablissements } = req.body;
+  if (!etablissements || !Array.isArray(etablissements))
+    return res.status(400).json({ success: false, message: 'Donnees invalides' });
+  let inserted = 0; let errors = 0;
+  for (const e of etablissements) {
+    try {
+      await db(
+        `INSERT INTO etablissements_sante (code, nom, responsable, email, telephone, ville, adresse, specialites, type, secteur, membre_mediconnect)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)
+         ON CONFLICT (code) DO UPDATE SET nom=EXCLUDED.nom, telephone=EXCLUDED.telephone, ville=EXCLUDED.ville`,
+        [e.code, e.nom, e.responsable||'', e.email||'', e.telephone||'', e.ville||'', e.adresse||'', e.specialites||'', e.type||'clinique', e.secteur||'']
+      );
+      inserted++;
+    } catch(err) { errors++; }
+  }
+  res.json({ success: true, inserted, errors });
+});
+
+app.get('/api/public/etablissements', async (req, res) => {
+  try {
+    const { q, ville, type, limite } = req.query;
+    let where = []; let params = []; let idx = 1;
+    if (q) { where.push(`(UPPER(nom) LIKE UPPER($${idx}) OR UPPER(ville) LIKE UPPER($${idx}) OR UPPER(specialites) LIKE UPPER($${idx}))`); params.push('%'+q+'%'); idx++; }
+    if (ville) { where.push(`UPPER(ville) LIKE UPPER($${idx})`); params.push('%'+ville+'%'); idx++; }
+    if (type) { where.push(`type = $${idx}`); params.push(type); idx++; }
+    const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const lim = Math.min(parseInt(limite)||100, 500);
+    const r = await db(
+      `SELECT id, code, nom, responsable, email, telephone, ville, adresse, specialites, type, membre_mediconnect
+       FROM etablissements_sante ${whereClause}
+       ORDER BY membre_mediconnect DESC, nom ASC LIMIT ${lim}`,
+      params
+    );
+    res.json({ success: true, data: r.rows, total: r.rows.length });
+  } catch(e) { res.status(500).json({ success: false, message: e.message, data: [] }); }
+});
+
+app.put('/api/admin/etablissements/:code/membre', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    const r = await db('UPDATE etablissements_sante SET membre_mediconnect=true WHERE code=$1 RETURNING *', [req.params.code]);
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
