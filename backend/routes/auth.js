@@ -114,11 +114,11 @@ router.post('/register-patient', async (req, res) => {
     if (existsTel.rows.length)
       return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé' });
 
-    // Vérifier email si fourni
-    if (email) {
-      const existsEmail = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+    // Vérifier email seulement si fourni et non vide
+    if (email && email.trim()) {
+      const existsEmail = await db('SELECT id FROM utilisateurs WHERE email=$1 AND role=\'patient\'', [email.trim()]);
       if (existsEmail.rows.length)
-        return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé' });
+        return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé. Connectez-vous plutôt.' });
     }
 
     const hash = await bcrypt.hash(pin, 10);
@@ -127,7 +127,7 @@ router.post('/register-patient', async (req, res) => {
     const pc = pays_code || 'CI';
 
     // Email de substitution si non fourni
-    const emailFinal = email || `${telephone}@mediconnect.patient`;
+    const emailFinal = email || `${telephone.replace(/[^0-9]/g,'')}_${Date.now()}@mediconnect.patient`;
 
     // ── 1. Créer utilisateur ──────────────────────────────────────
     await db(
