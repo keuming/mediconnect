@@ -599,11 +599,11 @@ function PageRecherche(){
           </div>}
       </>}
 
-              <FormPriseRdv medecinPreselect={selectedMed} onClose={()=>setSelectedMed(null)} onSuccess={()=>setSelectedMed(null)}/>
-      </Modal>
+      {selectedMed&&<Modal open={!!selectedMed} onClose={()=>setSelectedMed(null)} title={`RDV — Dr. ${selectedMed.prenom} ${selectedMed.nom}`}>
+        <FormPriseRdv medecinPreselect={selectedMed} onClose={()=>setSelectedMed(null)} onSuccess={()=>setSelectedMed(null)}/>
+      </Modal>}
     </div>
   );
-
 }
 
 // ════════════════════════════════════════════════════════════════════
