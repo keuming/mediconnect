@@ -196,7 +196,7 @@ function PageHome(){
     {icon:"💊",label:"Ordonnances",path:"ordonnances",color:C.green,desc:`${ordsActives.length} active(s)`},
     {icon:"🩺",label:"Consultations",path:"consultations",color:C.purple,desc:"Historique"},
     {icon:"💰",label:"Mes factures",path:"factures",color:C.amber,desc:`${facImpayees.length} impayée(s)`},
-    {icon:"🔍",label:"Trouver médecin",path:"recherche",color:C.teal,desc:"Cliniques & médecins"},
+    {icon:"🔍",label:"Trouver un prestataire",path:"recherche",color:C.teal,desc:"Cliniques, pharmacies, labos..."},
     {icon:"⭐",label:"Médecins privés",path:"medecins-prives",color:C.purple,desc:"Suivi médecin de famille"},
     {icon:"⭐",label:"Feedback",path:"feedback",color:C.amber,desc:"Évaluer mes soins"},
   ];
@@ -486,7 +486,7 @@ function PageRecherche(){
 
   return(
     <div>
-      <PageHeader title="🔍 Annuaire MediConnect" subtitle="Médecins, cliniques et tous les prestataires de santé"/>
+      <PageHeader title="🔍 Trouver un prestataire" subtitle="Cliniques, pharmacies, laboratoires, assurances, imagerie, optique et médecins"/>
       {/* Barre recherche */}
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher par nom, ville, spécialité..."
         style={{width:"100%",padding:"11px 14px",background:C.input,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:14,outline:"none",marginBottom:16,boxSizing:"border-box"}}/>
