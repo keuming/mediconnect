@@ -90,7 +90,13 @@ router.post('/register-patient', async (req, res) => {
     prenom, nom, telephone, pin,
     date_naissance, groupe_sanguin, allergies,
     email, ville, pays_code,
-    taille, poids, contact_urgence, contact_parent, telephone_parent
+    taille, poids,
+    contact_parent, telephone_parent,
+    contact_urgence_1, telephone_urgence_1,
+    contact_urgence_2, telephone_urgence_2,
+    contact_urgence_3, telephone_urgence_3,
+    contact_urgence_4, telephone_urgence_4,
+    contact_urgence_5, telephone_urgence_5,
   } = req.body;
 
   // Validations
@@ -135,10 +141,20 @@ router.post('/register-patient', async (req, res) => {
     await db(
       `INSERT INTO patients
        (id, user_id, prenom, nom, telephone, email, date_naissance,
-        groupe_sanguin, allergies, ville)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        groupe_sanguin, allergies, ville,
+        contact_urgence_1, telephone_urgence_1,
+        contact_urgence_2, telephone_urgence_2,
+        contact_urgence_3, telephone_urgence_3,
+        contact_urgence_4, telephone_urgence_4,
+        contact_urgence_5, telephone_urgence_5)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
       [patientId, userId, prenom, nom, telephone, email||null,
-       date_naissance||null, groupe_sanguin||null, allergies||null, ville||null]
+       date_naissance||null, groupe_sanguin||null, allergies||null, ville||null,
+       contact_urgence_1||null, telephone_urgence_1||null,
+       contact_urgence_2||null, telephone_urgence_2||null,
+       contact_urgence_3||null, telephone_urgence_3||null,
+       contact_urgence_4||null, telephone_urgence_4||null,
+       contact_urgence_5||null, telephone_urgence_5||null]
     );
 
     // ── 3. Générer numéro de carte unique ─────────────────────────
@@ -151,12 +167,21 @@ router.post('/register-patient', async (req, res) => {
       `INSERT INTO mediconnect_card_requests
        (id, numero_carte, prenom, nom, date_naissance, groupe_sanguin, allergies,
         contact_urgence, email, telephone, ville, pays_code,
-        contact_parent, telephone_parent, taille, poids, statut)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'en_attente')`,
+        contact_parent, telephone_parent, taille, poids,
+        contact_urgence_2, telephone_urgence_2,
+        contact_urgence_3, telephone_urgence_3,
+        contact_urgence_4, telephone_urgence_4,
+        contact_urgence_5, telephone_urgence_5,
+        statut)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'en_attente')`,
       [uuid(), numeroCarte, prenom, nom, date_naissance||null, groupe_sanguin||null,
-       allergies||null, contact_urgence||null, email||null, telephone,
+       allergies||null, contact_urgence_1||null, email||null, telephone,
        ville||null, pc, contact_parent||null, telephone_parent||null,
-       taille||null, poids||null]
+       taille||null, poids||null,
+       contact_urgence_2||null, telephone_urgence_2||null,
+       contact_urgence_3||null, telephone_urgence_3||null,
+       contact_urgence_4||null, telephone_urgence_4||null,
+       contact_urgence_5||null, telephone_urgence_5||null]
     );
 
     // ── 5. Générer token JWT ──────────────────────────────────────
