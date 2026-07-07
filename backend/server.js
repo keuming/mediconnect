@@ -741,6 +741,7 @@ app.post('/api/public/rdv', async (req, res) => {
 // ── CHATBOT
 app.use("/api/chatbot", require("./routes/chatbot"));
 app.use("/api/cards-admin", require("./routes/cards_admin"));
+app.use("/api/patients", require("./routes/patients_mobile"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────

@@ -425,5 +425,97 @@ router.post('/abonnement/payer', auth, async (req, res) => {
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
+// ─── PHARMACIES (liste complète) ──────────────────────────────────
+router.get('/pharmacies-toutes', async (req, res) => {
+  try {
+    const { ville } = req.query;
+    let sql = "SELECT id, nom, ville, adresse, telephone, est_garde FROM pharmacies WHERE is_active=true"; const p = [];
+    if (ville) { p.push(`%${ville}%`); sql += ` AND ville ILIKE $${p.length}`; }
+    sql += ' ORDER BY nom LIMIT 200';
+    const r = await db(sql, p);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
 
+// ─── UPLOAD ORDONNANCE ─────────────────────────────────────────────
+router.post('/ordonnance-upload', auth, async (req, res) => {
+  const { fichier_data, fichier_type, fichier_nom, note } = req.body;
+  if (!fichier_data) return res.status(400).json({ success: false, message: 'Fichier requis' });
+  if (fichier_data.length > 6000000)
+    return res.status(413).json({ success: false, message: 'Fichier trop volumineux (max ~4 Mo)' });
+  try {
+    const r = await db(`
+      INSERT INTO ordonnances (id,patient_id,medicaments,fichier_data,fichier_type,fichier_nom,notes_ord,uploaded_by,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'patient','en_attente') RETURNING id,patient_id,fichier_type,fichier_nom,statut,created_at
+    `, [uuid(), req.user.id, 'Ordonnance scannee', fichier_data, fichier_type || 'image/jpeg', fichier_nom || 'ordonnance.jpg', note || null]);
+    res.status(201).json({ success: true, data: r.rows[0], message: 'Ordonnance envoyee !' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/ordonnance/:id/fichier', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT fichier_data, fichier_type FROM ordonnances WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Introuvable' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── COMMANDE MEDICAMENT LIEE A UNE ORDONNANCE ────────────────────
+router.post('/commande-medicament', auth, async (req, res) => {
+  const { ordonnance_id, pharmacie_id, pharmacie_nom, adresse_livraison, articles, notes } = req.body;
+  if (!ordonnance_id) return res.status(400).json({ success: false, message: 'Ordonnance requise' });
+  if (!adresse_livraison) return res.status(400).json({ success: false, message: 'Adresse de livraison requise' });
+  try {
+    const ord = await db('SELECT id FROM ordonnances WHERE id=$1 AND patient_id=$2', [ordonnance_id, req.user.id]);
+    if (!ord.rows.length) return res.status(404).json({ success: false, message: 'Ordonnance introuvable' });
+
+    const listeArticles = Array.isArray(articles) && articles.length ? articles : [{ nom: 'Medicaments selon ordonnance', quantite: 1, prix_estime: 0 }];
+    const fraisLivraison = 1000;
+    const montantArticles = listeArticles.reduce((s, a) => s + (Number(a.prix_estime) || 0) * (Number(a.quantite) || 1), 0);
+
+    const cmd = await db(`
+      INSERT INTO commandes (id,patient_id,ordonnance_id,pharmacie_id,adresse_livraison,nombre_articles,articles_json,frais_livraison,notes,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'en_attente') RETURNING *
+    `, [uuid(), req.user.id, ordonnance_id, pharmacie_id || null, adresse_livraison,
+        listeArticles.length, JSON.stringify(listeArticles), fraisLivraison, notes || null]);
+
+    const commande = cmd.rows[0];
+
+    const ref = 'PRO-' + Date.now().toString(36).toUpperCase();
+    const montantTotal = montantArticles + fraisLivraison;
+    const fact = await db(`
+      INSERT INTO factures_proforma (id,reference,commande_id,patient_id,pharmacie_id,pharmacie_nom,lignes_json,montant_articles,frais_livraison,montant_total)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+    `, [uuid(), ref, commande.id, req.user.id, pharmacie_id || null, pharmacie_nom || 'Pharmacie partenaire',
+        JSON.stringify(listeArticles), montantArticles, fraisLivraison, montantTotal]);
+
+    await db('UPDATE ordonnances SET statut=$1, pharmacie_id=$2 WHERE id=$3', ['traitee', pharmacie_id || null, ordonnance_id]);
+
+    res.status(201).json({ success: true, data: { commande, facture_proforma: fact.rows[0] }, message: 'Commande envoyee a la pharmacie !' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/commande/:id/facture-proforma', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM factures_proforma WHERE commande_id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!r.rows.length) return res.json({ success: true, data: null });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+const ETAPES_SUIVI = ['en_attente', 'preparation', 'prete', 'en_livraison', 'livree'];
+router.get('/commande/:id/suivi', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM commandes WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Commande introuvable' });
+    const cmd = r.rows[0];
+    const idxActuel = cmd.statut === 'annulee' ? -1 : ETAPES_SUIVI.indexOf(cmd.statut);
+    res.json({ success: true, data: {
+      commande: cmd,
+      etapes: ETAPES_SUIVI,
+      etape_actuelle: idxActuel,
+      annulee: cmd.statut === 'annulee',
+    }});
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
 module.exports = router;

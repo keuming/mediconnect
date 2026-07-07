@@ -173,5 +173,31 @@ router.post('/consultations/depuis-rdv', auth, async (req, res) => {
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
+// GET /api/public/recherche-specialite?q=cardiologie
+router.get('/public/recherche-specialite', async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) return res.json({ success: true, data: [] });
+  try {
+    const [cliniquesRes, etablissementsRes] = await Promise.all([
+      db(`
+        SELECT DISTINCT c.id, c.nom, c.ville, c.telephone, c.adresse,
+               s.nom AS specialite, s.tarif_consultation, 'clinique_mediconnect' AS source
+        FROM specialites_clinique s
+        JOIN cliniques c ON c.id = s.clinique_id AND c.is_active IS NOT false
+        WHERE s.disponible=true AND s.nom ILIKE $1
+        ORDER BY c.nom LIMIT 50
+      `, [`%${q}%`]),
+      db(`
+        SELECT id, nom, ville, telephone, adresse, specialites, type, 'etablissement_public' AS source
+        FROM etablissements_sante
+        WHERE specialites ILIKE $1
+        ORDER BY nom LIMIT 50
+      `, [`%${q}%`]).catch(() => ({ rows: [] })),
+    ]);
+    res.json({ success: true, data: {
+      cliniques_mediconnect: cliniquesRes.rows,
+      etablissements_publics: etablissementsRes.rows,
+    }});
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
 module.exports = router;
