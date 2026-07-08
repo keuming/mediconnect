@@ -15,15 +15,41 @@ const DEMOS = [
   { role: 'optique',            label: 'Optique',        icon: '🔭', email: 'optique@demo.ci' },
   { role: 'ministere',          label: 'Ministère',      icon: '🏛️', email: 'ministere@sante.ci', pwd: 'MinistereCI2024' },
   { role: 'business_developer', label: 'Business Dev',   icon: '💼', email: 'bd@demo.ci' },
-  { role: 'admin',              label: 'Admin',          icon: '⚙️', email: 'admin@demo.ci' },
+  // NOTE : l'accès demo "Admin" a ete retire de cette page.
+  // Il sera disponible sur https://admin.mediconnect4africa.cloud une fois ce sous-domaine cree.
 ];
+
+const ROLE_ROUTES = {
+  patient:             '/patient',
+  clinique:            '/clinique',
+  medecin_independant: '/medecin/independant',
+  medecin_conseil:     '/medecin/independant',
+  medecin_prive:       '/medecin/independant',
+  pharmacie:           '/pharmacie',
+  livreur:             '/livreur',
+  admin:               '/admin',
+  assureur:            '/assureur',
+  imagerie:            '/imagerie',
+  laboratoire:         '/laboratoire',
+  ministere:           '/ministere',
+  optique:             '/optique',
+  business_developer:  '/bd',
+};
 
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [show, setShow]  = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth <= 860 : false);
   const { login, loading } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Responsive : bascule en layout vertical (formulaire prioritaire) sur petits ecrans / PWA mobile
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 860);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Auto-login si token passe en URL depuis la vitrine
   useEffect(() => {
@@ -41,23 +67,6 @@ export default function Login() {
       }
     }
   }, []);
-
-  const ROLE_ROUTES = {
-    patient:             '/patient',
-    clinique:            '/clinique',
-    medecin_independant: '/medecin/independant',
-    medecin_conseil:     '/medecin/independant',
-    medecin_prive:       '/medecin/independant',
-    pharmacie:           '/pharmacie',
-    livreur:             '/livreur',
-    admin:               '/admin',
-    assureur:            '/assureur',
-    imagerie:            '/imagerie',
-    laboratoire:         '/laboratoire',
-    ministere:           '/ministere',
-    optique:             '/optique',
-    business_developer:  '/bd',
-  };
 
   const redirectAfterLogin = (user) => {
     const dest = ROLE_ROUTES[user?.role] || '/app';
@@ -86,17 +95,31 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#060C12', display: 'flex' }}>
-      {/* Panneau gauche */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px', background: 'linear-gradient(135deg,#0A1628 0%,#0D1F30 100%)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 40 }}>
+    <div style={{
+      minHeight: '100vh',
+      background: '#060C12',
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      overflowX: 'hidden',
+    }}>
+      {/* Panneau gauche — texte marketing */}
+      <div style={{
+        flex: isMobile ? 'none' : 1,
+        order: isMobile ? 2 : 1,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: isMobile ? '32px 24px' : '60px',
+        background: 'linear-gradient(135deg,#0A1628 0%,#0D1F30 100%)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: isMobile ? 20 : 40 }}>
           <div style={{ width: 48, height: 48, background: '#0A8F58', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: '#fff' }}>+</div>
           <span style={{ fontSize: 24, fontWeight: 800, color: '#F0F4F8' }}>Medi<span style={{ color: '#0A8F58' }}>Connect</span></span>
         </div>
-        <h1 style={{ fontSize: 36, fontWeight: 800, color: '#F0F4F8', lineHeight: 1.2, marginBottom: 16 }}>
+        <h1 style={{ fontSize: isMobile ? 24 : 36, fontWeight: 800, color: '#F0F4F8', lineHeight: 1.2, marginBottom: 16 }}>
           La santé numérique pour<br /><span style={{ color: '#0A8F58' }}>l'Afrique de l'Ouest</span>
         </h1>
-        <p style={{ color: '#8BA0B5', fontSize: 16, marginBottom: 40 }}>
+        <p style={{ color: '#8BA0B5', fontSize: isMobile ? 14 : 16, marginBottom: isMobile ? 20 : 40 }}>
           RDV médicaux · Assurances tiers-payant · Ordonnances · Livraison GPS · 8 pays
         </p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -107,8 +130,17 @@ export default function Login() {
       </div>
 
       {/* Formulaire */}
-      <div style={{ width: 480, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px 48px', background: '#0E1620' }}>
-        <h2 style={{ fontSize: 28, fontWeight: 800, color: '#F0F4F8', marginBottom: 6 }}>Connexion 👋</h2>
+      <div style={{
+        width: isMobile ? '100%' : 480,
+        order: isMobile ? 1 : 2,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: isMobile ? '32px 20px' : '60px 48px',
+        background: '#0E1620',
+        boxSizing: 'border-box',
+      }}>
+        <h2 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: '#F0F4F8', marginBottom: 6 }}>Connexion 👋</h2>
         <p style={{ color: '#8BA0B5', marginBottom: 32, fontSize: 14 }}>Accédez à votre espace MediConnect</p>
 
         <form onSubmit={handleSubmit}>
