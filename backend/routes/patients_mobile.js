@@ -172,34 +172,49 @@ router.get('/carte', auth, async (req, res) => {
 });
 
 // POST /api/patients/carte/commander
-router.post('/carte/commander', auth, async (req, res) => {
-  try {
-    const exists = await db('SELECT id FROM mediconnect_accounts WHERE user_id=$1', [req.user.id]);
-    if (exists.rows.length) return res.status(409).json({ success: false, message: 'Vous avez déjà un compte MediConnect Card' });
-    const user = await db('SELECT * FROM utilisateurs WHERE id=$1', [req.user.id]);
-    const u    = user.rows[0];
-    if (!u) return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
-    const carte     = await db("SELECT id, numero_carte FROM mediconnect_cards WHERE statut='non_liee' ORDER BY created_at LIMIT 1");
-    const carteId   = carte.rows[0]?.id || null;
-    const numCarte  = carte.rows[0]?.numero_carte || null;
-    const numCompte = 'MCA-' + Date.now().toString(36).toUpperCase();
-    const imc       = calcIMC(u.poids, u.taille);
-    const acc = await db(`
-      INSERT INTO mediconnect_accounts
-        (id,user_id,numero_compte,carte_id,numero_carte,prenom,nom,telephone,email,
-         ville,pays_code,date_naissance,groupe_sanguin,taille,poids,imc,maladies_chroniques)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-      RETURNING *
-    `, [uuid(), req.user.id, numCompte, carteId, numCarte,
-        u.prenom||'', u.nom||'', u.telephone||null, u.email||null,
-        u.ville||null, u.pays_code||'CI', u.date_naissance||null,
-        u.groupe_sanguin||null,
-        u.taille ? parseFloat(u.taille) : null,
-        u.poids  ? parseFloat(u.poids)  : null,
-        imc, u.maladies_chroniques||null]);
-    if (carteId) await db("UPDATE mediconnect_cards SET statut='en_cours', updated_at=NOW() WHERE id=$1", [carteId]);
-    res.status(201).json({ success: true, data: acc.rows[0], message: 'Commande de carte enregistrée !' });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+router.post("/carte/commander", auth, async (req, res) => {
+const { contacts_urgence } = req.body;
+try {
+const exists = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+if (exists.rows.length) return res.status(409).json({ success: false, message: "Vous avez deja un compte MediConnect Card" });
+const user = await db("SELECT * FROM utilisateurs WHERE id=$1", [req.user.id]);
+const u    = user.rows[0];
+if (!u) return res.status(404).json({ success: false, message: "Utilisateur introuvable" });
+const carte     = await db("SELECT id, numero_carte FROM mediconnect_cards WHERE statut='non_liee' ORDER BY created_at LIMIT 1");
+const carteId   = carte.rows[0]?.id || null;
+const numCarte  = carte.rows[0]?.numero_carte || null;
+const numCompte = "MCA-" + Date.now().toString(36).toUpperCase();
+const imc       = calcIMC(u.poids, u.taille);
+const acc = await db(`
+INSERT INTO mediconnect_accounts
+(id,user_id,numero_compte,carte_id,numero_carte,prenom,nom,telephone,email,
+ville,pays_code,date_naissance,groupe_sanguin,taille,poids,imc,maladies_chroniques,statut)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'actif')
+RETURNING *
+`, [uuid(), req.user.id, numCompte, carteId, numCarte,
+u.prenom||"", u.nom||"", u.telephone||null, u.email||null,
+u.ville||null, u.pays_code||"CI", u.date_naissance||null,
+u.groupe_sanguin||null,
+u.taille ? parseFloat(u.taille) : null,
+u.poids  ? parseFloat(u.poids)  : null,
+imc, u.maladies_chroniques||null]);
+if (carteId) await db("UPDATE mediconnect_cards SET statut='en_cours', updated_at=NOW() WHERE id=$1", [carteId]);
+if (Array.isArray(contacts_urgence) && contacts_urgence.length) {
+for (let i = 0; i < Math.min(contacts_urgence.length, 5); i++) {
+const c = contacts_urgence[i];
+if (c.telephone && c.prenom) {
+await db(`
+INSERT INTO contacts_urgence
+(account_id, ordre, prenom, nom, telephone, telephone_2, relation, est_principal)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+[acc.rows[0].id, i+1, c.prenom, c.nom||"", c.telephone,
+c.telephone_2||null, c.relation||null, i===0]
+).catch(()=>{});
+}
+}
+}
+res.status(201).json({ success: true, data: acc.rows[0], message: "Commande de carte enregistree !" });
+} catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 // ─── FAMILLE ─────────────────────────────────────────────────────

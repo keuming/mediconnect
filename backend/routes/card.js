@@ -9,29 +9,71 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
     const { numero_carte } = req.params;
     const card = await db('SELECT * FROM mediconnect_cards WHERE numero_carte=$1', [numero_carte]);
     if (!card.rows.length) return res.status(404).json({ success: false, message: 'Carte introuvable' });
+    const carteId = card.rows[0].id;
 
-    const account = await db(`
+    // 1. Cas normal : carte liee directement a un compte principal
+    let account = await db(`
       SELECT a.id, a.prenom, a.nom, a.telephone, a.ville, a.pays_code,
-             a.groupe_sanguin, a.allergies, a.niveau, a.numero_compte,
-             a.photo_url
+             a.groupe_sanguin, a.allergies, a.niveau, a.numero_compte, a.photo_url
       FROM mediconnect_accounts a
       WHERE a.carte_id=$1 AND a.statut='actif'
-    `, [card.rows[0].id]);
+    `, [carteId]);
 
-    if (!account.rows.length) {
-      return res.json({ success: true, data: { carte: numero_carte, liee: false, message: 'Carte non liée à un compte' } });
+    let titulaireAffiche = null;
+    let compteAccountId  = null;
+
+    if (account.rows.length) {
+      compteAccountId  = account.rows[0].id;
+      titulaireAffiche = account.rows[0];
+    } else {
+      // 2. Cas carte famille : chercher dans famille_cartes, puis remonter au compte principal
+      const membre = await db(`
+        SELECT f.*, u.id AS user_principal_id
+        FROM famille_cartes f
+        JOIN utilisateurs u ON u.id = f.user_principal_id
+        WHERE f.carte_id=$1
+      `, [carteId]);
+
+      if (!membre.rows.length) {
+        return res.json({ success: true, data: { carte: numero_carte, liee: false, message: 'Carte non liee a un compte' } });
+      }
+
+      const comptePrincipal = await db(`
+        SELECT id, prenom, nom, telephone, ville, pays_code, groupe_sanguin, allergies, niveau, numero_compte, photo_url
+        FROM mediconnect_accounts WHERE user_id=$1 AND statut='actif'
+      `, [membre.rows[0].user_principal_id]);
+
+      if (!comptePrincipal.rows.length) {
+        return res.json({ success: true, data: { carte: numero_carte, liee: false, message: 'Compte principal de la famille non actif' } });
+      }
+
+      compteAccountId  = comptePrincipal.rows[0].id;
+      // On affiche l'identite du MEMBRE de la famille (pas celle du titulaire principal),
+      // mais les contacts d'urgence du compte principal seront utilises.
+      titulaireAffiche = {
+        prenom: membre.rows[0].prenom,
+        nom: membre.rows[0].nom,
+        telephone: null,
+        ville: comptePrincipal.rows[0].ville,
+        groupe_sanguin: null,
+        allergies: null,
+        niveau: comptePrincipal.rows[0].niveau,
+        photo_url: null,
+        membre_famille: true,
+        compte_principal_nom: `${comptePrincipal.rows[0].prenom} ${comptePrincipal.rows[0].nom}`,
+      };
     }
 
-    // Contacts d'urgence (accessibles au public via QR scan)
+    // Contacts d'urgence — toujours ceux du compte principal (partages pour toute la famille)
     const contacts = await db(
       'SELECT prenom, nom, telephone, telephone_2, relation, est_principal FROM contacts_urgence WHERE account_id=$1 ORDER BY ordre',
-      [account.rows[0].id]
+      [compteAccountId]
     );
 
     // Enregistrer le scan
     await db(
       'INSERT INTO scans_qr_card (carte_id, account_id) VALUES ($1, $2)',
-      [card.rows[0].id, account.rows[0].id]
+      [carteId, compteAccountId]
     ).catch(() => {});
 
     res.json({
@@ -39,16 +81,7 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
       data: {
         liee: true,
         carte: numero_carte,
-        patient: {
-          prenom: account.rows[0].prenom,
-          nom: account.rows[0].nom,
-          telephone: account.rows[0].telephone,
-          ville: account.rows[0].ville,
-          groupe_sanguin: account.rows[0].groupe_sanguin,
-          allergies: account.rows[0].allergies,
-          niveau: account.rows[0].niveau,
-          photo_url: account.rows[0].photo_url,
-        },
+        patient: titulaireAffiche,
         contacts_urgence: contacts.rows,
       }
     });
@@ -88,7 +121,7 @@ router.get('/mon-compte', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ── CRÉER / LIER COMPTE CARD ──────────────────────────────────────
+// ── CREER / LIER COMPTE CARD ──────────────────────────────────────
 router.post('/lier-carte', auth, async (req, res) => {
   const {
     prenom, nom, telephone, email, adresse, ville, pays_code,
@@ -97,28 +130,28 @@ router.post('/lier-carte', auth, async (req, res) => {
   } = req.body;
 
   if (!prenom || !nom || !numero_carte)
-    return res.status(400).json({ success: false, message: 'Prénom, nom et numéro de carte requis' });
+    return res.status(400).json({ success: false, message: 'Prenom, nom et numero de carte requis' });
 
   try {
-    // Vérifier que la carte existe et n'est pas déjà liée
+    // Verifier que la carte existe et n'est pas deja liee
     const card = await db("SELECT * FROM mediconnect_cards WHERE numero_carte=$1", [numero_carte]);
     if (!card.rows.length)
-      return res.status(404).json({ success: false, message: 'Numéro de carte invalide ou inexistant' });
+      return res.status(404).json({ success: false, message: 'Numero de carte invalide ou inexistant' });
     if (card.rows[0].statut === 'liee')
-      return res.status(409).json({ success: false, message: 'Cette carte est déjà liée à un compte' });
+      return res.status(409).json({ success: false, message: 'Cette carte est deja liee a un compte' });
 
-    // Vérifier que l'utilisateur n'a pas déjà un compte card
+    // Verifier que l'utilisateur n'a pas deja un compte card
     const existing = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
     if (existing.rows.length)
-      return res.status(409).json({ success: false, message: 'Vous avez déjà un compte MediConnect Card' });
+      return res.status(409).json({ success: false, message: 'Vous avez deja un compte MediConnect Card' });
 
-    // Générer numéro de compte unique
+    // Generer numero de compte unique
     const annee = new Date().getFullYear();
     const codeP = pays_code || 'CI';
     const seq = await db("SELECT COUNT(*)+1 AS n FROM mediconnect_accounts WHERE numero_compte LIKE $1", [`MCA-${codeP}-%`]);
     const numCompte = `MCA-${codeP}-${annee}-${String(seq.rows[0].n).padStart(6,'0')}`;
 
-    // Créer le compte
+    // Creer le compte
     const account = await db(`
       INSERT INTO mediconnect_accounts
         (user_id, numero_compte, carte_id, numero_carte, prenom, nom, telephone, email,
@@ -131,12 +164,12 @@ router.post('/lier-carte', auth, async (req, res) => {
        pays_code||'CI', date_naissance||null, groupe_sanguin||null, allergies||null]
     );
 
-    // Marquer la carte comme liée
+    // Marquer la carte comme liee
     await db("UPDATE mediconnect_cards SET statut='liee', updated_at=NOW() WHERE id=$1", [card.rows[0].id]);
 
-    // Ajouter les contacts d'urgence
+    // Ajouter les contacts d'urgence (max 5)
     if (contacts_urgence?.length) {
-      for (let i = 0; i < Math.min(contacts_urgence.length, 10); i++) {
+      for (let i = 0; i < Math.min(contacts_urgence.length, 5); i++) {
         const c = contacts_urgence[i];
         if (c.telephone && c.prenom) {
           await db(`
@@ -153,12 +186,12 @@ router.post('/lier-carte', auth, async (req, res) => {
     res.status(201).json({
       success: true,
       data: account.rows[0],
-      message: `Carte liée avec succès ! Votre numéro de compte : ${numCompte}`
+      message: `Carte liee avec succes ! Votre numero de compte : ${numCompte}`
     });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ── METTRE À JOUR COMPTE CARD ─────────────────────────────────────
+// ── METTRE A JOUR COMPTE CARD ─────────────────────────────────────
 router.put('/mon-compte', auth, async (req, res) => {
   const { prenom, nom, telephone, email, adresse, ville, groupe_sanguin, allergies, photo_url } = req.body;
   try {
@@ -188,12 +221,12 @@ router.get('/contacts-urgence', auth, async (req, res) => {
 
 router.post('/contacts-urgence', auth, async (req, res) => {
   const { prenom, nom, telephone, telephone_2, relation } = req.body;
-  if (!prenom || !telephone) return res.status(400).json({ success: false, message: 'Prénom et téléphone requis' });
+  if (!prenom || !telephone) return res.status(400).json({ success: false, message: 'Prenom et telephone requis' });
   try {
     const account = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
-    if (!account.rows.length) return res.status(404).json({ success: false, message: 'Compte card non trouvé' });
+    if (!account.rows.length) return res.status(404).json({ success: false, message: 'Compte card non trouve' });
     const count = await db("SELECT COUNT(*) c FROM contacts_urgence WHERE account_id=$1", [account.rows[0].id]);
-    if (+count.rows[0].c >= 10) return res.status(400).json({ success: false, message: 'Maximum 10 contacts d\'urgence' });
+    if (+count.rows[0].c >= 5) return res.status(400).json({ success: false, message: "Maximum 5 contacts d'urgence" });
     const r = await db(
       'INSERT INTO contacts_urgence (account_id,ordre,prenom,nom,telephone,telephone_2,relation) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
       [account.rows[0].id, +count.rows[0].c+1, prenom, nom||'', telephone, telephone_2||null, relation||null]
@@ -227,28 +260,25 @@ router.post('/recharger', auth, async (req, res) => {
   if (montant < 1000) return res.status(400).json({ success: false, message: 'Montant minimum : 1 000 FCFA' });
   try {
     const account = await db("SELECT * FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
-    if (!account.rows.length) return res.status(404).json({ success: false, message: 'Compte card non trouvé' });
+    if (!account.rows.length) return res.status(404).json({ success: false, message: 'Compte card non trouve' });
     const a = account.rows[0];
     const solde_avant = +a.solde;
     const solde_apres = solde_avant + +montant;
 
-    // Enregistrer la recharge
     await db(
       'INSERT INTO recharges_card (account_id,carte_id,montant,mode_paiement,reference_paiement,statut,solde_avant,solde_apres) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
       [a.id, a.carte_id, montant, mode_paiement||'Wave', reference_paiement||null, 'success', solde_avant, solde_apres]
     );
 
-    // Mettre à jour le solde
     await db("UPDATE mediconnect_accounts SET solde=$1,updated_at=NOW() WHERE id=$2", [solde_apres, a.id]);
     await db("UPDATE mediconnect_cards SET solde=$1,updated_at=NOW() WHERE id=$2", [solde_apres, a.carte_id]);
 
-    // Enregistrer la transaction
     await db(
       'INSERT INTO transactions_card (account_id,carte_id,type,montant,sens,solde_avant,solde_apres,description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
       [a.id, a.carte_id, 'recharge', montant, 'credit', solde_avant, solde_apres, `Recharge via ${mode_paiement||'Wave'}`]
     );
 
-    res.json({ success: true, data: { solde: solde_apres, montant_rechargé: montant }, message: `Recharge de ${Number(montant).toLocaleString('fr-CI')} FCFA effectuée !` });
+    res.json({ success: true, data: { solde: solde_apres, montant_recharge: montant }, message: `Recharge de ${Number(montant).toLocaleString('fr-CI')} FCFA effectuee !` });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
@@ -314,7 +344,7 @@ router.post('/admin/generer-cartes', auth, can('admin'), async (req, res) => {
       await db("INSERT INTO mediconnect_cards (numero_carte) VALUES ($1) ON CONFLICT DO NOTHING", [num]).catch(()=>{});
       created++;
     }
-    res.json({ success: true, data: { cartes_generees: created, premier: cartes[0], dernier: cartes[cartes.length-1] }, message: `${created} cartes générées avec succès` });
+    res.json({ success: true, data: { cartes_generees: created, premier: cartes[0], dernier: cartes[cartes.length-1] }, message: `${created} cartes generees avec succes` });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
