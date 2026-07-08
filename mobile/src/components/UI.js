@@ -235,11 +235,17 @@ export const ScreenHeader = ({ title, subtitle, onBack, rightIcon, onRight }) =>
 
 // Mapping statuts commandes
 export const STATUT_CMD = {
-  en_attente: { label: 'En attente',    color: 'amber',  icon: '⏳' },
-  confirmee:  { label: 'Confirmée',     color: 'green',  icon: '✅' },
-  en_cours:   { label: 'En livraison',  color: 'purple', icon: '🛵' },
-  livre:      { label: 'Livrée',        color: 'teal',   icon: '📦' },
-  annulee:    { label: 'Annulée',       color: 'red',    icon: '❌' },
+  // Anciens statuts (commandes generiques /api/commandes)
+  en_attente:   { label: 'En attente',    color: 'amber',  icon: '⏳' },
+  confirmee:    { label: 'Confirmée',     color: 'green',  icon: '✅' },
+  en_cours:     { label: 'En livraison',  color: 'purple', icon: '🛵' },
+  livre:        { label: 'Livrée',        color: 'teal',   icon: '📦' },
+  annulee:      { label: 'Annulée',       color: 'red',    icon: '❌' },
+  // Nouveaux statuts (workflow commande medicament avec ordonnance)
+  preparation:  { label: 'En préparation',color: 'amber',  icon: '🧪' },
+  prete:        { label: 'Prête',         color: 'blue',   icon: '📋' },
+  en_livraison: { label: 'En livraison',  color: 'purple', icon: '🛵' },
+  livree:       { label: 'Livrée',        color: 'teal',   icon: '📦' },
 };
 
 export const fmtMontant = (n) =>
