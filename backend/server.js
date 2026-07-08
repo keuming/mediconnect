@@ -398,6 +398,7 @@ app.delete('/api/medecins/:id', auth, async (req, res) => {
 });
 
 // ── PATIENTS ──────────────────────────────────────────────────────
+app.use("/api/patients", require("./routes/patients_mobile"));
 app.get('/api/patients', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
@@ -741,7 +742,6 @@ app.post('/api/public/rdv', async (req, res) => {
 // ── CHATBOT
 app.use("/api/chatbot", require("./routes/chatbot"));
 app.use("/api/cards-admin", require("./routes/cards_admin"));
-app.use("/api/patients", require("./routes/patients_mobile"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
