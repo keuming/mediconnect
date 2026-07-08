@@ -4,25 +4,52 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { C } from '../components/UI';
 
-// Screens
-import PatientAccueil     from '../screens/patient/AccueilScreen';
-import PatientRdv         from '../screens/patient/RdvScreen';
-import PatientDossier     from '../screens/patient/DossierScreen';
-import PatientPharmacie   from '../screens/patient/PharmacieScreen';
-import PatientPlusScreen  from '../screens/patient/PlusScreen';
-import RdvFormScreen      from '../screens/patient/RdvFormScreen';
-import ClinicDetailScreen from '../screens/patient/ClinicDetailScreen';
-import CommandeFormScreen from '../screens/patient/CommandeFormScreen';
+// Screens principaux
+import PatientAccueil            from '../screens/patient/AccueilScreen';
+import PatientRdv                from '../screens/patient/RdvScreen';
+import PatientPharmacie          from '../screens/patient/PharmacieScreen';
+import RdvFormScreen             from '../screens/patient/RdvFormScreen';
+import ClinicDetailScreen        from '../screens/patient/ClinicDetailScreen';
+import CommandeFormScreen        from '../screens/patient/CommandeFormScreen';
+import FactureProformaScreen     from '../screens/patient/FactureProformaScreen';
+import SuiviCommandeScreen       from '../screens/patient/SuiviCommandeScreen';
+import RechercheSpecialiteScreen from '../screens/patient/RechercheSpecialiteScreen';
+import ProfilScreen              from '../screens/patient/ProfilScreen';
+import MediConnectCardScreen     from '../screens/patient/MediConnectCardScreen';
+
+// Dossier + Plus (versions completes, remplacent les anciens stubs)
+import { DossierScreen, PlusScreen } from '../screens/patient/DossierPlusScreens';
+
+// Stubs pour ecrans pas encore construits
+import {
+  MedecinsPrivesScreen, CliniquesScreen, AssurancesScreen,
+  FacturesScreen, AbonnementScreen,
+} from '../screens/patient/StubScreens';
 
 const Tab   = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+// Ecrans partages, accessibles depuis plusieurs stacks (menu global de AccueilScreen)
+const SHARED_SCREENS = (Nav) => (
+  <>
+    <Nav.Screen name="Profil"         component={ProfilScreen} />
+    <Nav.Screen name="Card"           component={MediConnectCardScreen} />
+    <Nav.Screen name="Abonnement"     component={AbonnementScreen} />
+    <Nav.Screen name="MedecinsPrives" component={MedecinsPrivesScreen} />
+    <Nav.Screen name="Cliniques"      component={CliniquesScreen} />
+    <Nav.Screen name="Assurances"     component={AssurancesScreen} />
+    <Nav.Screen name="Factures"       component={FacturesScreen} />
+  </>
+);
 
 // Stacks avec sous-écrans
 function AccueilStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="AccueilMain"    component={PatientAccueil} />
-      <Stack.Screen name="ClinicDetail"   component={ClinicDetailScreen} />
+      <Stack.Screen name="AccueilMain"         component={PatientAccueil} />
+      <Stack.Screen name="ClinicDetail"        component={ClinicDetailScreen} />
+      <Stack.Screen name="RechercheSpecialite" component={RechercheSpecialiteScreen} />
+      {SHARED_SCREENS(Stack)}
     </Stack.Navigator>
   );
 }
@@ -39,8 +66,27 @@ function RdvStack() {
 function PharmacieStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="PharmacieMain"  component={PatientPharmacie} />
-      <Stack.Screen name="CommandeForm"   component={CommandeFormScreen} />
+      <Stack.Screen name="PharmacieMain"   component={PatientPharmacie} />
+      <Stack.Screen name="CommandeForm"    component={CommandeFormScreen} />
+      <Stack.Screen name="FactureProforma" component={FactureProformaScreen} />
+      <Stack.Screen name="SuiviCommande"   component={SuiviCommandeScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function DossierStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="DossierMain" component={DossierScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function PlusStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="PlusMain" component={PlusScreen} />
+      {SHARED_SCREENS(Stack)}
     </Stack.Navigator>
   );
 }
@@ -48,9 +94,9 @@ function PharmacieStack() {
 const TABS = [
   { name: 'Accueil',    icon: '🏠', component: AccueilStack },
   { name: 'Mes RDV',    icon: '📅', component: RdvStack },
-  { name: 'Dossier',    icon: '📋', component: PatientDossier },
+  { name: 'Dossier',    icon: '📋', component: DossierStack },
   { name: 'Pharmacie',  icon: '💊', component: PharmacieStack },
-  { name: 'Plus',       icon: '⋯',  component: PatientPlusScreen },
+  { name: 'Plus',       icon: '⋯',  component: PlusStack },
 ];
 
 export default function PatientNavigator() {
