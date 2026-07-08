@@ -99,7 +99,44 @@ export const PharmacieAPI = {
 // ══════════════════════════════════════════════════════════════════
 // API MÉDECIN CONSEIL / RÉSIDENT
 // ══════════════════════════════════════════════════════════════════
-export const MedecinAPI = {
+export const PatientAPI = {
+  monProfil:        ()  => apiCall('/utilisateurs/me'),
+  monDossier:       ()  => apiCall('/patients/me'),
+  miseAJourDossier: (id,d) => apiCall(`/patients/${id}`, { method:'PUT', body:JSON.stringify(d) }),
+  mesRdvs:          ()  => apiCall('/rendez-vous'),
+  prendreRdv:       (d) => apiCall('/rendez-vous', { method:'POST', body:JSON.stringify(d) }),
+  annulerRdv:       (id)=> apiCall(`/rendez-vous/${id}`, { method:'PUT', body:JSON.stringify({ statut:'annule' }) }),
+  mesOrdonnances:   ()  => apiCall('/ordonnances'),
+  mesConsultations: ()  => apiCall('/consultations'),
+  mesFactures:      ()  => apiCall('/factures/patient'),
+  mesCommandes:     ()  => apiCall('/patients/commandes'),
+  passerCommande:   (d) => apiCall('/commandes', { method:'POST', body:JSON.stringify(d) }),
+  annulerCommande:  (id)=> apiCall(`/commandes/${id}`, { method:'PUT', body:JSON.stringify({ statut:'annulee' }) }),
+  mesBulletins:     ()  => apiCall('/bulletins'),
+  cliniques:        ()  => publicFetch('/public/cliniques'),
+  medecinsClinique: (cid)=> publicFetch(`/public/medecins?clinique_id=${cid}`),
+  medecinsMC:       ()  => publicFetch('/public/medecins?independant=true'),
+  specialites:      ()  => publicFetch('/public/specialites'),
+
+  rechercheSpecialite: (q) => publicFetch(`/public/recherche-specialite?q=${encodeURIComponent(q)}`),
+
+  uploaderOrdonnance: (d) => apiCall('/patients/ordonnance-upload', { method:'POST', body:JSON.stringify(d) }),
+  voirFichierOrdonnance: (id) => apiCall(`/patients/ordonnance/${id}/fichier`),
+
+  pharmaciesToutes:  (ville) => publicFetch(`/patients/pharmacies-toutes${ville ? '?ville='+encodeURIComponent(ville) : ''}`),
+  commanderMedicament: (d) => apiCall('/patients/commande-medicament', { method:'POST', body:JSON.stringify(d) }),
+  factureProforma:   (commandeId) => apiCall(`/patients/commande/${commandeId}/facture-proforma`),
+  suiviCommande:     (commandeId) => apiCall(`/patients/commande/${commandeId}/suivi`),
+
+  monCompteCard:    ()  => apiCall('/card/mon-compte'),
+  lierCarte:        (d) => apiCall('/card/lier-carte', { method:'POST', body:JSON.stringify(d) }),
+  rechargerCarte:   (d) => apiCall('/card/recharger', { method:'POST', body:JSON.stringify(d) }),
+  transactionsCard: ()  => apiCall('/card/transactions'),
+  contactsUrgence:  ()  => apiCall('/card/contacts-urgence'),
+  ajouterContact:   (d) => apiCall('/card/contacts-urgence', { method:'POST', body:JSON.stringify(d) }),
+  supprimerContact: (id)=> apiCall(`/card/contacts-urgence/${id}`, { method:'DELETE' }),
+  scanQR:           (num)=> publicFetch(`/card/public/scan/${num}`),
+};export const MedecinAPI = {
   monProfil:        ()  => apiCall('/utilisateurs/me'),
   stats:            ()  => apiCall('/planning/stats'),
   mesRdvs:          (date)=> apiCall(`/planning/rdvs${date ? '?date='+date : ''}`),

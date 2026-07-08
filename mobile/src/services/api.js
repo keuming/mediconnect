@@ -139,3 +139,21 @@ export const profilAPI = {
 // Alias sur patientAPI pour compatibilité AccueilScreen
 patientAPI.getProfil    = profilAPI.getProfil;
 patientAPI.updateProfil = profilAPI.updateProfil;
+
+// ─── AJOUTS v3 : fonctions patient manquantes (carte, famille, medicaments...) ────
+Object.assign(patientAPI, {
+  getCarte:              (token)    => request('/patients/carte', {}, token),
+  commanderCarte:        (token, d) => request('/patients/carte/commander', { method:'POST', body: JSON.stringify(d || {}) }, token),
+  getFamille:            (token)    => request('/patients/famille', {}, token),
+  ajouterMembreFamille:  (token, d) => request('/patients/famille/membre', { method:'POST', body: JSON.stringify(d) }, token),
+  getMedicaments:        (token)    => request('/patients/medicaments', {}, token),
+  getPharmaciesGarde:    (token)    => request('/patients/pharmacies-garde', {}, token),
+  getMedecinsConseil:    (token)    => request('/patients/medecins-conseils', {}, token),
+  getAssurances:         (token)    => request('/patients/assureurs', {}, token),
+  ajouterOrdonnance:     (token, d) => request('/patients/ordonnances', { method:'POST', body: JSON.stringify(d) }, token),
+  commanderMedicament:   (token, d) => request('/patients/medicament/commander', { method:'POST', body: JSON.stringify(d) }, token),
+  getCommandes:          (token)    => request('/patients/commandes', {}, token),
+  ajouterNoteDossier:    (token, d) => request('/patients/dossier/note', { method:'POST', body: JSON.stringify(d) }, token),
+  demanderMedecinConseil:(token, d) => request('/patients/demande-conseil', { method:'POST', body: JSON.stringify(d) }, token),
+  demanderQuotationAssurance:(token, d) => request('/patients/quotation-assurance', { method:'POST', body: JSON.stringify(d) }, token),
+});

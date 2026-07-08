@@ -258,6 +258,43 @@ function ModalAjouterMembre({ visible, onClose, onConfirm, loading }) {
 
 // ─── Modal Commander Carte ────────────────────────────────────────────────
 function ModalCommanderCarte({ visible, onClose, onConfirm, loading }) {
+  const [contacts, setContacts] = useState([]);
+  const [formContact, setFormContact] = useState({ prenom: '', nom: '', telephone: '', relation: '' });
+  const [showAddContact, setShowAddContact] = useState(false);
+
+  const ajouterContactLocal = () => {
+    if (!formContact.prenom || !formContact.telephone) {
+      Alert.alert('Requis', 'Prenom et telephone obligatoires');
+      return;
+    }
+    if (contacts.length >= 5) {
+      Alert.alert('Limite', "Maximum 5 contacts d'urgence");
+      return;
+    }
+    setContacts(prev => [...prev, { ...formContact, id: Date.now().toString() }]);
+    setFormContact({ prenom: '', nom: '', telephone: '', relation: '' });
+    setShowAddContact(false);
+  };
+
+  const supprimerContactLocal = (id) => {
+    setContacts(prev => prev.filter(c => c.id !== id));
+  };
+
+  const confirmer = () => {
+    if (contacts.length === 0) {
+      Alert.alert(
+        "Aucun contact d'urgence",
+        "Il est fortement recommande d'ajouter au moins un contact d'urgence pour que les secours puissent le joindre en cas de besoin. Continuer sans contact ?",
+        [
+          { text: 'Ajouter un contact', style: 'cancel' },
+          { text: 'Continuer sans contact', style: 'destructive', onPress: () => onConfirm({ contacts_urgence: contacts }) },
+        ]
+      );
+      return;
+    }
+    onConfirm({ contacts_urgence: contacts });
+  };
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: '#060E18' }}>
@@ -270,16 +307,82 @@ function ModalCommanderCarte({ visible, onClose, onConfirm, loading }) {
           <View style={s.modalInfoCard}>
             <Text style={{ fontSize: 40, textAlign: 'center', marginBottom: 12 }}>💳</Text>
             <Text style={s.modalInfoTitle}>MediConnect Card</Text>
-            <Text style={s.modalInfoSub}>Accédez à tous les soins du réseau MediConnect pour vous et votre famille.</Text>
+            <Text style={s.modalInfoSub}>Accedez a tous les soins du reseau MediConnect pour vous et votre famille.</Text>
           </View>
-          {[['🏥','Accès réseau cliniques & hôpitaux'],['💊','Paiement pharmacies partenaires'],['👨‍👩‍👧','Cartes famille liées'],['🛡️','Couverture assurance maladie'],['📱','QR code & mobile money']].map(([icon, text], i) => (
+          {[['🏥','Acces reseau cliniques & hopitaux'],['💊','Paiement pharmacies partenaires'],['👨‍👩‍👧','Cartes famille liees'],['🛡️','Couverture assurance maladie'],['📱','QR code & mobile money']].map(([icon, text], i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
               <Text style={{ fontSize: 20 }}>{icon}</Text>
               <Text style={{ color: '#8BA3B8', fontSize: 13, flex: 1, lineHeight: 18 }}>{text}</Text>
             </View>
           ))}
-          <TouchableOpacity style={[s.btnPrimary, { marginTop: 12 }, loading && { opacity: 0.6 }]} onPress={onConfirm} disabled={loading} activeOpacity={0.85}>
-            {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.btnPrimaryText}>Confirmer la commande</Text>}
+
+          <View style={{ height: 1, backgroundColor: '#1a2d42', marginVertical: 16 }} />
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: '#F0F6FF', fontWeight: '800', fontSize: 15 }}>
+              🆘 Contacts d'urgence ({contacts.length}/5)
+            </Text>
+            {contacts.length < 5 && (
+              <TouchableOpacity onPress={() => setShowAddContact(!showAddContact)}
+                style={{ backgroundColor: 'rgba(10,143,88,0.2)', borderRadius: 8, padding: 6 }}>
+                <Text style={{ color: '#34D399', fontSize: 12, fontWeight: '700' }}>+ Ajouter</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={{ color: '#5A7A94', fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+            Ces contacts seront accessibles a tout secouriste ou medecin qui scanne le QR code de votre carte en cas d'urgence. Ils resteront valables pour toutes les cartes de votre famille.
+          </Text>
+
+          {showAddContact && (
+            <View style={{ backgroundColor: '#111D2B', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={LBL}>Prenom *</Text>
+                  <TextInput value={formContact.prenom} onChangeText={v => setFormContact(p => ({...p,prenom:v}))} placeholder="Marie" placeholderTextColor="#2A3F55" style={INP} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={LBL}>Nom</Text>
+                  <TextInput value={formContact.nom} onChangeText={v => setFormContact(p => ({...p,nom:v}))} placeholder="Kone" placeholderTextColor="#2A3F55" style={INP} />
+                </View>
+              </View>
+              <Text style={LBL}>Telephone *</Text>
+              <TextInput value={formContact.telephone} onChangeText={v => setFormContact(p => ({...p,telephone:v}))} placeholder="+225 07 00 00 00" placeholderTextColor="#2A3F55" keyboardType="phone-pad" style={INP} />
+              <Text style={LBL}>Relation</Text>
+              <TextInput value={formContact.relation} onChangeText={v => setFormContact(p => ({...p,relation:v}))} placeholder="Mere, Pere, Conjoint(e)..." placeholderTextColor="#2A3F55" style={INP} />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity onPress={() => setShowAddContact(false)} style={{ flex: 1, backgroundColor: '#1E2F42', borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                  <Text style={{ color: '#F0F6FF', fontWeight: '700' }}>Annuler</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={ajouterContactLocal} style={{ flex: 2, backgroundColor: '#0A8F58', borderRadius: 12, padding: 12, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>Ajouter</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {contacts.map((c, i) => (
+            <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111D2B', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#F0F6FF', fontWeight: '700', fontSize: 13 }}>{i+1}. {c.prenom} {c.nom}</Text>
+                <Text style={{ color: '#8BA3B8', fontSize: 12 }}>{c.telephone}{c.relation ? ' - ' + c.relation : ''}</Text>
+              </View>
+              <TouchableOpacity onPress={() => supprimerContactLocal(c.id)} style={{ backgroundColor: 'rgba(225,29,72,0.15)', borderRadius: 8, padding: 8 }}>
+                <Text style={{ color: '#E11D48', fontSize: 12 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          {contacts.length === 0 && !showAddContact && (
+            <Text style={{ color: '#4E657A', fontSize: 13, textAlign: 'center', padding: 12 }}>
+              Aucun contact d'urgence ajoute pour le moment
+            </Text>
+          )}
+
+          <TouchableOpacity
+            style={[{ backgroundColor: '#0A8F58', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 16 }, loading && { opacity: 0.6 }]}
+            onPress={confirmer} disabled={loading} activeOpacity={0.85}
+          >
+            {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Confirmer la commande</Text>}
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
@@ -650,7 +753,7 @@ export default function PatientAccueil({ navigation }) {
 
   const inv = (key) => queryClient.invalidateQueries({ queryKey: [key] });
 
-  const { mutate: commanderCarte,  isPending: ldCommanderCarte }  = useMutation({ mutationFn: () => patientAPI.commanderCarte?.(token), onSuccess: () => { inv('p-carte'); setModalCarte(false); Alert.alert('Commande envoyée', 'Votre carte est en cours de traitement.'); }, onError: e => Alert.alert('Erreur', e.message) });
+  const { mutate: commanderCarte,  isPending: ldCommanderCarte }  = useMutation({ mutationFn: (data) => patientAPI.commanderCarte?.(token, data), onSuccess: () => { inv('p-carte'); setModalCarte(false); Alert.alert('Commande envoyée', 'Votre carte est en cours de traitement.'); }, onError: e => Alert.alert('Erreur', e.message) });
   const { mutate: ajouterMembre,   isPending: ldMembre }          = useMutation({ mutationFn: d => patientAPI.ajouterMembreFamille?.(token, d), onSuccess: () => { inv('p-famille'); setModalFamille(false); Alert.alert('Membre ajouté', 'La carte du membre est en cours de création.'); }, onError: e => Alert.alert('Erreur', e.message) });
   const { mutate: ajouterOrd,      isPending: ldOrd }             = useMutation({ mutationFn: d => patientAPI.ajouterOrdonnance?.(token, d), onSuccess: () => { setModalOrd(false); Alert.alert('Enregistré', 'Ordonnance ajoutée à votre dossier.'); }, onError: e => Alert.alert('Erreur', e.message) });
   const { mutate: commanderMed,    isPending: ldMed }             = useMutation({ mutationFn: d => patientAPI.commanderMedicament?.(token, d), onSuccess: () => { setModalMeds(false); Alert.alert('Commande', 'Votre commande est envoyée à la pharmacie.'); }, onError: e => Alert.alert('Erreur', e.message) });
@@ -674,7 +777,15 @@ export default function PatientAccueil({ navigation }) {
   const aUneCarte    = !!carteData;
   const membres      = familleData || [];
 
-  const MODULES = [
+  const const MODULES = [
+    { icon: '📅', label: 'Prendre RDV',       color: C.green,  action: () => navigation.navigate('Mes RDV', { screen: 'RdvForm' }) },
+    { icon: '🔍', label: 'Par spécialité',    color: '#7C3AED',action: () => navigation.navigate('RechercheSpecialite') },
+    { icon: '🏥', label: 'Cliniques',          color: C.blue,   action: () => navigation.navigate('Plus') },
+    { icon: '💊', label: 'Médicaments',        color: C.teal,   action: () => navigation.navigate('Pharmacie', { screen: 'CommandeForm' }) },
+    { icon: '📋', label: 'Mon dossier',        color: C.purple, action: () => setModalDossier(true) },
+    { icon: '📄', label: 'Ordonnances',        color: '#10B981',action: () => setModalOrd(true) },
+    { icon: '🏪', label: 'Pharmacies garde',   color: C.red,    action: () => setModalGarde(true) },
+  ];MODULES = [
     { icon: '📅', label: 'Prendre RDV',     color: C.green,  action: () => navigation.navigate('Mes RDV', { screen: 'RdvForm' }) },
     { icon: '🏥', label: 'Cliniques',        color: C.blue,   action: () => navigation.navigate('Plus') },
     { icon: '💊', label: 'Médicaments',      color: C.teal,   action: () => setModalMeds(true) },
