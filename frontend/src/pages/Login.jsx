@@ -15,9 +15,10 @@ const DEMOS = [
   { role: 'optique',            label: 'Optique',        icon: '🔭', email: 'optique@demo.ci' },
   { role: 'ministere',          label: 'Ministère',      icon: '🏛️', email: 'ministere@sante.ci', pwd: 'MinistereCI2024' },
   { role: 'business_developer', label: 'Business Dev',   icon: '💼', email: 'bd@demo.ci' },
-  // NOTE : l'accès demo "Admin" a ete retire de cette page.
-  // Il sera disponible sur https://admin.mediconnect4africa.cloud une fois ce sous-domaine cree.
 ];
+
+// Acces demo Admin — visible UNIQUEMENT sur admin.mediconnect4africa.cloud
+const ADMIN_DEMO = { role: 'admin', label: 'Admin', icon: '⚙️', email: 'admin@demo.ci' };
 
 const ROLE_ROUTES = {
   patient:             '/patient',
@@ -43,6 +44,8 @@ export default function Login() {
   const { login, loading } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const isAdminHost = typeof window !== 'undefined' && window.location.hostname === 'admin.mediconnect4africa.cloud';
+  const demosAffiches = isAdminHost ? [ADMIN_DEMO] : DEMOS;
 
   // Responsive : bascule en layout vertical (formulaire prioritaire) sur petits ecrans / PWA mobile
   useEffect(() => {
@@ -140,7 +143,7 @@ export default function Login() {
         background: '#0E1620',
         boxSizing: 'border-box',
       }}>
-        <h2 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: '#F0F4F8', marginBottom: 6 }}>Connexion 👋</h2>
+        <h2 style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: '#F0F4F8', marginBottom: 6 }}>{isAdminHost ? 'Administration 🔐' : 'Connexion 👋'}</h2>
         <p style={{ color: '#8BA0B5', marginBottom: 32, fontSize: 14 }}>Accédez à votre espace MediConnect</p>
 
         <form onSubmit={handleSubmit}>
@@ -178,9 +181,9 @@ export default function Login() {
         </form>
 
         <div style={{ borderTop: '1px solid #1E2F42', paddingTop: 20, marginBottom: 16 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#4E657A', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>Accès démo rapide</p>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#4E657A', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>{isAdminHost ? 'Accès administration' : 'Accès démo rapide'}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(80px,1fr))', gap: 8 }}>
-            {DEMOS.map(d => (
+            {demosAffiches.map(d => (
               <button key={d.role} onClick={() => quickLogin(d.email, d.pwd)} disabled={loading}
                 style={{ background: '#141E2B', border: '1.5px solid #1E2F42', borderRadius: 10, padding: '10px 8px', cursor: 'pointer', textAlign: 'center', transition: 'border-color .15s' }}
                 onMouseOver={e => e.currentTarget.style.borderColor='#0A8F58'}
@@ -193,12 +196,14 @@ export default function Login() {
           </div>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 13, color: '#8BA0B5' }}>
-          Pas de compte ?{' '}
-          <Link to="/register" style={{ color: '#0A8F58', fontWeight: 700, textDecoration: 'none' }}>
-            Créer un compte
-          </Link>
-        </p>
+        {!isAdminHost && (
+          <p style={{ textAlign: 'center', fontSize: 13, color: '#8BA0B5' }}>
+            Pas de compte ?{' '}
+            <Link to="/register" style={{ color: '#0A8F58', fontWeight: 700, textDecoration: 'none' }}>
+              Créer un compte
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );
