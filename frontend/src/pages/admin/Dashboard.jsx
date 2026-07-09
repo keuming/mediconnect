@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -1378,7 +1378,61 @@ function PageMediConnectCard() {
     setGenerating(false);
   };
 
-  const TABS = [{key:'stats',label:'📊 Statistiques'},{key:'cartes',label:'💳 Cartes'},{key:'comptes',label:'👤 Comptes'}];
+  // ── Demandes de carte (formulaire public avantages-patient) ──────
+  // Auth separee (mot de passe CARD_ADMIN_PASSWORD), memorisee en sessionStorage
+  const [cardToken, setCardToken] = useState(() => sessionStorage.getItem('card-admin-token') || '');
+  const [cardPassword, setCardPassword] = useState('');
+  const [cardLoginLoading, setCardLoginLoading] = useState(false);
+  const [demandes, setDemandes] = useState([]);
+  const [loadingDemandes, setLoadingDemandes] = useState(false);
+  const BACKEND_URL = 'https://mediconnect-backend-v2.vercel.app';
+
+  const cardLogin = async () => {
+    setCardLoginLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/cards-admin/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: cardPassword }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        setCardToken(d.token);
+        sessionStorage.setItem('card-admin-token', d.token);
+        setCardPassword('');
+        toast.success('Accès demandes de carte débloqué');
+      } else toast.error(d.message || 'Mot de passe incorrect');
+    } catch(e) { toast.error('Erreur de connexion'); }
+    setCardLoginLoading(false);
+  };
+
+  const chargerDemandes = async () => {
+    if (!cardToken) return;
+    setLoadingDemandes(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/cards-admin/requests`, {
+        headers: { 'x-card-token': cardToken },
+      });
+      const d = await res.json();
+      if (d.success) setDemandes(d.data || []);
+      else if (res.status === 401) { setCardToken(''); sessionStorage.removeItem('card-admin-token'); toast.error('Session expirée, reconnectez-vous'); }
+    } catch(e) { toast.error('Erreur de chargement'); }
+    setLoadingDemandes(false);
+  };
+
+  useEffect(() => { if (cardToken && onglet === 'demandes') chargerDemandes(); }, [cardToken, onglet]);
+
+  const marquerGeneree = async (id) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/cards-admin/requests/${id}/generate`, {
+        method: 'PUT', headers: { 'x-card-token': cardToken },
+      });
+      const d = await res.json();
+      if (d.success) { toast.success('Carte marquée générée'); chargerDemandes(); }
+      else toast.error(d.message);
+    } catch(e) { toast.error('Erreur'); }
+  };
+
+  const TABS = [{key:'stats',label:'📊 Statistiques'},{key:'cartes',label:'💳 Cartes'},{key:'comptes',label:'👤 Comptes'},{key:'demandes',label:'📥 Demandes (site public)'}];
 
   return (
     <div>
@@ -1477,6 +1531,66 @@ function PageMediConnectCard() {
               </tbody>
             </table>
           </div>
+        </Panel>
+      )}
+
+      {onglet==='demandes'&&(
+        <Panel title={cardToken ? `📥 ${demandes.length} demandes (site public)` : '🔒 Accès protégé'}>
+          {!cardToken ? (
+            <div style={{maxWidth:360,margin:'20px auto',textAlign:'center'}}>
+              <div style={{fontSize:36,marginBottom:12}}>🔒</div>
+              <div style={{color:C.muted,fontSize:13,marginBottom:16}}>
+                Les demandes de carte soumises depuis le site public (avantages-patient) sont protégées par un mot de passe séparé.
+              </div>
+              <input
+                type="password" value={cardPassword} onChange={e=>setCardPassword(e.target.value)}
+                placeholder="Mot de passe demandes de carte"
+                onKeyDown={e => e.key === 'Enter' && cardLogin()}
+                style={{width:'100%',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',color:C.text,fontSize:14,outline:'none',boxSizing:'border-box',marginBottom:12}}
+              />
+              <button onClick={cardLogin} disabled={cardLoginLoading || !cardPassword}
+                style={{width:'100%',background:C.green,border:'none',borderRadius:8,padding:'10px 20px',color:'#fff',cursor:'pointer',fontWeight:700}}>
+                {cardLoginLoading ? 'Connexion...' : 'Déverrouiller'}
+              </button>
+            </div>
+          ) : loadingDemandes ? (
+            <div style={{textAlign:'center',padding:40,color:C.muted}}>Chargement...</div>
+          ) : demandes.length === 0 ? (
+            <div style={{textAlign:'center',padding:40,color:C.muted}}>Aucune demande pour le moment</div>
+          ) : (
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
+                  {['N° Carte','Nom','Téléphone','Ville','Contact urgence','Statut','Date','Action'].map(h=>(
+                    <th key={h} style={{padding:'10px 12px',color:C.muted,textAlign:'left',fontWeight:600,fontSize:11,textTransform:'uppercase'}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {demandes.map((d,i)=>(
+                    <tr key={d.id||i} style={{borderBottom:`1px solid ${C.border}20`}}>
+                      <td style={{padding:'10px 12px',color:'#4ade80',fontWeight:700,fontFamily:'monospace',fontSize:12}}>{d.numero_carte}</td>
+                      <td style={{padding:'10px 12px',color:C.text,fontWeight:600}}>{d.prenom} {d.nom}</td>
+                      <td style={{padding:'10px 12px',color:C.muted}}>{d.telephone||'—'}</td>
+                      <td style={{padding:'10px 12px',color:C.muted}}>{d.ville||'—'}</td>
+                      <td style={{padding:'10px 12px',color:C.muted,fontSize:11}}>{d.contact_urgence||'—'}</td>
+                      <td style={{padding:'10px 12px'}}>
+                        <span style={{background:d.statut==='generee'?`${C.green}20`:`${C.amber}20`,color:d.statut==='generee'?C.green:C.amber,borderRadius:6,padding:'2px 8px',fontSize:11,fontWeight:700}}>{d.statut}</span>
+                      </td>
+                      <td style={{padding:'10px 12px',color:C.dim,fontSize:11}}>{new Date(d.created_at).toLocaleDateString('fr-FR')}</td>
+                      <td style={{padding:'10px 12px'}}>
+                        {d.statut !== 'generee' && (
+                          <button onClick={()=>marquerGeneree(d.id)}
+                            style={{background:C.green,border:'none',borderRadius:6,padding:'5px 10px',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:11}}>
+                            Marquer générée
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Panel>
       )}
 
