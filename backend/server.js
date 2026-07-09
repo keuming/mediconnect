@@ -51,7 +51,7 @@ const initTables = async () => {
     `CREATE TABLE IF NOT EXISTS rendez_vous (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       reference VARCHAR(50), clinique_id UUID, patient_id UUID,
-      patient_nom VARCHAR(200), medecin_id UUID, medecin_nom VARCHAR(200),
+      patient_nom VARCHAR(200), patient_telephone VARCHAR(30), medecin_id UUID, medecin_nom VARCHAR(200),
       date_rdv DATE NOT NULL, heure_rdv TIME NOT NULL,
       motif TEXT, statut VARCHAR(30) DEFAULT 'en_attente',
       assurance VARCHAR(100), source VARCHAR(30) DEFAULT 'dashboard',
@@ -139,6 +139,7 @@ const initTables = async () => {
   }
   const alters = [
     "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS patient_nom VARCHAR(200)",
+    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS patient_telephone VARCHAR(30)",
     "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
     "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS reference VARCHAR(50)",
     "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS source VARCHAR(30) DEFAULT 'dashboard'",
@@ -727,13 +728,14 @@ app.get('/api/public/cliniques', async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/public/rdv', async (req, res) => {
-  const { patient_nom, clinique_id, medecin_id, date_rdv, heure_rdv, motif } = req.body;
+  const { patient_nom, patient_telephone, clinique_id, medecin_id, date_rdv, heure_rdv, motif } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
+  if (!patient_nom||!patient_telephone) return res.status(400).json({ success:false, message:'Nom et téléphone requis' });
   try {
     const ref='MC-RDV-'+Math.random().toString(36).slice(2,8).toUpperCase();
     const r=await db(
-      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,patient_nom,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [uuid(),ref,clinique_id||null,medecin_id||null,patient_nom||null,date_rdv,heure_rdv,motif||null,'public_rdv']
+      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [uuid(),ref,clinique_id||null,medecin_id||null,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
     );
     res.status(201).json({ success:true, data:{ reference:ref, rdv_id:r.rows[0].id }, message:'RDV confirmé !' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
