@@ -17,18 +17,6 @@ const ROLES = [
   { value: 'ministere',           label: 'Ministère de la Santé', icon: '🏛️', desc: 'Dashboard épidémiologique national' },
 ];
 
-const PAYS = [
-  { code:'CI', name:"🇨🇮 Côte d'Ivoire" },
-  { code:'SN', name:'🇸🇳 Sénégal' },
-  { code:'BF', name:'🇧🇫 Burkina Faso' },
-  { code:'ML', name:'🇲🇱 Mali' },
-  { code:'TG', name:'🇹🇬 Togo' },
-  { code:'BJ', name:'🇧🇯 Bénin' },
-  { code:'GN', name:'🇬🇳 Guinée' },
-  { code:'CM', name:'🇨🇲 Cameroun' },
-  { code:'GA', name:'🇬🇦 Gabon' },
-];
-
 const C = {
   bg:'#060C12', card:'#0E1620', input:'#141E2B',
   border:'#1E2F42', text:'#F0F4F8', muted:'#8BA0B5', dim:'#4E657A',
