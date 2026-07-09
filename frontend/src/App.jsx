@@ -6,6 +6,7 @@ import useAuthStore from './context/authStore';
 
 import Login    from './pages/Login';
 import Register from './pages/Register';
+import CardScan from './pages/CardScan';
 import DashboardPatient          from './pages/patient/Dashboard';
 import DashboardClinique         from './pages/clinique/Dashboard';
 import DashboardPharmacie        from './pages/pharmacie/Dashboard';
@@ -106,6 +107,7 @@ export default function App() {
             {/* ── Publiques ─────────────────────────────────────── */}
             <Route path="/login"    element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/card/scan/:numero" element={<CardScan />} />
             <Route path="/"         element={<Navigate to="/login" replace />} />
             <Route path="/app"      element={<PrivateRoute><RoleRedirect /></PrivateRoute>} />
 
