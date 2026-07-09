@@ -190,7 +190,7 @@ router.get('/public/recherche-specialite', async (req, res) => {
       db(`
         SELECT id, nom, ville, telephone, adresse, specialites, type, 'etablissement_public' AS source
         FROM etablissements_sante
-        WHERE specialites ILIKE $1
+        WHERE specialites ILIKE $1 AND clinique_id IS NULL
         ORDER BY nom LIMIT 50
       `, [`%${q}%`]).catch(() => ({ rows: [] })),
     ]);
