@@ -200,4 +200,62 @@ router.get('/public/recherche-specialite', async (req, res) => {
     }});
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
+
+// ── GET /api/public/prestataires?type=&ville=&pays=&specialite= ──
+// Recherche unifiee multi-types : clinique, hopital, laboratoire, imagerie, assurance, pharmacie
+router.get('/public/prestataires', async (req, res) => {
+  const { type, ville, pays, specialite } = req.query;
+  if (!type) return res.status(400).json({ success: false, message: 'Le type de prestataire est requis' });
+
+  const pc = pays || 'CI';
+  let where = ['pays_code = $1'];
+  let params = [pc];
+  let idx = 2;
+  if (ville) { where.push(`UPPER(ville) LIKE UPPER($${idx})`); params.push('%'+ville+'%'); idx++; }
+
+  try {
+    let rows = [];
+
+    if (type === 'clinique' || type === 'hopital') {
+      const typeFilter = type === 'hopital' ? 'Hôpital public' : 'Clinique';
+      where.push(`type = $${idx}`); params.push(typeFilter); idx++;
+      if (specialite) {
+        const r = await db(`
+          SELECT DISTINCT c.id, c.nom, c.ville, c.telephone, c.adresse, c.type,
+                 s.nom AS specialite, s.tarif_consultation
+          FROM cliniques c
+          JOIN specialites_clinique s ON s.clinique_id = c.id AND s.disponible=true
+          WHERE ${where.join(' AND ')} AND s.nom ILIKE $${idx} AND c.is_active IS NOT false
+          ORDER BY c.nom LIMIT 100
+        `, [...params, `%${specialite}%`]);
+        rows = r.rows;
+      } else {
+        const r = await db(`
+          SELECT id, nom, ville, telephone, adresse, type
+          FROM cliniques
+          WHERE ${where.join(' AND ')} AND is_active IS NOT false
+          ORDER BY nom LIMIT 100
+        `, params);
+        rows = r.rows;
+      }
+    } else if (type === 'laboratoire') {
+      const r = await db(`SELECT id, nom, ville, telephone, adresse FROM laboratoires WHERE ${where.join(' AND ')} ORDER BY nom LIMIT 100`, params);
+      rows = r.rows;
+    } else if (type === 'imagerie') {
+      const r = await db(`SELECT id, nom, ville, telephone, adresse FROM imageries WHERE ${where.join(' AND ')} ORDER BY nom LIMIT 100`, params);
+      rows = r.rows;
+    } else if (type === 'assurance') {
+      const r = await db(`SELECT id, nom, ville, telephone, adresse FROM assureurs WHERE ${where.join(' AND ')} ORDER BY nom LIMIT 100`, params);
+      rows = r.rows;
+    } else if (type === 'pharmacie') {
+      const r = await db(`SELECT id, nom, ville, telephone, adresse FROM pharmacies WHERE ${where.join(' AND ')} ORDER BY nom LIMIT 100`, params);
+      rows = r.rows;
+    } else {
+      return res.status(400).json({ success: false, message: 'Type de prestataire invalide' });
+    }
+
+    res.json({ success: true, data: rows, count: rows.length });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 module.exports = router;

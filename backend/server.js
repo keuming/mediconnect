@@ -728,14 +728,29 @@ app.get('/api/public/cliniques', async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/public/rdv', async (req, res) => {
-  const { patient_nom, patient_telephone, clinique_id, medecin_id, date_rdv, heure_rdv, motif } = req.body;
+  const { patient_nom, patient_telephone, clinique_id, medecin_id, etablissement_externe, prestataire_type, prestataire_id, date_rdv, heure_rdv, motif } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
   if (!patient_nom||!patient_telephone) return res.status(400).json({ success:false, message:'Nom et téléphone requis' });
+
+  // clinique_id / hopital utilisent la colonne clinique_id existante (dashboard clinique)
+  // les autres types (laboratoire, imagerie, assurance, pharmacie) utilisent prestataire_type/prestataire_id
+  let finalCliniqueId = clinique_id || null;
+  let finalPrestataireType = prestataire_type || null;
+  let finalPrestataireId = prestataire_id || null;
+  if ((prestataire_type === 'clinique' || prestataire_type === 'hopital') && prestataire_id) {
+    finalCliniqueId = prestataire_id;
+    finalPrestataireType = null;
+    finalPrestataireId = null;
+  }
+
+  if (!finalCliniqueId && !medecin_id && !etablissement_externe && !finalPrestataireId)
+    return res.status(400).json({ success:false, message:'Etablissement requis' });
+
   try {
     const ref='MC-RDV-'+Math.random().toString(36).slice(2,8).toUpperCase();
     const r=await db(
-      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [uuid(),ref,clinique_id||null,medecin_id||null,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
+      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,etablissement_externe,prestataire_type,prestataire_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [uuid(),ref,finalCliniqueId,medecin_id||null,etablissement_externe||null,finalPrestataireType,finalPrestataireId,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
     );
     res.status(201).json({ success:true, data:{ reference:ref, rdv_id:r.rows[0].id }, message:'RDV confirmé !' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
