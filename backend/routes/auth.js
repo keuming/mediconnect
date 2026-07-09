@@ -85,6 +85,7 @@ router.post('/register', async (req, res) => {
 // ── POST /api/auth/register-patient ──────────────────────────────
 // Login : telephone + PIN 4 chiffres
 // Crée : utilisateurs + patients + mediconnect_card_requests
+// Transaction atomique : si une etape echoue, tout est annule (pas de compte orphelin)
 router.post('/register-patient', async (req, res) => {
   const {
     prenom, nom, telephone, pin,
@@ -105,32 +106,39 @@ router.post('/register-patient', async (req, res) => {
   if (!/^\d{4}$/.test(pin))
     return res.status(400).json({ success: false, message: 'Le PIN doit être exactement 4 chiffres' });
 
+  const { pool } = require('../config/db');
+  const client = await pool.connect();
+
   try {
     // Vérifier si téléphone déjà utilisé
-    const existsTel = await db(
+    const existsTel = await client.query(
       'SELECT id FROM utilisateurs WHERE telephone=$1 AND role=$2',
       [telephone, 'patient']
     );
-    if (existsTel.rows.length)
+    if (existsTel.rows.length) {
+      client.release();
       return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé' });
+    }
 
     // Vérifier email seulement si fourni et non vide
     if (email && email.trim()) {
-      const existsEmail = await db('SELECT id FROM utilisateurs WHERE email=$1 AND role=\'patient\'', [email.trim()]);
-      if (existsEmail.rows.length)
+      const existsEmail = await client.query('SELECT id FROM utilisateurs WHERE email=$1 AND role=\'patient\'', [email.trim()]);
+      if (existsEmail.rows.length) {
+        client.release();
         return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé. Connectez-vous plutôt.' });
+      }
     }
 
     const hash = await bcrypt.hash(pin, 10);
     const userId = uuid();
     const patientId = uuid();
     const pc = pays_code || 'CI';
-
-    // Email de substitution si non fourni
     const emailFinal = email || `${telephone.replace(/[^0-9]/g,'')}_${Date.now()}@mediconnect.patient`;
 
+    await client.query('BEGIN');
+
     // ── 1. Créer utilisateur ──────────────────────────────────────
-    await db(
+    await client.query(
       `INSERT INTO utilisateurs
        (id, email, password, prenom, nom, role, telephone, pays_code, ville, patient_id)
        VALUES ($1,$2,$3,$4,$5,'patient',$6,$7,$8,$9)`,
@@ -138,7 +146,7 @@ router.post('/register-patient', async (req, res) => {
     );
 
     // ── 2. Créer profil patient ───────────────────────────────────
-    await db(
+    await client.query(
       `INSERT INTO patients
        (id, user_id, prenom, nom, telephone, email, date_naissance,
         groupe_sanguin, allergies, ville,
@@ -158,12 +166,12 @@ router.post('/register-patient', async (req, res) => {
     );
 
     // ── 3. Générer numéro de carte unique ─────────────────────────
-    const count = await db('SELECT COUNT(*) FROM mediconnect_card_requests');
+    const count = await client.query('SELECT COUNT(*) FROM mediconnect_card_requests');
     const seq = String(parseInt(count.rows[0].count) + 1).padStart(6, '0');
     const numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${seq}`;
 
     // ── 4. Créer demande MediConnect Card ─────────────────────────
-    await db(
+    await client.query(
       `INSERT INTO mediconnect_card_requests
        (id, numero_carte, prenom, nom, date_naissance, groupe_sanguin, allergies,
         contact_urgence, email, telephone, ville, pays_code,
@@ -184,6 +192,9 @@ router.post('/register-patient', async (req, res) => {
        contact_urgence_5||null, telephone_urgence_5||null]
     );
 
+    await client.query('COMMIT');
+    client.release();
+
     // ── 5. Générer token JWT ──────────────────────────────────────
     const token = jwt.sign(
       { id: userId, role: 'patient', patient_id: patientId },
@@ -203,6 +214,8 @@ router.post('/register-patient', async (req, res) => {
     });
 
   } catch(e) {
+    try { await client.query('ROLLBACK'); } catch(_) {}
+    client.release();
     console.error('register-patient error:', e.message);
     res.status(500).json({ success: false, message: e.message });
   }
