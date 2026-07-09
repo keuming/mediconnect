@@ -62,7 +62,7 @@ export const PAYS_AFRIQUE = {
 };
 
 export const VILLES_PAR_PAYS = {
-  "CI": ["Abidjan","Yamoussoukro","Bouaké","Daloa","San-Pédro","Korhogo","Man","Gagnoa","Abengourou","Divo","Duekoué","Odienné","Bondoukou","Agboville","Grand-Bassam","Sassandra","Soubré","Séguéla","Ferkessédougou","Touba","Issia","Lakota","Bangolo","Bingerville","Grand-Lahou","Aboisso","Adzopé","Anyama","Tiassalé","Dimbokro"],
+  "CI": ["Abidjan","Cocody","Yopougon","Plateau","Treichville","Marcory","Koumassi","Port-Bouët","Abobo","Adjamé","Attécoubé","Songon","Yamoussoukro","Bouaké","Daloa","San-Pédro","Korhogo","Man","Gagnoa","Abengourou","Divo","Duekoué","Odienné","Bondoukou","Agboville","Grand-Bassam","Sassandra","Soubré","Séguéla","Ferkessédougou","Touba","Issia","Lakota","Bangolo","Bingerville","Grand-Lahou","Aboisso","Adzopé","Anyama","Tiassalé","Dimbokro"],
   "SN": ["Dakar","Thiès","Kaolack","Ziguinchor","Saint-Louis","Touba","Mbour","Diourbel","Louga","Tambacounda","Kolda","Fatick","Kafrine","Sédhiou","Kaffrine","Matam","Kédougou","Pikine","Guédiawaye","Rufisque","Tivaouane","Mbacké"],
   "BF": ["Ouagadougou","Bobo-Dioulasso","Koudougou","Ouahigouya","Banfora","Manga","Kaya","Fada N'Gourma","Tenkodogo","Dédougou","Kongoussi","Po","Réo","Gaoua","Diapaga","Titao","Tougan","Nouna","Dori","Pô","Ziniaré","Léo"],
   "ML": ["Bamako","Sikasso","Mopti","Koutiala","Kayes","Ségou","Gao","Kidal","Tombouctou","Bougouni","Kati","San","Niono","Markala","Bla","Kolondiéba","Yorosso","Diéma","Nioro du Sahel","Douentza","Kita","Djenné"],
