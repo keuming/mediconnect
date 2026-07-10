@@ -19,7 +19,7 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
       const r = request.rows[0];
 
       const contacts = [];
-      if (r.contact_urgence) contacts.push({ prenom: r.contact_urgence, nom: '', telephone: r.telephone_parent || '', relation: r.contact_parent ? 'Parent' : null, est_principal: true });
+      if (r.contact_urgence) contacts.push({ prenom: r.contact_urgence, nom: '', telephone: r.telephone_urgence || '', relation: null, est_principal: true });
       [2,3,4,5].forEach(i => {
         const nom = r[`contact_urgence_${i}`];
         const tel = r[`telephone_urgence_${i}`];
