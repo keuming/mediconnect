@@ -8,7 +8,49 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
   try {
     const { numero_carte } = req.params;
     const card = await db('SELECT * FROM mediconnect_cards WHERE numero_carte=$1', [numero_carte]);
-    if (!card.rows.length) return res.status(404).json({ success: false, message: 'Carte introuvable' });
+
+    if (!card.rows.length) {
+      // Fallback : carte issue du systeme de demandes (mediconnect_card_requests),
+      // pas encore liee a un vrai compte mediconnect_accounts
+      const request = await db('SELECT * FROM mediconnect_card_requests WHERE numero_carte=$1', [numero_carte]);
+      if (!request.rows.length) {
+        return res.status(404).json({ success: false, message: 'Carte introuvable' });
+      }
+      const r = request.rows[0];
+
+      const contacts = [];
+      if (r.contact_urgence) contacts.push({ prenom: r.contact_urgence, nom: '', telephone: r.telephone_parent || '', relation: r.contact_parent ? 'Parent' : null, est_principal: true });
+      [2,3,4,5].forEach(i => {
+        const nom = r[`contact_urgence_${i}`];
+        const tel = r[`telephone_urgence_${i}`];
+        if (nom) contacts.push({ prenom: nom, nom: '', telephone: tel || '', relation: null, est_principal: false });
+      });
+
+      await db(
+        'INSERT INTO scans_qr_card (carte_id, account_id) VALUES ($1, $2)',
+        [null, null]
+      ).catch(() => {});
+
+      return res.json({
+        success: true,
+        data: {
+          liee: true,
+          carte: numero_carte,
+          patient: {
+            prenom: r.prenom,
+            nom: r.nom,
+            telephone: r.telephone,
+            ville: r.ville,
+            groupe_sanguin: r.groupe_sanguin,
+            allergies: r.allergies,
+            niveau: null,
+            photo_url: null,
+          },
+          contacts_urgence: contacts,
+        }
+      });
+    }
+
     const carteId = card.rows[0].id;
 
     // 1. Cas normal : carte liee directement a un compte principal
