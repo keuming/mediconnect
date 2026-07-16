@@ -2122,6 +2122,102 @@ function PageMediConnectCard() {
 // ════════════════════════════════════════════════════════════════════
 //  ROUTER
 // ════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════
+//  MON RANG — FILE D'ATTENTE PATIENT
+// ══════════════════════════════════════════════════════════════════
+function PageMonRang(){
+  const [ticketId] = useState(()=>localStorage.getItem('mc_ticket_id'));
+  const [rang, setRang] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchRang = async () => {
+    if (!ticketId) { setLoading(false); return; }
+    try {
+      const r = await fetch(`${BACKEND}/api/file-attente/mon-rang/${ticketId}`);
+      const d = await r.json();
+      if (d.success) setRang(d.data);
+      else setError('Ticket introuvable');
+    } catch { setError('Erreur réseau'); }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchRang();
+    const interval = setInterval(fetchRang, 10000);
+    return () => clearInterval(interval);
+  }, [ticketId]);
+
+  const STATUT_CONFIG = {
+    en_attente:     { icon:'⏳', color:'#F59E0B', label:'En attente' },
+    appele:         { icon:'📣', color:'#3B82F6', label:'Vous êtes appelé !' },
+    en_consultation:{ icon:'🩺', color:C.green,   label:'En consultation' },
+    termine:        { icon:'✅', color:C.muted,   label:'Consultation terminée' },
+  };
+
+  return (
+    <div>
+      <PageHeader title="🚶 Ma file d'attente" subtitle="Votre rang en temps réel · Mise à jour automatique"/>
+
+      {!ticketId ? (
+        <div style={{textAlign:'center',padding:'3rem',background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14}}>
+          <div style={{fontSize:48,marginBottom:16}}>📱</div>
+          <h3 style={{color:C.text,fontSize:16,fontWeight:700,marginBottom:8}}>Pas de ticket en cours</h3>
+          <p style={{color:C.muted,fontSize:14,lineHeight:1.7,marginBottom:20}}>
+            Scannez le QR Code affiché à l'accueil de la clinique<br/>pour rejoindre la file d'attente.
+          </p>
+          <p style={{fontSize:12,color:C.dim}}>Le QR Code est disponible à l'entrée de chaque clinique MediConnect.</p>
+        </div>
+      ) : loading ? <Loader/> : error ? (
+        <div style={{textAlign:'center',padding:'2rem',color:C.muted}}>{error}</div>
+      ) : rang ? (
+        <div style={{display:'flex',flexDirection:'column',gap:16,maxWidth:480,margin:'0 auto'}}>
+          {/* Rang principal */}
+          <div style={{background:C.input,border:`1.5px solid ${rang.statut==='appele'?'#3B82F6':rang.statut==='en_consultation'?C.green:C.border}`,borderRadius:16,padding:'2rem',textAlign:'center'}}>
+            <div style={{fontSize:20,marginBottom:8}}>{STATUT_CONFIG[rang.statut]?.icon||'⏳'}</div>
+            <div style={{fontSize:72,fontWeight:900,color:rang.statut==='appele'?'#3B82F6':rang.statut==='en_consultation'?C.green:C.greenL,lineHeight:1}}>{rang.rang}</div>
+            <div style={{fontSize:14,color:C.muted,marginTop:4,marginBottom:16}}>Votre numéro de rang</div>
+            <div style={{fontSize:15,fontWeight:600,color:STATUT_CONFIG[rang.statut]?.color||C.text,background:`rgba(${rang.statut==='appele'?'59,130,246':'10,143,88'},.1)`,borderRadius:8,padding:'8px 16px',display:'inline-block'}}>
+              {rang.message}
+            </div>
+          </div>
+
+          {/* Infos */}
+          <div style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'16px'}}>
+            {[
+              ['Clinique', rang.clinique_nom||'—'],
+              ['Médecin', rang.medecin_nom||'Premier disponible'],
+              ['Patients devant vous', rang.patients_devant],
+              ['Heure arrivée', rang.heure_scan ? new Date(rang.heure_scan).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'}) : '—'],
+            ].map(([label,val])=>(
+              <div key={label} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:`1px solid ${C.border}`}}>
+                <span style={{fontSize:13,color:C.muted}}>{label}</span>
+                <span style={{fontSize:13,fontWeight:600,color:C.text}}>{val}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={fetchRang} style={{flex:1,padding:'12px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:10,color:C.muted,fontWeight:600,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
+              ↻ Actualiser
+            </button>
+            {rang.statut==='termine'&&(
+              <button onClick={()=>{localStorage.removeItem('mc_ticket_id');window.location.reload();}} style={{flex:1,padding:'12px',background:C.green,border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
+                ✓ Terminer
+              </button>
+            )}
+          </div>
+
+          <p style={{fontSize:11,color:C.dim,textAlign:'center'}}>
+            Mise à jour automatique toutes les 10 secondes
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function Dashboard(){
   return(
     <Routes>
@@ -2140,6 +2236,7 @@ export default function Dashboard(){
       <Route path="commandes"         element={<PageCommandeMedicament/>}/>
       <Route path="feedback"          element={<PageFeedback/>}/>
         <Route path="card"              element={<PageMediConnectCard/>}/>
+      <Route path="file-attente"      element={<PageMonRang/>}/>
       <Route path="*"                 element={<PageHome/>}/>
     </Routes>
   );
