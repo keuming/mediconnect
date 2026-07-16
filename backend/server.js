@@ -967,6 +967,274 @@ app.put('/api/admin/etablissements/:code/membre', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+
+// ══════════════════════════════════════════════════════════════════
+//  FILE D'ATTENTE DIGITALISEE — MEDICONNECT AFRICA
+// ══════════════════════════════════════════════════════════════════
+
+// ── Init table ────────────────────────────────────────────────────
+app.post('/api/admin/init-file-attente', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorisé' });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS file_attente (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID NOT NULL,
+      patient_id UUID,
+      patient_nom VARCHAR(200),
+      patient_telephone VARCHAR(30),
+      medecin_id UUID,
+      medecin_nom VARCHAR(200),
+      rang INTEGER NOT NULL,
+      statut VARCHAR(30) DEFAULT 'en_attente',
+      date_scan DATE DEFAULT CURRENT_DATE,
+      heure_scan TIMESTAMPTZ DEFAULT NOW(),
+      heure_appel TIMESTAMPTZ,
+      heure_entree TIMESTAMPTZ,
+      heure_sortie TIMESTAMPTZ,
+      motif VARCHAR(200),
+      rdv_id UUID,
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_fa_clinique ON file_attente(clinique_id, date_scan, statut)');
+    await db('CREATE INDEX IF NOT EXISTS idx_fa_patient ON file_attente(patient_id)');
+    res.json({ success: true, message: 'Table file_attente créée' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── QR Code clinique — générer le QR d'une clinique ──────────────
+// Le QR code contient l'URL : /api/file-attente/scan?clinique_id=XXX
+app.get('/api/file-attente/qr/:clinique_id', async (req, res) => {
+  try {
+    const r = await db('SELECT id, nom, ville FROM cliniques WHERE id=$1', [req.params.clinique_id]);
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: 'Clinique non trouvée' });
+    const clinique = r.rows[0];
+    const scanUrl = `https://manager.mediconnect4africa.cloud/scan-accueil?clinique_id=${clinique.id}`;
+    res.json({ success: true, clinique, scan_url: scanUrl });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Scanner le QR — patient rejoint la file ───────────────────────
+app.post('/api/file-attente/scan', async (req, res) => {
+  const { clinique_id, patient_id, medecin_id, motif } = req.body;
+  if (!clinique_id) return res.status(400).json({ success: false, message: 'clinique_id requis' });
+  try {
+    // Vérifier que la clinique existe
+    const cl = await db('SELECT id, nom FROM cliniques WHERE id=$1', [clinique_id]);
+    if (!cl.rows[0]) return res.status(404).json({ success: false, message: 'Clinique non trouvée' });
+
+    // Récupérer le dernier rang du jour pour cette clinique
+    const last = await db(
+      `SELECT MAX(rang) as max_rang FROM file_attente
+       WHERE clinique_id=$1 AND date_scan=CURRENT_DATE`,
+      [clinique_id]
+    );
+    const rang = (last.rows[0].max_rang || 0) + 1;
+
+    // Récupérer les infos patient si connecté
+    let patient_nom = 'Patient anonyme', patient_telephone = null, medecin_nom = null;
+    if (patient_id) {
+      const pat = await db(
+        'SELECT prenom, nom, telephone FROM patients WHERE id=$1 OR user_id=$1 LIMIT 1',
+        [patient_id]
+      );
+      if (pat.rows[0]) {
+        patient_nom = `${pat.rows[0].prenom} ${pat.rows[0].nom}`;
+        patient_telephone = pat.rows[0].telephone;
+      }
+    }
+
+    if (medecin_id) {
+      const med = await db('SELECT prenom, nom FROM medecins WHERE id=$1 LIMIT 1', [medecin_id]);
+      if (med.rows[0]) medecin_nom = `Dr. ${med.rows[0].prenom} ${med.rows[0].nom}`;
+    }
+
+    // Calculer les patients déjà en attente devant ce patient
+    const devant = await db(
+      `SELECT COUNT(*) FROM file_attente
+       WHERE clinique_id=$1 AND date_scan=CURRENT_DATE
+       AND statut IN ('en_attente','appele')`,
+      [clinique_id]
+    );
+    const patients_devant = parseInt(devant.rows[0].count);
+
+    const r = await db(
+      `INSERT INTO file_attente
+       (clinique_id, patient_id, patient_nom, patient_telephone, medecin_id, medecin_nom, rang, motif)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [clinique_id, patient_id||null, patient_nom, patient_telephone,
+       medecin_id||null, medecin_nom, rang, motif||null]
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        ...r.rows[0],
+        patients_devant,
+        clinique_nom: cl.rows[0].nom,
+        message: patients_devant === 0
+          ? "C'est votre tour ! Présentez-vous à l'accueil."
+          : `Vous êtes le numéro ${rang}. ${patients_devant} patient(s) devant vous.`
+      }
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Mon rang — patient consulte sa position en temps réel ─────────
+app.get('/api/file-attente/mon-rang/:ticket_id', async (req, res) => {
+  try {
+    const t = await db(
+      'SELECT * FROM file_attente WHERE id=$1',
+      [req.params.ticket_id]
+    );
+    if (!t.rows[0]) return res.status(404).json({ success: false, message: 'Ticket non trouvé' });
+    const ticket = t.rows[0];
+
+    const devant = await db(
+      `SELECT COUNT(*) FROM file_attente
+       WHERE clinique_id=$1 AND date_scan=$2
+       AND rang < $3 AND statut IN ('en_attente','appele')`,
+      [ticket.clinique_id, ticket.date_scan, ticket.rang]
+    );
+    const patients_devant = parseInt(devant.rows[0].count);
+
+    res.json({
+      success: true,
+      data: {
+        ...ticket,
+        patients_devant,
+        message: ticket.statut === 'appele'
+          ? "C'est votre tour ! Entrez chez le médecin."
+          : ticket.statut === 'en_consultation'
+          ? "Vous êtes en consultation."
+          : ticket.statut === 'termine'
+          ? "Votre consultation est terminée."
+          : patients_devant === 0
+          ? "Vous êtes le prochain ! Tenez-vous prêt."
+          : `${patients_devant} patient(s) devant vous. Patientez.`
+      }
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Liste file d'attente — dashboard clinique + médecin ───────────
+app.get('/api/file-attente/liste', async (req, res) => {
+  const auth = req.headers['authorization']?.replace('Bearer ','');
+  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+  try {
+    const jwt = require('jsonwebtoken');
+    const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
+    const { clinique_id, medecin_id, role } = payload;
+
+    let where = 'WHERE fa.date_scan=CURRENT_DATE';
+    const params = [];
+    let idx = 1;
+
+    if (clinique_id) { where += ` AND fa.clinique_id=$${idx++}`; params.push(clinique_id); }
+    if (medecin_id && role === 'medecin') { where += ` AND fa.medecin_id=$${idx++}`; params.push(medecin_id); }
+
+    const { statut } = req.query;
+    if (statut) { where += ` AND fa.statut=$${idx++}`; params.push(statut); }
+
+    const r = await db(
+      `SELECT fa.*, c.nom as clinique_nom
+       FROM file_attente fa
+       LEFT JOIN cliniques c ON c.id=fa.clinique_id
+       ${where}
+       ORDER BY fa.rang ASC`,
+      params
+    );
+
+    const stats = {
+      en_attente: r.rows.filter(x=>x.statut==='en_attente').length,
+      appele: r.rows.filter(x=>x.statut==='appele').length,
+      en_consultation: r.rows.filter(x=>x.statut==='en_consultation').length,
+      termine: r.rows.filter(x=>x.statut==='termine').length,
+    };
+
+    res.json({ success: true, data: r.rows, stats });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Appeler le patient suivant ─────────────────────────────────────
+app.put('/api/file-attente/:id/appeler', async (req, res) => {
+  const auth = req.headers['authorization']?.replace('Bearer ','');
+  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+  try {
+    const r = await db(
+      `UPDATE file_attente SET statut='appele', heure_appel=NOW()
+       WHERE id=$1 RETURNING *`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Marquer en consultation ───────────────────────────────────────
+app.put('/api/file-attente/:id/consultation', async (req, res) => {
+  try {
+    const r = await db(
+      `UPDATE file_attente SET statut='en_consultation', heure_entree=NOW()
+       WHERE id=$1 RETURNING *`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Terminer consultation ──────────────────────────────────────────
+app.put('/api/file-attente/:id/terminer', async (req, res) => {
+  try {
+    const r = await db(
+      `UPDATE file_attente SET statut='termine', heure_sortie=NOW()
+       WHERE id=$1 RETURNING *`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Réinitialiser la file (fin de journée) ────────────────────────
+app.delete('/api/file-attente/reset', async (req, res) => {
+  const auth = req.headers['authorization']?.replace('Bearer ','');
+  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+  try {
+    const jwt = require('jsonwebtoken');
+    const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
+    await db(
+      `UPDATE file_attente SET statut='annule'
+       WHERE clinique_id=$1 AND date_scan=CURRENT_DATE AND statut='en_attente'`,
+      [payload.clinique_id]
+    );
+    res.json({ success: true, message: 'File réinitialisée' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Stats du jour ──────────────────────────────────────────────────
+app.get('/api/file-attente/stats-jour', async (req, res) => {
+  const auth = req.headers['authorization']?.replace('Bearer ','');
+  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+  try {
+    const jwt = require('jsonwebtoken');
+    const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
+    const r = await db(
+      `SELECT
+        COUNT(*) FILTER (WHERE statut='en_attente') as en_attente,
+        COUNT(*) FILTER (WHERE statut='appele') as appele,
+        COUNT(*) FILTER (WHERE statut='en_consultation') as en_consultation,
+        COUNT(*) FILTER (WHERE statut='termine') as termine,
+        COUNT(*) as total,
+        AVG(EXTRACT(EPOCH FROM (heure_sortie - heure_entree))/60) FILTER (WHERE heure_sortie IS NOT NULL) as duree_moy_min
+       FROM file_attente
+       WHERE clinique_id=$1 AND date_scan=CURRENT_DATE`,
+      [payload.clinique_id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
