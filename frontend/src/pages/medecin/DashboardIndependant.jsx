@@ -165,6 +165,7 @@ function PageHome(){
     {icon:"🩺",label:"Consultations",path:"consultations",color:C.green,desc:`${stats.consultations_total||0} au total`},
     {icon:"💊",label:"Ordonnances",path:"ordonnances",color:C.purple,desc:"Prescriptions"},
     {icon:"📊",label:"Statistiques",path:"stats",color:C.purple,desc:"Revenus & activité"},
+    {icon:"🚶",label:"File d'attente",path:"file-attente",color:C.teal,desc:"Mes patients en attente"},
   ];
 
   return(
@@ -830,6 +831,124 @@ function PageStats(){
 // ════════════════════════════════════════════════════════════════════
 // ROUTER MÉDECIN INDÉPENDANT
 // ════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════
+//  FILE D'ATTENTE — VUE MÉDECIN
+// ══════════════════════════════════════════════════════════════════
+function PageFileAttenteMedecin(){
+  const { token } = useAuthStore();
+  const [liste, setListe] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [stats, setStats] = React.useState({});
+  const BACKEND_URL = 'https://mediconnect-backend-v2.vercel.app';
+
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  const fetchListe = async () => {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/file-attente/liste`, { headers });
+      const d = await r.json();
+      if (d.success) {
+        setListe(d.data || []);
+        setStats(d.stats || {});
+      }
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  };
+
+  React.useEffect(() => {
+    fetchListe();
+    const iv = setInterval(fetchListe, 10000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const updateStatut = async (id, action) => {
+    await fetch(`${BACKEND_URL}/api/file-attente/${id}/${action}`, { method:'PUT', headers });
+    fetchListe();
+  };
+
+  const STATUT = {
+    en_attente:      { bg:'rgba(245,158,11,.15)', color:'#F59E0B', label:'En attente' },
+    appele:          { bg:'rgba(59,130,246,.15)',  color:'#3B82F6', label:'Appelé' },
+    en_consultation: { bg:'rgba(10,143,88,.15)',   color:C.green,   label:'En consultation' },
+    termine:         { bg:'rgba(107,114,128,.15)', color:C.muted,   label:'Terminé' },
+  };
+
+  const enAttente = liste.filter(e=>e.statut==='en_attente'||e.statut==='appele');
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>🚶 Mes patients en attente</h2>
+          <p style={{fontSize:13,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
+        </div>
+        <button onClick={fetchListe} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          {label:'En attente', val:stats.en_attente||0, color:'#F59E0B'},
+          {label:'En consultation', val:stats.en_consultation||0, color:C.green},
+          {label:'Terminés', val:stats.termine||0, color:C.muted},
+          {label:'Total jour', val:stats.total||0, color:C.text},
+        ].map(s=>(
+          <div key={s.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
+            <div style={{fontSize:24,fontWeight:700,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading ? <div style={{textAlign:'center',padding:'2rem',color:C.muted}}>Chargement...</div>
+      : enAttente.length === 0 ? (
+        <div style={{textAlign:'center',padding:'3rem',background:C.input,border:`1px solid ${C.border}`,borderRadius:14}}>
+          <div style={{fontSize:40,marginBottom:12}}>✅</div>
+          <div style={{fontSize:15,fontWeight:600,color:C.text,marginBottom:6}}>Aucun patient en attente</div>
+          <div style={{fontSize:13,color:C.muted}}>La file est vide pour le moment</div>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {enAttente.map((e,i)=>(
+            <div key={e.id} style={{background:C.input,border:`1.5px solid ${e.statut==='appele'?'#3B82F6':C.border}`,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+              <div style={{width:44,height:44,borderRadius:10,background:'rgba(13,148,136,.15)',border:`1.5px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:20,color:C.teal,flexShrink:0}}>{e.rang}</div>
+              <div style={{flex:1,minWidth:160}}>
+                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{e.patient_nom}</div>
+                {e.patient_telephone&&<div style={{fontSize:12,color:C.dim,marginTop:2}}>📞 {e.patient_telephone}</div>}
+                {e.motif&&<div style={{fontSize:12,color:C.muted,marginTop:2}}>💬 {e.motif}</div>}
+                <div style={{fontSize:11,color:C.dim,marginTop:3}}>
+                  Arrivée : {e.heure_scan ? new Date(e.heure_scan).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'}) : '—'}
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:STATUT[e.statut]?.bg,color:STATUT[e.statut]?.color}}>
+                  {STATUT[e.statut]?.label}
+                </span>
+                {e.statut==='en_attente'&&(
+                  <button onClick={()=>updateStatut(e.id,'appeler')} style={{padding:'7px 14px',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:8,color:'#3B82F6',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                    📣 Appeler
+                  </button>
+                )}
+                {e.statut==='appele'&&(
+                  <button onClick={()=>updateStatut(e.id,'consultation')} style={{padding:'7px 14px',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:8,color:C.green,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                    🩺 Faire entrer
+                  </button>
+                )}
+                {e.statut==='en_consultation'&&(
+                  <button onClick={()=>updateStatut(e.id,'terminer')} style={{padding:'7px 14px',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:8,color:C.muted,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                    ✓ Terminé
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard(){
   return(
     <Routes>
@@ -841,6 +960,7 @@ export default function Dashboard(){
       <Route path="consultations" element={<PageConsultations/>}/>
       <Route path="ordonnances"   element={<PageOrdonnances/>}/>
       <Route path="stats"         element={<PageStats/>}/>
+      <Route path="file-attente"    element={<PageFileAttenteMedecin/>}/>
       <Route path="*"             element={<PageHome/>}/>
     </Routes>
   );
