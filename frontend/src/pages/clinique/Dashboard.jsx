@@ -1971,6 +1971,261 @@ function PageFileAttente(){
   );
 }
 
+
+function PageFileAttenteMedecinClinique(){
+  const { token } = useAuthStore();
+  const [liste, setListe] = React.useState([]);
+  const [stats, setStats] = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  const fetchListe = async () => {
+    try {
+      const r = await fetch(`${BACKEND}/api/file-attente/liste`, { headers });
+      const d = await r.json();
+      if (d.success) { setListe(d.data||[]); setStats(d.stats||{}); }
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  React.useEffect(() => {
+    fetchListe();
+    const iv = setInterval(fetchListe, 10000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const updateStatut = async (id, action) => {
+    await fetch(`${BACKEND}/api/file-attente/${id}/${action}`, { method:'PUT', headers });
+    fetchListe();
+  };
+
+  const STATUT = {
+    en_attente:      { bg:'rgba(245,158,11,.15)', color:'#F59E0B', label:'En attente' },
+    appele:          { bg:'rgba(59,130,246,.15)',  color:'#3B82F6', label:'Appelé' },
+    en_consultation: { bg:'rgba(10,143,88,.15)',   color:C.green,   label:'En consultation' },
+    termine:         { bg:'rgba(107,114,128,.15)', color:C.muted,   label:'Terminé' },
+  };
+
+  const actifs = liste.filter(e=>['en_attente','appele','en_consultation'].includes(e.statut));
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>🩺 Mes patients en attente</h2>
+          <p style={{fontSize:13,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
+        </div>
+        <button onClick={fetchListe} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:20}}>
+        {[{label:'En attente',val:stats.en_attente||0,color:'#F59E0B'},{label:'En consultation',val:stats.en_consultation||0,color:C.green},{label:'Terminés',val:stats.termine||0,color:C.muted},{label:'Total jour',val:stats.total||0,color:C.text}].map(s=>(
+          <div key={s.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
+            <div style={{fontSize:24,fontWeight:700,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+      {loading ? <Loader/> : actifs.length===0 ? (
+        <div style={{textAlign:'center',padding:'3rem',background:C.input,border:`1px solid ${C.border}`,borderRadius:14}}>
+          <div style={{fontSize:40,marginBottom:12}}>✅</div>
+          <div style={{fontSize:15,fontWeight:600,color:C.text}}>Aucun patient en attente</div>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {actifs.map(e=>(
+            <div key={e.id} style={{background:C.input,border:`1.5px solid ${e.statut==='appele'?'#3B82F6':C.border}`,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+              <div style={{width:44,height:44,borderRadius:10,background:'rgba(13,148,136,.15)',border:`1.5px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:20,color:C.teal,flexShrink:0}}>{e.rang}</div>
+              <div style={{flex:1,minWidth:160}}>
+                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{e.patient_nom}</div>
+                {e.patient_telephone&&<div style={{fontSize:12,color:C.dim,marginTop:2}}>📞 {e.patient_telephone}</div>}
+                {e.motif&&<div style={{fontSize:12,color:C.muted,marginTop:2}}>💬 {e.motif}</div>}
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:STATUT[e.statut]?.bg,color:STATUT[e.statut]?.color}}>{STATUT[e.statut]?.label}</span>
+                {e.statut==='en_attente'&&<button onClick={()=>updateStatut(e.id,'appeler')} style={{padding:'7px 14px',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:8,color:'#3B82F6',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📣 Appeler</button>}
+                {e.statut==='appele'&&<button onClick={()=>updateStatut(e.id,'consultation')} style={{padding:'7px 14px',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:8,color:C.green,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>🩺 Entrer</button>}
+                {e.statut==='en_consultation'&&<button onClick={()=>updateStatut(e.id,'terminer')} style={{padding:'7px 14px',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:8,color:C.muted,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>✓ Terminé</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PageProprietaire(){
+  const { token } = useAuthStore();
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [tab, setTab] = React.useState('jour');
+  const [journal, setJournal] = React.useState([]);
+  const fmt = (n) => Number(n||0).toLocaleString('fr-CI');
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const fetchDashboard = async () => {
+    try {
+      const r = await fetch(`${BACKEND}/api/proprietaire/dashboard`, { headers });
+      const d = await r.json();
+      if (d.success) setData(d.data);
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  const fetchJournal = async () => {
+    try {
+      const r = await fetch(`${BACKEND}/api/caisse/journal`, { headers });
+      const d = await r.json();
+      if (d.success) setJournal(d.data);
+    } catch(e) {}
+  };
+
+  React.useEffect(() => { fetchDashboard(); const iv=setInterval(fetchDashboard,30000); return ()=>clearInterval(iv); }, []);
+  React.useEffect(() => { if(tab==='journal') fetchJournal(); }, [tab]);
+
+  if (loading) return <Loader/>;
+  if (!data) return <Empty icon="👁️" title="Données non disponibles" subtitle="Aucune donnée financière disponible"/>;
+
+  const solde_jour = (data.jour?.entrees||0) - (data.jour?.sorties||0);
+  const solde_mois = (data.mois?.entrees||0) - (data.mois?.sorties||0);
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>👁️ Vue Propriétaire</h2>
+          <p style={{fontSize:13,color:C.muted,marginTop:2}}>{data.clinique?.nom} · Actualisation auto 30s</p>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <span style={{fontSize:11,padding:'4px 10px',borderRadius:20,background:data.caisse_statut?.statut==='ouverte'?'rgba(10,143,88,.15)':'rgba(239,68,68,.15)',color:data.caisse_statut?.statut==='ouverte'?C.green:C.red,fontWeight:700}}>
+            {data.caisse_statut?.statut==='ouverte'?'🟢 Caisse ouverte':'🔴 Caisse fermée'}
+          </span>
+          <button onClick={fetchDashboard} style={{padding:'7px 14px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻</button>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          {label:'Entrées du jour',val:fmt(data.jour?.entrees)+' F',color:C.green,icon:'📈',sub:`${data.jour?.nb_entrees||0} opérations`},
+          {label:'Sorties du jour',val:fmt(data.jour?.sorties)+' F',color:C.red,icon:'📉',sub:`${data.jour?.nb_sorties||0} opérations`},
+          {label:'Solde net jour',val:fmt(solde_jour)+' F',color:solde_jour>=0?C.green:C.red,icon:'💰',sub:solde_jour>=0?'Positif':'Déficit'},
+          {label:'Consultations',val:data.consultations?.jour?.nb||0,color:C.teal,icon:'🩺',sub:fmt(data.consultations?.jour?.revenu||0)+' F'},
+        ].map(k=>(
+          <div key={k.label} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:'16px 18px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              <span style={{fontSize:18}}>{k.icon}</span>
+              <span style={{fontSize:11,color:C.dim,fontWeight:700,textTransform:'uppercase',letterSpacing:'.5px'}}>{k.label}</span>
+            </div>
+            <div style={{fontSize:22,fontWeight:800,color:k.color}}>{k.val}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:3}}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+        {[{key:'jour',label:"Aujourd'hui"},{key:'mois',label:'Ce mois'},{key:'evolution',label:'7 jours'},{key:'journal',label:'Journal'},{key:'analyse',label:'Analyse'}].map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)} style={{padding:'7px 16px',borderRadius:20,fontSize:13,fontWeight:tab===t.key?700:400,border:`1px solid ${tab===t.key?C.amber:C.border}`,background:tab===t.key?'rgba(217,119,6,.12)':'transparent',color:tab===t.key?C.amber:C.muted,cursor:'pointer',fontFamily:'inherit'}}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab==='jour'&&<div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
+          <div style={{background:'rgba(10,143,88,.06)',border:'1px solid rgba(10,143,88,.2)',borderRadius:12,padding:20}}>
+            <div style={{fontSize:11,color:C.muted,marginBottom:6,fontWeight:700}}>TOTAL ENTRÉES</div>
+            <div style={{fontSize:32,fontWeight:800,color:C.green}}>{fmt(data.jour?.entrees)} F</div>
+          </div>
+          <div style={{background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,padding:20}}>
+            <div style={{fontSize:11,color:C.muted,marginBottom:6,fontWeight:700}}>TOTAL SORTIES</div>
+            <div style={{fontSize:32,fontWeight:800,color:C.red}}>{fmt(data.jour?.sorties)} F</div>
+          </div>
+        </div>
+        <div style={{background:solde_jour>=0?'rgba(10,143,88,.08)':'rgba(239,68,68,.08)',border:`1px solid ${solde_jour>=0?'rgba(10,143,88,.25)':'rgba(239,68,68,.25)'}`,borderRadius:12,padding:20,textAlign:'center',marginBottom:14}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:6,fontWeight:700}}>SOLDE NET DU JOUR</div>
+          <div style={{fontSize:40,fontWeight:900,color:solde_jour>=0?C.green:C.red}}>{solde_jour>=0?'+':''}{fmt(solde_jour)} F</div>
+        </div>
+        <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:10}}>10 DERNIERS MOUVEMENTS</div>
+        {(data.derniers_mouvements||[]).length===0 ? <Empty icon="💰" title="Aucun mouvement" subtitle="Aucune opération aujourd'hui"/> : (data.derniers_mouvements||[]).map(m=>(
+          <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:`1px solid ${C.border}`}}>
+            <span style={{fontSize:18}}>{m.type==='entree'?'📈':'📉'}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.description||m.categorie}</div>
+              <div style={{fontSize:11,color:C.dim,marginTop:2}}>{new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</div>
+            </div>
+            <div style={{fontWeight:700,color:m.type==='entree'?C.green:C.red,fontSize:14}}>{m.type==='entree'?'+':'-'}{fmt(m.montant)} F</div>
+          </div>
+        ))}
+      </div>}
+
+      {tab==='mois'&&<div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12}}>
+          {[{label:'Entrées mois',val:fmt(data.mois?.entrees)+' F',color:C.green},{label:'Sorties mois',val:fmt(data.mois?.sorties)+' F',color:C.red},{label:'Solde net',val:fmt(solde_mois)+' F',color:solde_mois>=0?C.green:C.red},{label:'Jours actifs',val:data.mois?.jours_actifs||0,color:C.teal},{label:'Consultations',val:data.consultations?.mois?.nb||0,color:C.teal},{label:'Revenu consul.',val:fmt(data.consultations?.mois?.revenu||0)+' F',color:C.green}].map(k=>(
+            <div key={k.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
+              <div style={{fontSize:11,color:C.dim,marginBottom:4}}>{k.label}</div>
+              <div style={{fontSize:20,fontWeight:700,color:k.color}}>{k.val}</div>
+            </div>
+          ))}
+        </div>
+      </div>}
+
+      {tab==='evolution'&&<div>
+        {(data.evolution_7j||[]).length===0 ? <Empty icon="📊" title="Pas de données" subtitle="Aucun mouvement sur 7 jours"/> : (data.evolution_7j||[]).map((j,i)=>{
+          const net=(parseFloat(j.entrees)||0)-(parseFloat(j.sorties)||0);
+          return <div key={i} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 16px',marginBottom:8}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+              <span style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(j.jour).toLocaleDateString('fr-CI',{weekday:'short',day:'numeric',month:'short'})}</span>
+              <span style={{fontWeight:700,color:net>=0?C.green:C.red,fontSize:13}}>{net>=0?'+':''}{fmt(net)} F</span>
+            </div>
+            <div style={{display:'flex',gap:16}}>
+              <span style={{fontSize:12,color:C.green}}>📈 {fmt(j.entrees)} F</span>
+              <span style={{fontSize:12,color:C.red}}>📉 {fmt(j.sorties)} F</span>
+            </div>
+          </div>;
+        })}
+      </div>}
+
+      {tab==='journal'&&<div>
+        {journal.length===0 ? <Empty icon="📋" title="Journal vide" subtitle="Aucune opération"/> : (
+          <div style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:14,overflow:'hidden'}}>
+            <div style={{display:'grid',gridTemplateColumns:'80px 1fr 100px 120px',gap:8,padding:'10px 16px',borderBottom:`1px solid ${C.border}`,fontSize:11,fontWeight:700,color:C.dim,textTransform:'uppercase'}}>
+              <span>Heure</span><span>Description</span><span>Mode</span><span style={{textAlign:'right'}}>Montant</span>
+            </div>
+            {journal.map((m,i)=>(
+              <div key={m.id} style={{display:'grid',gridTemplateColumns:'80px 1fr 100px 120px',gap:8,padding:'10px 16px',borderBottom:i<journal.length-1?`1px solid ${C.border}`:'none',alignItems:'center',background:i%2===0?'transparent':'rgba(255,255,255,.01)'}}>
+                <span style={{fontSize:12,color:C.dim}}>{new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</span>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.description||m.categorie}</div>
+                  {m.patient_nom&&<div style={{fontSize:11,color:C.dim}}>👤 {m.patient_nom}</div>}
+                </div>
+                <span style={{fontSize:11,color:C.dim}}>{m.mode_paiement}</span>
+                <span style={{fontWeight:700,color:m.type==='entree'?C.green:C.red,fontSize:14,textAlign:'right'}}>{m.type==='entree'?'+':'-'}{fmt(m.montant)} F</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>}
+
+      {tab==='analyse'&&<div>
+        <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:14}}>RÉPARTITION DES DÉPENSES DU MOIS</div>
+        {(data.top_depenses||[]).length===0 ? <Empty icon="📊" title="Aucune dépense" subtitle="Aucune dépense ce mois"/> : (()=>{
+          const total=data.top_depenses.reduce((s,x)=>s+parseFloat(x.total),0);
+          return data.top_depenses.map((d,i)=>{
+            const pct=total>0?Math.round(parseFloat(d.total)/total*100):0;
+            return <div key={i} style={{marginBottom:14}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+                <span style={{fontSize:13,color:C.text,fontWeight:600,textTransform:'capitalize'}}>{d.categorie}</span>
+                <span style={{fontSize:13,color:C.red,fontWeight:700}}>{fmt(d.total)} F ({pct}%)</span>
+              </div>
+              <div style={{background:C.border,borderRadius:4,height:6}}>
+                <div style={{background:C.amber,borderRadius:4,height:6,width:`${pct}%`}}/>
+              </div>
+            </div>;
+          });
+        })()}
+      </div>}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   return (
     <Routes>
