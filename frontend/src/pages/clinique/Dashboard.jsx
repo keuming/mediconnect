@@ -1802,7 +1802,7 @@ function PageFileAttente(){
     queryKey: ['file-attente', tab],
     queryFn: async () => {
       const r = await fetch(
-        `${BACKEND}/api/file-attente/liste?statut=${tab === 'tous' ? '' : tab}`,
+        `https://mediconnect-backend-v2.vercel.app/api/file-attente/liste?statut=${tab === 'tous' ? '' : tab}`,
         { headers }
       );
       return r.json();
@@ -1813,14 +1813,14 @@ function PageFileAttente(){
   const { data: statsData } = useQuery({
     queryKey: ['file-attente-stats'],
     queryFn: async () => {
-      const r = await fetch(`${BACKEND}/api/file-attente/stats-jour`, { headers });
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/stats-jour`, { headers });
       return r.json();
     },
     refetchInterval: 10000,
   });
 
   const updateStatut = async (id, action) => {
-    await fetch(`${BACKEND}/api/file-attente/${id}/${action}`, { method: 'PUT', headers });
+    await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/${id}/${action}`, { method: 'PUT', headers });
     queryClient.invalidateQueries(['file-attente']);
     queryClient.invalidateQueries(['file-attente-stats']);
   };
@@ -1981,7 +1981,7 @@ function PageFileAttenteMedecinClinique(){
 
   const fetchListe = async () => {
     try {
-      const r = await fetch(`${BACKEND}/api/file-attente/liste`, { headers });
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/liste`, { headers });
       const d = await r.json();
       if (d.success) { setListe(d.data||[]); setStats(d.stats||{}); }
     } catch(e) {}
@@ -1995,7 +1995,7 @@ function PageFileAttenteMedecinClinique(){
   }, []);
 
   const updateStatut = async (id, action) => {
-    await fetch(`${BACKEND}/api/file-attente/${id}/${action}`, { method:'PUT', headers });
+    await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/${id}/${action}`, { method:'PUT', headers });
     fetchListe();
   };
 
@@ -2065,7 +2065,7 @@ function PageProprietaire(){
   const fetchDashboard = async () => {
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      const r = await fetch(`${BACKEND}/api/proprietaire/dashboard`, { headers });
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/proprietaire/dashboard`, { headers });
       const d = await r.json();
       if (d.success) setData(d.data);
       else console.error('proprietaire dashboard error:', d.message);
@@ -2076,7 +2076,7 @@ function PageProprietaire(){
   const fetchJournal = async () => {
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      const r = await fetch(`${BACKEND}/api/caisse/journal`, { headers });
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/caisse/journal`, { headers });
       const d = await r.json();
       if (d.success) setJournal(d.data);
     } catch(e) {}
