@@ -1235,6 +1235,109 @@ app.get('/api/file-attente/stats-jour', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+
+// ── ACCÈS DOSSIER PATIENT PAR MÉDECIN (téléphone + code secret) ──
+app.post('/api/patients/dossier-acces', async (req, res) => {
+  const auth = req.headers['authorization']?.replace('Bearer ','');
+  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+  try {
+    const jwt = require('jsonwebtoken');
+    const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
+    // Seuls les médecins et la clinique peuvent accéder
+    if (!['medecin','medecin_independant','medecin_conseil','clinique','admin'].includes(payload.role))
+      return res.status(403).json({ success: false, message: 'Accès non autorisé' });
+
+    const { telephone, code_secret } = req.body;
+    if (!telephone) return res.status(400).json({ success: false, message: 'Téléphone requis' });
+
+    // Chercher le patient par téléphone
+    const u = await db(
+      `SELECT u.*, p.id as pid, p.groupe_sanguin, p.allergies, p.antecedents,
+        p.taille, p.poids, p.date_naissance, p.ville,
+        p.contact_urgence_1, p.telephone_urgence_1,
+        p.contact_urgence_2, p.telephone_urgence_2,
+        p.contact_urgence_3, p.telephone_urgence_3,
+        p.contact_urgence_4, p.telephone_urgence_4,
+        p.contact_urgence_5, p.telephone_urgence_5,
+        p.code_secret
+       FROM utilisateurs u
+       LEFT JOIN patients p ON p.user_id = u.id
+       WHERE u.telephone=$1 AND u.role='patient' LIMIT 1`,
+      [telephone]
+    );
+
+    if (!u.rows[0])
+      return res.status(404).json({ success: false, message: 'Patient non trouvé' });
+
+    const patient = u.rows[0];
+
+    // Vérifier le code secret si fourni
+    if (code_secret) {
+      const bcrypt = require('bcryptjs');
+      const ok = await bcrypt.compare(code_secret, patient.password);
+      if (!ok && patient.code_secret !== code_secret)
+        return res.status(401).json({ success: false, message: 'Code secret incorrect' });
+    }
+
+    // Récupérer les ordonnances récentes
+    const ords = await db(
+      `SELECT id, medicaments, posologie, created_at FROM ordonnances
+       WHERE patient_id=$1 ORDER BY created_at DESC LIMIT 5`,
+      [patient.pid || patient.patient_id]
+    ).catch(() => ({ rows: [] }));
+
+    // Récupérer les consultations récentes
+    const consults = await db(
+      `SELECT id, diagnostic, date_consultation, medecin_nom FROM consultations
+       WHERE patient_id=$1 ORDER BY date_consultation DESC LIMIT 5`,
+      [patient.pid || patient.patient_id]
+    ).catch(() => ({ rows: [] }));
+
+    const { password, code_secret: cs, ...safe } = patient;
+
+    res.json({
+      success: true,
+      data: {
+        ...safe,
+        id: patient.pid || patient.patient_id,
+        ordonnances: ords.rows,
+        consultations: consults.rows,
+      }
+    });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// ── ACCÈS CONTACTS URGENCE PAR CLINIQUE ───────────────────────────
+app.get('/api/patients/:patient_id/contacts-urgence', async (req, res) => {
+  const auth = req.headers['authorization']?.replace('Bearer ','');
+  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+  try {
+    const jwt = require('jsonwebtoken');
+    const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
+    if (!['medecin','medecin_independant','clinique','admin'].includes(payload.role))
+      return res.status(403).json({ success: false, message: 'Accès non autorisé' });
+
+    const r = await db(
+      `SELECT p.prenom, p.nom, p.telephone,
+        p.contact_urgence_1, p.telephone_urgence_1,
+        p.contact_urgence_2, p.telephone_urgence_2,
+        p.contact_urgence_3, p.telephone_urgence_3,
+        p.contact_urgence_4, p.telephone_urgence_4,
+        p.contact_urgence_5, p.telephone_urgence_5,
+        p.groupe_sanguin, p.allergies
+       FROM patients p WHERE p.id=$1 OR p.user_id=$1 LIMIT 1`,
+      [req.params.patient_id]
+    );
+
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: 'Patient non trouvé' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);

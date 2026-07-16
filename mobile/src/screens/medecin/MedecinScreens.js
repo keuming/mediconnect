@@ -467,3 +467,324 @@ export function OrdonnancesMedecinScreen({ navigation }) {
     </SafeAreaView>
   );
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  DOSSIER PATIENT — ACCÈS PAR CODE SECRET
+// ══════════════════════════════════════════════════════════════════
+export function DossierPatientScreen({ navigation }) {
+  const { token } = useAuthStore();
+  const [codeSecret, setCodeSecret] = React.useState('');
+  const [telephone, setTelephone] = React.useState('');
+  const [dossier, setDossier] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [tab, setTab] = React.useState('profil');
+
+  const API = 'https://mediconnect-backend-v2.vercel.app';
+
+  const rechercher = async () => {
+    if (!telephone && !codeSecret) {
+      setError('Entrez le numéro de téléphone et/ou le code secret du patient');
+      return;
+    }
+    setLoading(true); setError(''); setDossier(null);
+    try {
+      const r = await fetch(`${API}/api/patients/dossier-acces`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ telephone, code_secret: codeSecret })
+      });
+      const d = await r.json();
+      if (d.success) setDossier(d.data);
+      else setError(d.message || 'Patient non trouvé ou code incorrect');
+    } catch(e) { setError('Erreur réseau'); }
+    setLoading(false);
+  };
+
+  const TABS = [
+    { key:'profil',      label:'Profil' },
+    { key:'antecedents', label:'Antécédents' },
+    { key:'ordonnances', label:'Ordonnances' },
+    { key:'urgence',     label:'🚨 Urgence' },
+  ];
+
+  return (
+    <ScrollView style={{ flex:1, backgroundColor:C.bg }}>
+      <ScreenHeader title="🗂️ Dossier Patient" subtitle="Accès sécurisé par code patient"/>
+      <View style={{ padding:16 }}>
+
+        {/* Formulaire accès */}
+        {!dossier && (
+          <Card>
+            <Text style={{ color:C.muted, fontSize:13, marginBottom:16, lineHeight:20 }}>
+              Le patient communique son numéro de téléphone et son code secret à 4 chiffres pour vous donner accès à son dossier médical.
+            </Text>
+            <Text style={{ fontSize:11, color:C.muted, marginBottom:6 }}>NUMÉRO DE TÉLÉPHONE</Text>
+            <TextInput
+              value={telephone}
+              onChangeText={setTelephone}
+              placeholder="+225 07 XX XX XX"
+              placeholderTextColor={C.dim}
+              keyboardType="phone-pad"
+              style={{ backgroundColor:'rgba(255,255,255,.05)', borderWidth:1, borderColor:C.border, borderRadius:10, padding:12, color:C.text, fontSize:14, marginBottom:12 }}
+            />
+            <Text style={{ fontSize:11, color:C.muted, marginBottom:6 }}>CODE SECRET PATIENT (4 chiffres)</Text>
+            <TextInput
+              value={codeSecret}
+              onChangeText={setCodeSecret}
+              placeholder="••••"
+              placeholderTextColor={C.dim}
+              keyboardType="numeric"
+              maxLength={4}
+              secureTextEntry
+              style={{ backgroundColor:'rgba(255,255,255,.05)', borderWidth:1, borderColor:C.border, borderRadius:10, padding:12, color:C.text, fontSize:22, letterSpacing:10, marginBottom:16 }}
+            />
+            {error ? <Text style={{ color:C.red, fontSize:13, marginBottom:12 }}>{error}</Text> : null}
+            <TouchableOpacity
+              style={{ backgroundColor:C.green, borderRadius:10, padding:14, alignItems:'center' }}
+              onPress={rechercher} disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff"/>
+                : <Text style={{ color:'#fff', fontWeight:'700', fontSize:15 }}>Accéder au dossier →</Text>}
+            </TouchableOpacity>
+          </Card>
+        )}
+
+        {/* Dossier patient */}
+        {dossier && (
+          <View>
+            {/* Header patient */}
+            <Card style={{ marginBottom:12 }}>
+              <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+                <View style={{ width:52, height:52, borderRadius:26, backgroundColor:'rgba(10,143,88,.15)', borderWidth:1.5, borderColor:C.green, alignItems:'center', justifyContent:'center' }}>
+                  <Text style={{ fontSize:22 }}>👤</Text>
+                </View>
+                <View style={{ flex:1 }}>
+                  <Text style={{ color:C.text, fontWeight:'700', fontSize:16 }}>{dossier.prenom} {dossier.nom}</Text>
+                  <Text style={{ color:C.muted, fontSize:12, marginTop:2 }}>{dossier.telephone}</Text>
+                  {dossier.date_naissance && (
+                    <Text style={{ color:C.dim, fontSize:11, marginTop:1 }}>
+                      Né(e) le {new Date(dossier.date_naissance).toLocaleDateString('fr-CI')}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ alignItems:'center' }}>
+                  <Text style={{ fontSize:20, fontWeight:'900', color:C.greenL }}>{dossier.groupe_sanguin || '?'}</Text>
+                  <Text style={{ fontSize:10, color:C.muted }}>Groupe</Text>
+                </View>
+              </View>
+            </Card>
+
+            {/* Onglets */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom:12 }}>
+              {TABS.map(t => (
+                <TouchableOpacity key={t.key} onPress={() => setTab(t.key)}
+                  style={{ marginRight:8, paddingHorizontal:16, paddingVertical:8, borderRadius:20, borderWidth:1,
+                    borderColor: tab===t.key ? C.green : C.border,
+                    backgroundColor: tab===t.key ? 'rgba(10,143,88,.15)' : 'transparent'
+                  }}>
+                  <Text style={{ color: tab===t.key ? C.green : C.muted, fontWeight: tab===t.key ? '700':'400', fontSize:13 }}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Profil */}
+            {tab === 'profil' && (
+              <Card>
+                {[
+                  ['Allergies', dossier.allergies || 'Aucune connue'],
+                  ['Taille', dossier.taille ? `${dossier.taille} cm` : '—'],
+                  ['Poids', dossier.poids ? `${dossier.poids} kg` : '—'],
+                  ['Ville', dossier.ville || '—'],
+                  ['Email', dossier.email || '—'],
+                ].map(([label, val]) => (
+                  <View key={label} style={{ flexDirection:'row', justifyContent:'space-between', paddingVertical:8, borderBottomWidth:1, borderBottomColor:C.border }}>
+                    <Text style={{ color:C.muted, fontSize:13 }}>{label}</Text>
+                    <Text style={{ color:C.text, fontWeight:'600', fontSize:13, flex:1, textAlign:'right' }}>{val}</Text>
+                  </View>
+                ))}
+              </Card>
+            )}
+
+            {/* Antécédents */}
+            {tab === 'antecedents' && (
+              <Card>
+                <Text style={{ color:C.muted, fontSize:12, marginBottom:8 }}>ANTÉCÉDENTS MÉDICAUX</Text>
+                <Text style={{ color:C.text, fontSize:14, lineHeight:22 }}>{dossier.antecedents || 'Aucun antécédent renseigné'}</Text>
+                {dossier.allergies && (
+                  <View style={{ marginTop:16, backgroundColor:'rgba(239,68,68,.08)', borderRadius:8, padding:12, borderWidth:1, borderColor:'rgba(239,68,68,.2)' }}>
+                    <Text style={{ color:'#EF4444', fontWeight:'700', marginBottom:4 }}>⚠️ Allergies</Text>
+                    <Text style={{ color:C.text, fontSize:13 }}>{dossier.allergies}</Text>
+                  </View>
+                )}
+              </Card>
+            )}
+
+            {/* Ordonnances */}
+            {tab === 'ordonnances' && (
+              <Card>
+                {(dossier.ordonnances || []).length === 0
+                  ? <Empty icon="💊" title="Aucune ordonnance" subtitle="Aucune prescription disponible"/>
+                  : (dossier.ordonnances || []).map(o => (
+                    <View key={o.id} style={{ paddingVertical:10, borderBottomWidth:1, borderBottomColor:C.border }}>
+                      <Text style={{ color:C.text, fontWeight:'600', fontSize:13 }}>{o.medicaments || 'Ordonnance'}</Text>
+                      <Text style={{ color:C.dim, fontSize:11, marginTop:2 }}>{fmtDate(o.created_at)}</Text>
+                    </View>
+                  ))
+                }
+              </Card>
+            )}
+
+            {/* Contacts urgence */}
+            {tab === 'urgence' && (
+              <View>
+                <View style={{ backgroundColor:'rgba(239,68,68,.08)', borderRadius:10, padding:12, marginBottom:12, borderWidth:1, borderColor:'rgba(239,68,68,.2)' }}>
+                  <Text style={{ color:'#EF4444', fontWeight:'700', fontSize:13, marginBottom:4 }}>🚨 Contacts d'urgence</Text>
+                  <Text style={{ color:C.muted, fontSize:12, lineHeight:18 }}>
+                    Ces contacts sont à appeler en cas d'urgence médicale nécessitant de prévenir la famille du patient.
+                  </Text>
+                </View>
+                {[1,2,3,4,5].map(i => {
+                  const nom = dossier[`contact_urgence_${i}`];
+                  const tel = dossier[`telephone_urgence_${i}`];
+                  if (!nom && !tel) return null;
+                  return (
+                    <Card key={i} style={{ marginBottom:8 }}>
+                      <View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
+                        <View>
+                          <Text style={{ color:C.text, fontWeight:'700', fontSize:14 }}>{nom || '—'}</Text>
+                          <Text style={{ color:C.muted, fontSize:13, marginTop:2 }}>📞 {tel || '—'}</Text>
+                        </View>
+                        {tel && (
+                          <TouchableOpacity
+                            style={{ backgroundColor:'rgba(10,143,88,.15)', borderRadius:8, padding:10, borderWidth:1, borderColor:C.green }}
+                            onPress={() => { const { Linking } = require('react-native'); Linking.openURL(`tel:${tel}`); }}
+                          >
+                            <Text style={{ color:C.green, fontWeight:'700', fontSize:13 }}>📞 Appeler</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </Card>
+                  );
+                })}
+                {![1,2,3,4,5].some(i => dossier[`contact_urgence_${i}`]) && (
+                  <Empty icon="📞" title="Aucun contact d'urgence" subtitle="Le patient n'a pas renseigné de contact d'urgence"/>
+                )}
+              </View>
+            )}
+
+            {/* Bouton reset */}
+            <TouchableOpacity
+              style={{ marginTop:16, padding:12, borderRadius:10, borderWidth:1, borderColor:C.border, alignItems:'center' }}
+              onPress={() => { setDossier(null); setCodeSecret(''); setTelephone(''); }}
+            >
+              <Text style={{ color:C.muted, fontSize:14 }}>← Rechercher un autre patient</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </ScrollView>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  FILE D'ATTENTE — APP MOBILE MÉDECIN
+// ══════════════════════════════════════════════════════════════════
+export function FileAttenteMedecinScreen({ navigation }) {
+  const { token } = useAuthStore();
+  const [liste, setListe] = React.useState([]);
+  const [stats, setStats] = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+  const API = 'https://mediconnect-backend-v2.vercel.app';
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  const fetch_liste = async () => {
+    try {
+      const r = await fetch(`${API}/api/file-attente/liste`, { headers });
+      const d = await r.json();
+      if (d.success) { setListe(d.data||[]); setStats(d.stats||{}); }
+    } catch(e) {}
+    setLoading(false);
+  };
+
+  React.useEffect(() => {
+    fetch_liste();
+    const iv = setInterval(fetch_liste, 10000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const updateStatut = async (id, action) => {
+    await fetch(`${API}/api/file-attente/${id}/${action}`, { method:'PUT', headers });
+    fetch_liste();
+  };
+
+  const actifs = liste.filter(e => ['en_attente','appele','en_consultation'].includes(e.statut));
+
+  return (
+    <ScrollView style={{ flex:1, backgroundColor:C.bg }}>
+      <ScreenHeader title="🚶 File d'attente" subtitle="Mise à jour automatique · 10 sec" rightIcon="↻" onRight={fetch_liste}/>
+      <View style={{ padding:16 }}>
+        {/* Stats */}
+        <View style={{ flexDirection:'row', gap:10, marginBottom:16 }}>
+          {[
+            { label:'En attente', val:stats.en_attente||0, color:'#F59E0B' },
+            { label:'En consul.', val:stats.en_consultation||0, color:C.green },
+            { label:'Terminés', val:stats.termine||0, color:C.muted },
+          ].map(s => (
+            <View key={s.label} style={{ flex:1, backgroundColor:C.card, borderRadius:10, padding:12, borderWidth:1, borderColor:C.border }}>
+              <Text style={{ fontSize:22, fontWeight:'900', color:s.color }}>{s.val}</Text>
+              <Text style={{ fontSize:11, color:C.muted, marginTop:2 }}>{s.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {loading ? <Loader/>
+        : actifs.length === 0 ? (
+          <Empty icon="✅" title="File vide" subtitle="Aucun patient en attente pour le moment"/>
+        ) : actifs.map(e => (
+          <Card key={e.id} style={{ marginBottom:10, borderColor: e.statut==='appele'?'#3B82F6':C.border, borderWidth:1.5 }}>
+            <View style={{ flexDirection:'row', alignItems:'center', gap:12 }}>
+              <View style={{ width:44, height:44, borderRadius:10, backgroundColor:'rgba(13,148,136,.15)', borderWidth:1.5, borderColor:C.teal, alignItems:'center', justifyContent:'center' }}>
+                <Text style={{ fontWeight:'900', fontSize:20, color:C.teal }}>{e.rang}</Text>
+              </View>
+              <View style={{ flex:1 }}>
+                <Text style={{ color:C.text, fontWeight:'700', fontSize:14 }}>{e.patient_nom}</Text>
+                {e.patient_telephone && <Text style={{ color:C.dim, fontSize:12, marginTop:2 }}>📞 {e.patient_telephone}</Text>}
+                {e.motif && <Text style={{ color:C.muted, fontSize:12, marginTop:2 }}>💬 {e.motif}</Text>}
+                <Text style={{ color:C.dim, fontSize:11, marginTop:2 }}>
+                  {e.statut === 'en_attente' ? '⏳ En attente'
+                   : e.statut === 'appele' ? '📣 Appelé'
+                   : '🩺 En consultation'}
+                </Text>
+              </View>
+            </View>
+            <View style={{ flexDirection:'row', gap:8, marginTop:12 }}>
+              {e.statut === 'en_attente' && (
+                <TouchableOpacity onPress={() => updateStatut(e.id,'appeler')}
+                  style={{ flex:1, backgroundColor:'rgba(59,130,246,.15)', borderRadius:8, padding:9, alignItems:'center', borderWidth:1, borderColor:'rgba(59,130,246,.3)' }}>
+                  <Text style={{ color:'#3B82F6', fontWeight:'700', fontSize:13 }}>📣 Appeler</Text>
+                </TouchableOpacity>
+              )}
+              {e.statut === 'appele' && (
+                <TouchableOpacity onPress={() => updateStatut(e.id,'consultation')}
+                  style={{ flex:1, backgroundColor:'rgba(10,143,88,.15)', borderRadius:8, padding:9, alignItems:'center', borderWidth:1, borderColor:'rgba(10,143,88,.3)' }}>
+                  <Text style={{ color:C.green, fontWeight:'700', fontSize:13 }}>🩺 Faire entrer</Text>
+                </TouchableOpacity>
+              )}
+              {e.statut === 'en_consultation' && (
+                <TouchableOpacity onPress={() => updateStatut(e.id,'terminer')}
+                  style={{ flex:1, backgroundColor:'rgba(107,114,128,.15)', borderRadius:8, padding:9, alignItems:'center', borderWidth:1, borderColor:'rgba(107,114,128,.3)' }}>
+                  <Text style={{ color:C.muted, fontWeight:'700', fontSize:13 }}>✓ Terminé</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => navigation.navigate('DossierPatient')}
+                style={{ backgroundColor:'rgba(10,143,88,.1)', borderRadius:8, padding:9, alignItems:'center', borderWidth:1, borderColor:'rgba(10,143,88,.2)' }}>
+                <Text style={{ color:C.greenL, fontWeight:'700', fontSize:13 }}>🗂️</Text>
+              </TouchableOpacity>
+            </View>
+          </Card>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}

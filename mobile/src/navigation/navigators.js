@@ -42,6 +42,8 @@ import {
   ConsultationsScreen,
   NouvelleConsultationScreen,
   OrdonnancesMedecinScreen,
+  DossierPatientScreen,
+  FileAttenteMedecinScreen,
 } from '../screens/medecin/MedecinScreens';
 
 const Tab   = createBottomTabNavigator();
@@ -198,6 +200,7 @@ function MedecinTabNav() {
     { name:'Planning',      icon:'📅', component: PlanningScreen },
     { name:'Patients',      icon:'👥', component: MesPatientsScreen },
     { name:'Ordonnances',   icon:'💊', component: OrdonnancesMedecinScreen },
+    { name:'File attente', icon:'🚶', component: FileAttenteMedecinScreen },
   ];
   return (
     <Tab.Navigator screenOptions={({ route }) => {
@@ -222,6 +225,8 @@ export function MedecinNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MedecinTabs"          component={MedecinTabNav} />
+      <Stack.Screen name="DossierPatient"       component={DossierPatientScreen} options={{title:'Dossier Patient'}} />
+      <Stack.Screen name="FileAttenteMedecin"   component={FileAttenteMedecinScreen} options={{title:"File d'attente"}} />
       <Stack.Screen name="Consultations"         component={ConsultationsScreen} />
       <Stack.Screen name="NouvelleConsultation"  component={NouvelleConsultationScreen} />
     </Stack.Navigator>
