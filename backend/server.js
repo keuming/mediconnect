@@ -1338,6 +1338,297 @@ app.get('/api/patients/:patient_id/contacts-urgence', async (req, res) => {
   }
 });
 
+
+// ══════════════════════════════════════════════════════════════════
+//  TABLEAU DE BORD PROPRIÉTAIRE — SURVEILLANCE FINANCIÈRE
+// ══════════════════════════════════════════════════════════════════
+
+// ── Init table mouvements caisse ──────────────────────────────────
+app.post('/api/admin/init-caisse-mouvements', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorisé' });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS caisse_mouvements (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID NOT NULL,
+      session_id UUID,
+      type VARCHAR(20) NOT NULL CHECK (type IN ('entree','sortie')),
+      categorie VARCHAR(50) DEFAULT 'consultation',
+      montant DECIMAL(12,2) NOT NULL,
+      description TEXT,
+      reference VARCHAR(100),
+      patient_nom VARCHAR(200),
+      medecin_nom VARCHAR(200),
+      mode_paiement VARCHAR(30) DEFAULT 'especes',
+      saisi_par VARCHAR(200),
+      valide BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_cm_clinique ON caisse_mouvements(clinique_id, created_at)');
+    await db('CREATE INDEX IF NOT EXISTS idx_cm_type ON caisse_mouvements(type, clinique_id)');
+    // Ajouter colonne role proprietaire dans utilisateurs
+    await db("ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS est_proprietaire BOOLEAN DEFAULT false");
+    await db("ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS proprietaire_clinique_id UUID");
+    res.json({ success: true, message: 'Table caisse_mouvements + colonnes propriétaire créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Enregistrer un mouvement de caisse ───────────────────────────
+app.post('/api/caisse/mouvement', auth, async (req, res) => {
+  const { type, montant, description, categorie, patient_nom, medecin_nom, mode_paiement, reference } = req.body;
+  if (!type || !montant) return res.status(400).json({ success: false, message: 'type et montant requis' });
+  try {
+    const cid = req.user?.clinique_id;
+    if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
+    // Récupérer session ouverte
+    const sess = await db(
+      "SELECT id FROM caisse_sessions WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' LIMIT 1",
+      [cid]
+    );
+    const r = await db(
+      `INSERT INTO caisse_mouvements
+       (clinique_id, session_id, type, categorie, montant, description, patient_nom, medecin_nom, mode_paiement, reference, saisi_par)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [cid, sess.rows[0]?.id||null, type, categorie||'consultation', parseFloat(montant),
+       description||null, patient_nom||null, medecin_nom||null,
+       mode_paiement||'especes', reference||null,
+       req.user?.prenom ? `${req.user.prenom} ${req.user.nom||''}`.trim() : 'Système']
+    );
+    // Mettre à jour les totaux de la session
+    if (sess.rows[0]) {
+      if (type === 'entree') {
+        await db("UPDATE caisse_sessions SET total_encaisse=total_encaisse+$1 WHERE id=$2", [montant, sess.rows[0].id]);
+      } else {
+        await db("UPDATE caisse_sessions SET total_decaisse=total_decaisse+$1 WHERE id=$2", [montant, sess.rows[0].id]);
+      }
+    }
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Journal des mouvements (clinique + propriétaire) ─────────────
+app.get('/api/caisse/journal', auth, async (req, res) => {
+  try {
+    const { debut, fin, type, categorie } = req.query;
+    let cid = req.user?.clinique_id || req.user?.proprietaire_clinique_id;
+    if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
+    let where = 'WHERE clinique_id=$1';
+    const params = [cid];
+    let idx = 2;
+    if (debut) { where += ` AND created_at >= $${idx++}`; params.push(debut); }
+    if (fin) { where += ` AND created_at <= $${idx++}`; params.push(fin + ' 23:59:59'); }
+    if (type) { where += ` AND type = $${idx++}`; params.push(type); }
+    if (categorie) { where += ` AND categorie = $${idx++}`; params.push(categorie); }
+    const r = await db(
+      `SELECT * FROM caisse_mouvements ${where} ORDER BY created_at DESC LIMIT 200`,
+      params
+    );
+    const totaux = await db(
+      `SELECT
+        SUM(montant) FILTER (WHERE type='entree') as total_entrees,
+        SUM(montant) FILTER (WHERE type='sortie') as total_sorties,
+        COUNT(*) FILTER (WHERE type='entree') as nb_entrees,
+        COUNT(*) FILTER (WHERE type='sortie') as nb_sorties
+       FROM caisse_mouvements ${where}`,
+      params
+    );
+    res.json({ success: true, data: r.rows, totaux: totaux.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Tableau de bord propriétaire ─────────────────────────────────
+app.get('/api/proprietaire/dashboard', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id || req.user?.proprietaire_clinique_id;
+    if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
+
+    // Infos clinique
+    const cl = await db('SELECT id, nom, ville, telephone FROM cliniques WHERE id=$1', [cid]);
+
+    // Caisse du jour
+    const caisse_jour = await db(
+      `SELECT
+        COALESCE(SUM(montant) FILTER (WHERE type='entree'), 0) as entrees_jour,
+        COALESCE(SUM(montant) FILTER (WHERE type='sortie'), 0) as sorties_jour,
+        COUNT(*) FILTER (WHERE type='entree') as nb_entrees,
+        COUNT(*) FILTER (WHERE type='sortie') as nb_sorties
+       FROM caisse_mouvements WHERE clinique_id=$1 AND DATE(created_at)=CURRENT_DATE`,
+      [cid]
+    );
+
+    // Caisse du mois
+    const caisse_mois = await db(
+      `SELECT
+        COALESCE(SUM(montant) FILTER (WHERE type='entree'), 0) as entrees_mois,
+        COALESCE(SUM(montant) FILTER (WHERE type='sortie'), 0) as sorties_mois,
+        COUNT(DISTINCT DATE(created_at)) as jours_actifs
+       FROM caisse_mouvements
+       WHERE clinique_id=$1 AND DATE_TRUNC('month', created_at)=DATE_TRUNC('month', CURRENT_DATE)`,
+      [cid]
+    );
+
+    // Évolution 7 derniers jours
+    const evolution = await db(
+      `SELECT
+        DATE(created_at) as jour,
+        SUM(montant) FILTER (WHERE type='entree') as entrees,
+        SUM(montant) FILTER (WHERE type='sortie') as sorties
+       FROM caisse_mouvements
+       WHERE clinique_id=$1 AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+       GROUP BY DATE(created_at) ORDER BY jour ASC`,
+      [cid]
+    );
+
+    // Consultations du jour
+    const consult_jour = await db(
+      `SELECT COUNT(*) as nb, COALESCE(SUM(montant_total),0) as revenu
+       FROM consultations WHERE clinique_id=$1 AND DATE(date_consultation)=CURRENT_DATE`,
+      [cid]
+    ).catch(() => ({ rows: [{ nb: 0, revenu: 0 }] }));
+
+    // Consultations du mois
+    const consult_mois = await db(
+      `SELECT COUNT(*) as nb, COALESCE(SUM(montant_total),0) as revenu
+       FROM consultations WHERE clinique_id=$1
+       AND DATE_TRUNC('month', date_consultation)=DATE_TRUNC('month', CURRENT_DATE)`,
+      [cid]
+    ).catch(() => ({ rows: [{ nb: 0, revenu: 0 }] }));
+
+    // Top catégories dépenses du mois
+    const top_depenses = await db(
+      `SELECT categorie, SUM(montant) as total, COUNT(*) as nb
+       FROM caisse_mouvements
+       WHERE clinique_id=$1 AND type='sortie'
+       AND DATE_TRUNC('month', created_at)=DATE_TRUNC('month', CURRENT_DATE)
+       GROUP BY categorie ORDER BY total DESC LIMIT 5`,
+      [cid]
+    );
+
+    // Top médecins par revenu du mois
+    const top_medecins = await db(
+      `SELECT medecin_nom, SUM(montant) as total, COUNT(*) as nb_actes
+       FROM caisse_mouvements
+       WHERE clinique_id=$1 AND type='entree' AND medecin_nom IS NOT NULL
+       AND DATE_TRUNC('month', created_at)=DATE_TRUNC('month', CURRENT_DATE)
+       GROUP BY medecin_nom ORDER BY total DESC LIMIT 5`,
+      [cid]
+    );
+
+    // Statut caisse actuelle
+    const caisse_statut = await db(
+      "SELECT * FROM caisse_sessions WHERE clinique_id=$1 AND date=CURRENT_DATE ORDER BY opened_at DESC LIMIT 1",
+      [cid]
+    );
+
+    // 10 derniers mouvements
+    const derniers = await db(
+      `SELECT * FROM caisse_mouvements WHERE clinique_id=$1 ORDER BY created_at DESC LIMIT 10`,
+      [cid]
+    );
+
+    const cj = caisse_jour.rows[0];
+    const cm = caisse_mois.rows[0];
+
+    res.json({
+      success: true,
+      data: {
+        clinique: cl.rows[0],
+        jour: {
+          entrees: parseFloat(cj.entrees_jour) || 0,
+          sorties: parseFloat(cj.sorties_jour) || 0,
+          solde: (parseFloat(cj.entrees_jour) || 0) - (parseFloat(cj.sorties_jour) || 0),
+          nb_entrees: parseInt(cj.nb_entrees) || 0,
+          nb_sorties: parseInt(cj.nb_sorties) || 0,
+        },
+        mois: {
+          entrees: parseFloat(cm.entrees_mois) || 0,
+          sorties: parseFloat(cm.sorties_mois) || 0,
+          solde: (parseFloat(cm.entrees_mois) || 0) - (parseFloat(cm.sorties_mois) || 0),
+          jours_actifs: parseInt(cm.jours_actifs) || 0,
+        },
+        consultations: {
+          jour: { nb: parseInt(consult_jour.rows[0].nb), revenu: parseFloat(consult_jour.rows[0].revenu) },
+          mois: { nb: parseInt(consult_mois.rows[0].nb), revenu: parseFloat(consult_mois.rows[0].revenu) },
+        },
+        evolution_7j: evolution.rows,
+        top_depenses: top_depenses.rows,
+        top_medecins: top_medecins.rows,
+        caisse_statut: caisse_statut.rows[0] || { statut: 'fermee' },
+        derniers_mouvements: derniers.rows,
+      }
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Résumé mensuel par email (pour les propriétaires absents) ─────
+app.get('/api/proprietaire/resume-mensuel', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id || req.user?.proprietaire_clinique_id;
+    const { mois, annee } = req.query;
+    const m = mois || new Date().getMonth() + 1;
+    const a = annee || new Date().getFullYear();
+
+    const r = await db(
+      `SELECT
+        SUM(montant) FILTER (WHERE type='entree') as total_entrees,
+        SUM(montant) FILTER (WHERE type='sortie') as total_sorties,
+        COUNT(*) FILTER (WHERE type='entree') as nb_entrees,
+        COUNT(*) FILTER (WHERE type='sortie') as nb_sorties,
+        MAX(montant) FILTER (WHERE type='entree') as plus_grosse_entree,
+        MAX(montant) FILTER (WHERE type='sortie') as plus_grosse_sortie,
+        COUNT(DISTINCT DATE(created_at)) as jours_actifs
+       FROM caisse_mouvements
+       WHERE clinique_id=$1
+       AND EXTRACT(MONTH FROM created_at)=$2
+       AND EXTRACT(YEAR FROM created_at)=$3`,
+      [cid, m, a]
+    );
+
+    const par_categorie = await db(
+      `SELECT categorie, type,
+        SUM(montant) as total, COUNT(*) as nb
+       FROM caisse_mouvements
+       WHERE clinique_id=$1
+       AND EXTRACT(MONTH FROM created_at)=$2
+       AND EXTRACT(YEAR FROM created_at)=$3
+       GROUP BY categorie, type ORDER BY total DESC`,
+      [cid, m, a]
+    );
+
+    const par_semaine = await db(
+      `SELECT
+        EXTRACT(WEEK FROM created_at) as semaine,
+        SUM(montant) FILTER (WHERE type='entree') as entrees,
+        SUM(montant) FILTER (WHERE type='sortie') as sorties
+       FROM caisse_mouvements
+       WHERE clinique_id=$1
+       AND EXTRACT(MONTH FROM created_at)=$2
+       AND EXTRACT(YEAR FROM created_at)=$3
+       GROUP BY semaine ORDER BY semaine`,
+      [cid, m, a]
+    );
+
+    const totaux = r.rows[0];
+    res.json({
+      success: true,
+      data: {
+        periode: { mois: m, annee: a },
+        totaux: {
+          entrees: parseFloat(totaux.total_entrees) || 0,
+          sorties: parseFloat(totaux.total_sorties) || 0,
+          solde_net: (parseFloat(totaux.total_entrees) || 0) - (parseFloat(totaux.total_sorties) || 0),
+          nb_entrees: parseInt(totaux.nb_entrees) || 0,
+          nb_sorties: parseInt(totaux.nb_sorties) || 0,
+          jours_actifs: parseInt(totaux.jours_actifs) || 0,
+        },
+        par_categorie: par_categorie.rows,
+        par_semaine: par_semaine.rows,
+      }
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
