@@ -2061,18 +2061,20 @@ function PageProprietaire(){
   const [tab, setTab] = React.useState('jour');
   const [journal, setJournal] = React.useState([]);
   const fmt = (n) => Number(n||0).toLocaleString('fr-CI');
-  const headers = { Authorization: `Bearer ${token}` };
 
   const fetchDashboard = async () => {
+    const headers = { Authorization: `Bearer ${token}` };
     try {
       const r = await fetch(`${BACKEND}/api/proprietaire/dashboard`, { headers });
       const d = await r.json();
       if (d.success) setData(d.data);
-    } catch(e) {}
+      else console.error('proprietaire dashboard error:', d.message);
+    } catch(e) { console.error('fetch error:', e); }
     setLoading(false);
   };
 
   const fetchJournal = async () => {
+    const headers = { Authorization: `Bearer ${token}` };
     try {
       const r = await fetch(`${BACKEND}/api/caisse/journal`, { headers });
       const d = await r.json();
