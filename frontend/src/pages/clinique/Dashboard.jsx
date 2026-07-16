@@ -215,6 +215,7 @@ function PageHome() {
     { icon:"🛡️", label:"Assurances",        path:"assurance",   color:C.teal,   stat:"Tiers-payant" },
     { icon:"📋", label:"Qualité & Docs",    path:"qualite",     color:C.purple, stat:"Politiques" },
     { icon:"📊", label:"Statistiques",      path:"stats",       color:C.green,  stat:"Rapports" },
+    { icon:"🚶", label:"File d'attente",     path:"file-attente",color:C.teal,   stat:"Accueil patients" },
   ];
 
   return (
@@ -1782,6 +1783,192 @@ function PageCaisse() {
 // ════════════════════════════════════════════════════════════════════
 //  ROUTER PRINCIPAL
 // ════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════
+//  FILE D'ATTENTE DIGITALISÉE
+// ══════════════════════════════════════════════════════════════════
+function PageFileAttente(){
+  const { user, token } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [tab, setTab] = React.useState('en_attente');
+  const [showQR, setShowQR] = React.useState(false);
+  const cliniqueId = user?.clinique_id;
+
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['file-attente', tab],
+    queryFn: async () => {
+      const r = await fetch(
+        `${BACKEND}/api/file-attente/liste?statut=${tab === 'tous' ? '' : tab}`,
+        { headers }
+      );
+      return r.json();
+    },
+    refetchInterval: 10000, // Auto-refresh toutes les 10 secondes
+  });
+
+  const { data: statsData } = useQuery({
+    queryKey: ['file-attente-stats'],
+    queryFn: async () => {
+      const r = await fetch(`${BACKEND}/api/file-attente/stats-jour`, { headers });
+      return r.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const updateStatut = async (id, action) => {
+    await fetch(`${BACKEND}/api/file-attente/${id}/${action}`, { method: 'PUT', headers });
+    queryClient.invalidateQueries(['file-attente']);
+    queryClient.invalidateQueries(['file-attente-stats']);
+  };
+
+  const liste = data?.data || [];
+  const stats = statsData?.data || {};
+  const scanUrl = `https://manager.mediconnect4africa.cloud/scan-accueil?clinique_id=${cliniqueId}`;
+
+  const STATUT_COLOR = {
+    en_attente: { bg: 'rgba(245,158,11,.15)', color: '#F59E0B', label: 'En attente' },
+    appele:     { bg: 'rgba(59,130,246,.15)',  color: '#3B82F6', label: 'Appelé' },
+    en_consultation: { bg: 'rgba(10,143,88,.15)', color: C.green, label: 'En consultation' },
+    termine:    { bg: 'rgba(107,114,128,.15)', color: C.muted, label: 'Terminé' },
+    annule:     { bg: 'rgba(239,68,68,.15)',   color: C.red,   label: 'Annulé' },
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>🚶 File d'attente</h2>
+          <p style={{fontSize:13,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>refetch()} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
+          <button onClick={()=>setShowQR(true)} style={{padding:'8px 16px',background:C.teal,border:'none',borderRadius:8,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📱 QR Code accueil</button>
+        </div>
+      </div>
+
+      {/* Stats du jour */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          { label:'En attente', val:stats.en_attente||0, color:'#F59E0B' },
+          { label:'Appelés',    val:stats.appele||0,     color:'#3B82F6' },
+          { label:'En consul.', val:stats.en_consultation||0, color:C.green },
+          { label:'Terminés',   val:stats.termine||0,    color:C.muted },
+          { label:'Total',      val:stats.total||0,      color:C.text },
+        ].map(s=>(
+          <div key={s.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
+            <div style={{fontSize:24,fontWeight:700,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Onglets */}
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+        {[
+          {key:'en_attente',label:'En attente'},
+          {key:'appele',label:'Appelés'},
+          {key:'en_consultation',label:'En consultation'},
+          {key:'termine',label:'Terminés'},
+          {key:'tous',label:'Tous'},
+        ].map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)} style={{
+            padding:'7px 16px',borderRadius:20,fontSize:13,fontWeight:tab===t.key?700:400,
+            border:`1px solid ${tab===t.key?C.teal:C.border}`,
+            background:tab===t.key?'rgba(13,148,136,.15)':'transparent',
+            color:tab===t.key?C.teal:C.muted,cursor:'pointer',fontFamily:'inherit'
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* Liste */}
+      {isLoading ? <Loader/> : liste.length===0 ? (
+        <div style={{textAlign:'center',padding:'3rem',color:C.muted}}>
+          <div style={{fontSize:40,marginBottom:12}}>🚶</div>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>File d'attente vide</div>
+          <div style={{fontSize:13}}>Les patients apparaîtront ici après avoir scanné le QR Code d'accueil</div>
+        </div>
+      ) : (
+        <div style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:14,overflow:'hidden'}}>
+          {/* Header tableau */}
+          <div style={{display:'grid',gridTemplateColumns:'60px 1fr 1fr 1fr 120px 200px',gap:8,padding:'10px 16px',borderBottom:`1px solid ${C.border}`,fontSize:11,fontWeight:700,color:C.dim,textTransform:'uppercase',letterSpacing:'.5px'}}>
+            <span>Rang</span><span>Patient</span><span>Médecin</span><span>Heure scan</span><span>Statut</span><span>Actions</span>
+          </div>
+          {liste.map((e,i)=>(
+            <div key={e.id} style={{
+              display:'grid',gridTemplateColumns:'60px 1fr 1fr 1fr 120px 200px',
+              gap:8,padding:'12px 16px',
+              borderBottom:i<liste.length-1?`1px solid ${C.border}`:'none',
+              alignItems:'center',
+              background:i%2===0?'transparent':'rgba(255,255,255,.01)'
+            }}>
+              <div style={{width:36,height:36,borderRadius:8,background:'rgba(13,148,136,.15)',border:`1px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:C.teal}}>{e.rang}</div>
+              <div>
+                <div style={{fontWeight:600,fontSize:14,color:C.text}}>{e.patient_nom}</div>
+                {e.patient_telephone&&<div style={{fontSize:11,color:C.dim,marginTop:2}}>{e.patient_telephone}</div>}
+              </div>
+              <div style={{fontSize:13,color:C.muted}}>{e.medecin_nom||'Non assigné'}</div>
+              <div style={{fontSize:12,color:C.dim}}>
+                {e.heure_scan ? new Date(e.heure_scan).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'}) : '—'}
+              </div>
+              <div>
+                <span style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:20,
+                  background:STATUT_COLOR[e.statut]?.bg,color:STATUT_COLOR[e.statut]?.color}}>
+                  {STATUT_COLOR[e.statut]?.label||e.statut}
+                </span>
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                {e.statut==='en_attente'&&(
+                  <button onClick={()=>updateStatut(e.id,'appeler')} style={{flex:1,padding:'6px 0',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:7,color:'#3B82F6',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                    📣 Appeler
+                  </button>
+                )}
+                {e.statut==='appele'&&(
+                  <button onClick={()=>updateStatut(e.id,'consultation')} style={{flex:1,padding:'6px 0',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:7,color:C.green,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                    🩺 Entré
+                  </button>
+                )}
+                {e.statut==='en_consultation'&&(
+                  <button onClick={()=>updateStatut(e.id,'terminer')} style={{flex:1,padding:'6px 0',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:7,color:C.muted,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                    ✓ Terminé
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal QR Code */}
+      {showQR&&(
+        <Modal open={showQR} onClose={()=>setShowQR(false)} title="QR Code d'accueil — À imprimer et afficher">
+          <div style={{textAlign:'center',padding:'1rem'}}>
+            <p style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.7}}>
+              Imprimez et affichez ce QR Code à l'accueil de votre clinique.<br/>
+              Les patients le scannent avec leur application MediConnect pour rejoindre la file d'attente.
+            </p>
+            <div style={{background:'#fff',borderRadius:12,padding:20,display:'inline-block',marginBottom:16}}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(scanUrl)}&color=065F3C&bgcolor=ffffff`}
+                alt="QR Code file attente"
+                style={{width:200,height:200,display:'block'}}
+              />
+            </div>
+            <div style={{background:C.input,borderRadius:8,padding:'10px 14px',marginBottom:16}}>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>URL de scan :</div>
+              <div style={{fontSize:12,color:C.text,fontFamily:'monospace',wordBreak:'break-all'}}>{scanUrl}</div>
+            </div>
+            <button onClick={()=>window.print()} style={{padding:'10px 24px',background:C.green,border:'none',borderRadius:8,color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
+              🖨️ Imprimer le QR Code
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   return (
     <Routes>
@@ -1795,6 +1982,7 @@ export default function Dashboard() {
       <Route path="stock"        element={<PageStock />} />
       <Route path="assurance"    element={<PageAssurance />} />
       <Route path="dossiers-ass" element={<PageAssurance />} />
+      <Route path="file-attente"  element={<PageFileAttente />} />
       <Route path="qualite"      element={<PageQualite />} />
       <Route path="stats"        element={<PageStats />} />
       <Route path="*"            element={<PageHome />} />
