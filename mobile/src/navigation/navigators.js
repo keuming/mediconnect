@@ -21,6 +21,7 @@ import PatientPharmacie   from '../screens/patient/PharmacieScreen';
 import PatientCmdForm     from '../screens/patient/CommandeFormScreen';
 import ClinicDetail       from '../screens/patient/ClinicDetailScreen';
 import MediConnectCard    from '../screens/patient/MediConnectCardScreen';
+import FileAttente       from '../screens/patient/FileAttenteScreen';
 import { DossierScreen, PlusScreen } from '../screens/patient/DossierPlusScreens';
 
 // ── Livreur screens ───────────────────────────────────────────────
@@ -93,6 +94,7 @@ function PlusStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="PlusMain"     component={PlusScreen} />
       <Stack.Screen name="Card"         component={MediConnectCard} />
+      <Stack.Screen name="FileAttente"   component={FileAttente} options={{title:'File d\'attente'}} />
       <Stack.Screen name="Dossier"      component={DossierScreen} />
       <Stack.Screen name="Ordonnances"  component={PatientRdv} />
       <Stack.Screen name="Consultations"component={PatientRdv} />
