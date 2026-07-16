@@ -216,6 +216,7 @@ function PageHome() {
     { icon:"📋", label:"Qualité & Docs",    path:"qualite",     color:C.purple, stat:"Politiques" },
     { icon:"📊", label:"Statistiques",      path:"stats",       color:C.green,  stat:"Rapports" },
     { icon:"🚶", label:"File d'attente",     path:"file-attente",color:C.teal,   stat:"Accueil patients" },
+    { icon:"👁️", label:"Vue Propriétaire",   path:"proprietaire", color:C.amber,  stat:"Surveillance financière" },
     { icon:"🩺", label:"Ma file (Médecin)",  path:"file-medecin", color:C.green,  stat:"Mes patients" },
   ];
 
@@ -1985,6 +1986,7 @@ export default function Dashboard() {
       <Route path="dossiers-ass" element={<PageAssurance />} />
       <Route path="file-attente"  element={<PageFileAttente />} />
       <Route path="file-medecin"  element={<PageFileAttenteMedecinClinique />} />
+      <Route path="proprietaire"  element={<PageProprietaire />} />
       <Route path="qualite"      element={<PageQualite />} />
       <Route path="stats"        element={<PageStats />} />
       <Route path="*"            element={<PageHome />} />
