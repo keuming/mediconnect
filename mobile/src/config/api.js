@@ -99,7 +99,7 @@ export const PharmacieAPI = {
 // ══════════════════════════════════════════════════════════════════
 // API MÉDECIN CONSEIL / RÉSIDENT
 // ══════════════════════════════════════════════════════════════════
-export const PatientAPI = {
+export const PatientAPIv2 = {
   monProfil:        ()  => apiCall('/utilisateurs/me'),
   monDossier:       ()  => apiCall('/patients/me'),
   miseAJourDossier: (id,d) => apiCall(`/patients/${id}`, { method:'PUT', body:JSON.stringify(d) }),

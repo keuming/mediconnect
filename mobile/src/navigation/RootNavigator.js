@@ -3,15 +3,20 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { useAuthStore } from '../store/authStore';
 import LoginScreen from '../screens/auth/LoginScreen';
 import PatientNavigator  from './PatientNavigator';
+import { MedecinNavigator } from './navigators';
 import LivreurNavigator  from './LivreurNavigator';
 import PharmaNavigator   from './PharmaNavigator';
 
 const Stack = createStackNavigator();
 
 const ROLE_NAV = {
-  patient:   'Patient',
-  pharmacie: 'Pharmacie',
-  livreur:   'Livreur',
+  patient:              'Patient',
+  pharmacie:            'Pharmacie',
+  livreur:              'Livreur',
+  medecin:              'Medecin',
+  medecin_independant:  'Medecin',
+  medecin_conseil:      'Medecin',
+  medecin_prive:        'Medecin',
 };
 
 export default function RootNavigator() {
@@ -28,6 +33,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Patient"  component={PatientNavigator} />
           <Stack.Screen name="Livreur"  component={LivreurNavigator} />
           <Stack.Screen name="Pharmacie" component={PharmaNavigator} />
+          <Stack.Screen name="Medecin"   component={MedecinNavigator} />
         </>
       )}
     </Stack.Navigator>

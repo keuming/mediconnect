@@ -153,7 +153,7 @@ export default function FileAttenteScreen({ navigation, route }) {
         </Text>
         <TouchableOpacity
           style={[s.btn, {marginTop:24}]}
-          onPress={() => navigation?.navigate?.('QRScanner', { mode: 'file-attente' })}
+          onPress={() => Alert.alert('Scanner QR Code', 'Pointez votre téléphone vers le QR Code affiché à l\'accueil de la clinique MediConnect.', [{text: 'OK'}])}
         >
           <Text style={s.btnText}>📷 Scanner le QR Code</Text>
         </TouchableOpacity>

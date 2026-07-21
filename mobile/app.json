@@ -8,12 +8,15 @@
     "scheme": "mediconnect",
     "backgroundColor": "#060E18",
     "splash": {
-      "backgroundColor": "#060E18"
+      "backgroundColor": "#060E18",
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain"
     },
     "android": {
       "package": "cloud.mediconnect4africa",
       "adaptiveIcon": {
-        "backgroundColor": "#0A8F58"
+        "backgroundColor": "#0A8F58",
+        "foregroundImage": "./assets/adaptive-icon.png"
       },
       "permissions": [
         "INTERNET",
@@ -23,7 +26,8 @@
         "WRITE_EXTERNAL_STORAGE"
       ],
       "usesCleartextTraffic": false,
-      "kotlinVersion": "2.1.20"
+      "kotlinVersion": "2.1.20",
+      "versionCode": 4
     },
     "ios": {
       "bundleIdentifier": "cloud.mediconnect4africa"
@@ -44,6 +48,7 @@
           }
         }
       ]
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }

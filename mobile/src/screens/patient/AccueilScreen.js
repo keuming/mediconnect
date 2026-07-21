@@ -777,7 +777,7 @@ export default function PatientAccueil({ navigation }) {
   const aUneCarte    = !!carteData;
   const membres      = familleData || [];
 
-  const const MODULES = [
+  const MODULES = [
     { icon: '📅', label: 'Prendre RDV',       color: C.green,  action: () => navigation.navigate('Mes RDV', { screen: 'RdvForm' }) },
     { icon: '🔍', label: 'Par spécialité',    color: '#7C3AED',action: () => navigation.navigate('RechercheSpecialite') },
     { icon: '🏥', label: 'Cliniques',          color: C.blue,   action: () => navigation.navigate('Plus') },
