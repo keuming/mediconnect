@@ -25,7 +25,6 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "usesCleartextTraffic": false,
       "versionCode": 4
     },
     "ios": {
@@ -43,7 +42,8 @@
         "expo-build-properties",
         {
           "android": {
-            "kotlinVersion": "2.1.20"
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
           }
         }
       ]
