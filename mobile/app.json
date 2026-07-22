@@ -2,7 +2,7 @@
   "expo": {
     "name": "MediConnect Africa",
     "slug": "mediconnect-africa",
-    "version": "3.0.0",
+    "version": "1.0.0",
     "sdkVersion": "54.0.0",
     "orientation": "portrait",
     "scheme": "mediconnect",
@@ -25,7 +25,7 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ],
-      "versionCode": 4
+      "versionCode": 1
     },
     "ios": {
       "bundleIdentifier": "cloud.mediconnect4africa"
@@ -42,7 +42,10 @@
         "expo-build-properties",
         {
           "android": {
-            "kotlinVersion": "2.1.20"
+            "kotlinVersion": "2.1.20",
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
           }
         }
       ]
