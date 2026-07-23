@@ -3,7 +3,7 @@
     "name": "MediConnect Africa",
     "slug": "mediconnect-africa",
     "version": "1.0.0",
-    "sdkVersion": "54.0.0",
+    "sdkVersion": "53.0.0",
     "orientation": "portrait",
     "scheme": "mediconnect",
     "backgroundColor": "#060E18",
@@ -44,8 +44,7 @@
           "android": {
             "kotlinVersion": "2.1.20",
             "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
-            "buildToolsVersion": "35.0.0"
+            "targetSdkVersion": 35
           }
         }
       ]
