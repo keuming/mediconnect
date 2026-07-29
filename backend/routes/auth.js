@@ -63,7 +63,9 @@ router.post('/login-patient', async (req, res) => {
 
 // ── POST /api/auth/register (tous profils) ────────────────────────
 router.post('/register', async (req, res) => {
-  const { email, password, prenom, nom, role, telephone, pays_code, ville } = req.body;
+  const { email, password, prenom, nom, role, telephone, pays_code, ville,
+          // Champs spécifiques clinique
+          nom_clinique, adresse, specialites, nombre_lits } = req.body;
   if (!email || !password)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
   try {
@@ -71,15 +73,97 @@ router.post('/register', async (req, res) => {
     if (exists.rows.length)
       return res.status(409).json({ success: false, message: 'Email déjà utilisé' });
     const hash = await bcrypt.hash(password, 10);
-    const id = uuid();
+    const userId = uuid();
+    const roleVal = role || 'patient';
+
+    // 1. Créer l'utilisateur
     const r = await db(
       'INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,pays_code,ville) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [id, email, hash, prenom||'', nom||'', role||'patient', telephone||null, pays_code||'CI', ville||null]
+      [userId, email, hash, prenom||'', nom||'', roleVal, telephone||null, pays_code||'CI', ville||null]
     );
-    const token = jwt.sign({ id, role: role||'patient' }, JWT_SECRET, { expiresIn: '7d' });
+
+    let clinique_id = null;
+    let pharmacie_id = null;
+    let labo_id = null;
+    let imagerie_id = null;
+    let optique_id = null;
+    let assureur_id = null;
+
+    // 2. Créer l'entrée dans la table métier selon le rôle
+    if (roleVal === 'clinique') {
+      const cid = uuid();
+      await db(
+        `INSERT INTO cliniques (id, nom, adresse, ville, telephone, email, user_id, specialites, nombre_lits)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT DO NOTHING`,
+        [cid, nom_clinique||nom||prenom||'Clinique', adresse||null, ville||null,
+         telephone||null, email, userId, specialites||null, nombre_lits||null]
+      );
+      // Lier clinique_id à l'utilisateur
+      await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [cid, userId]);
+      clinique_id = cid;
+
+    } else if (roleVal === 'pharmacie') {
+      const pid = uuid();
+      await db(
+        `INSERT INTO pharmacies (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [pid, nom||prenom||'Pharmacie', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      pharmacie_id = pid;
+
+    } else if (roleVal === 'laboratoire') {
+      const lid = uuid();
+      await db(
+        `INSERT INTO laboratoires (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [lid, nom||prenom||'Laboratoire', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      labo_id = lid;
+
+    } else if (roleVal === 'imagerie') {
+      const iid = uuid();
+      await db(
+        `INSERT INTO imageries (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [iid, nom||prenom||'Imagerie', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      imagerie_id = iid;
+
+    } else if (roleVal === 'optique') {
+      const oid = uuid();
+      await db(
+        `INSERT INTO cabinets_optiques (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [oid, nom||prenom||'Cabinet Optique', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      optique_id = oid;
+
+    } else if (roleVal === 'assureur') {
+      const aid = uuid();
+      await db(
+        `INSERT INTO assureurs (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [aid, nom||prenom||'Assureur', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      assureur_id = aid;
+    }
+
+    // 3. Générer le token avec clinique_id inclus
+    const tokenPayload = { id: userId, role: roleVal, clinique_id };
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+
     const { password: _, ...u } = r.rows[0];
-    res.status(201).json({ success: true, token, user: u });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+    res.status(201).json({
+      success: true,
+      token,
+      user: { ...u, clinique_id },
+      message: `Compte ${roleVal} créé avec succès`
+    });
+  } catch(e) {
+    console.error('register error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 // ── POST /api/auth/register-patient ──────────────────────────────
