@@ -971,6 +971,22 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
   const [heureRdv,setHeureRdv]=useState("09:00");
   const [motif,setMotif]=useState("");
   const [assurance,setAssurance]=useState("");
+  const [slotSelectionne,setSlotSelectionne]=useState(null);
+
+  const {data:dispoData,isLoading:ldDispo}=useQuery({
+    queryKey:["pub-dispo",cliniqueId,medecin?.id],
+    queryFn:async()=>{
+      if(!cliniqueId && !medecin?.id) return {semaine:[]};
+      const params = new URLSearchParams();
+      if(cliniqueId) params.append('clinique_id',cliniqueId);
+      if(medecin?.id) params.append('medecin_id',medecin.id);
+      const r = await fetch(`${BACKEND}/api/planning/public/semaine?${params}`);
+      return r.json();
+    },
+    enabled:step===4,
+    staleTime:30000,
+  });
+  const semaine = dispoData?.semaine || [];
 
   // Invalider le cache cliniques à chaque ouverture du formulaire
   React.useEffect(()=>{
@@ -1177,8 +1193,77 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
         <button onClick={()=>setStep(estMI?22:3)} style={{background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Changer</button>
       </div>
       <Grid cols={2} gap={12}>
-        <Inp label="Date *" type="date" required value={dateRdv} onChange={e=>setDateRdv(e.target.value)}/>
-        <Inp label="Heure *" type="time" required value={heureRdv} onChange={e=>setHeureRdv(e.target.value)}/>
+        {/* Calendrier disponibilités */}
+        {ldDispo ? <Loader/> : semaine.length>0 ? (
+          <div>
+            <p style={{fontSize:13,color:C.muted,marginBottom:12}}>Sélectionnez un créneau disponible :</p>
+            {semaine.map(jour=>(
+              <div key={jour.date} style={{marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:700,color:C.dim,marginBottom:6,textTransform:'uppercase',letterSpacing:'.5px'}}>
+                  {jour.jour} {new Date(jour.date+'T00:00:00').toLocaleDateString('fr-CI',{day:'numeric',month:'long'})}
+                </div>
+                {jour.creneaux.length===0
+                  ? <div style={{fontSize:12,color:C.dim,fontStyle:'italic',paddingLeft:8}}>Aucun créneau</div>
+                  : <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      {jour.creneaux.filter(c=>!c.est_reserve).map(c=>{
+                        const sel = slotSelectionne?.id===c.id;
+                        return (
+                          <button key={c.id} onClick={()=>{
+                            setSlotSelectionne(c);
+                            setDateRdv(jour.date);
+                            setHeureRdv(c.heure_debut.slice(0,5));
+                            if(c.medecin_id && !medecin) setMedecin({id:c.medecin_id,prenom:c.medecin_prenom,nom:c.medecin_nom,specialite:c.specialite});
+                          }} style={{
+                            padding:'6px 12px',borderRadius:8,fontSize:13,fontWeight:sel?700:400,
+                            border:`1.5px solid ${sel?C.green:C.border}`,
+                            background:sel?'rgba(10,143,88,.15)':'transparent',
+                            color:sel?C.green:C.text,cursor:'pointer',fontFamily:'inherit'
+                          }}>
+                            {c.heure_debut.slice(0,5)}
+                            {c.medecin_nom&&<span style={{fontSize:11,color:sel?C.green:C.muted,marginLeft:4}}>· Dr.{c.medecin_nom}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                }
+              </div>
+            ))}
+            {slotSelectionne&&(
+              <div style={{background:'rgba(10,143,88,.08)',border:`1px solid rgba(10,143,88,.25)`,borderRadius:8,padding:'10px 14px',marginTop:8}}>
+                <p style={{fontSize:13,color:C.green,fontWeight:700}}>
+                  Créneau sélectionné : {new Date(dateRdv+'T00:00:00').toLocaleDateString('fr-CI',{weekday:'long',day:'numeric',month:'long'})} à {heureRdv}
+                  {slotSelectionne.medecin_nom&&` — Dr. ${slotSelectionne.medecin_prenom} ${slotSelectionne.medecin_nom}`}
+                </p>
+              </div>
+            )}
+            <div style={{marginTop:14,display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div>
+                <label style={{fontSize:11,color:C.muted,display:'block',marginBottom:4}}>OU SAISIR UNE DATE</label>
+                <input type="date" value={dateRdv} onChange={e=>{setDateRdv(e.target.value);setSlotSelectionne(null);}} style={{width:'100%',padding:'9px 12px',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none'}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,color:C.muted,display:'block',marginBottom:4}}>HEURE</label>
+                <input type="time" value={heureRdv} onChange={e=>{setHeureRdv(e.target.value);setSlotSelectionne(null);}} style={{width:'100%',padding:'9px 12px',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none'}}/>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.2)',borderRadius:8,padding:'10px 14px',marginBottom:14}}>
+              <p style={{fontSize:12,color:C.amber}}>Aucun créneau publié pour cette semaine. Saisissez manuellement :</p>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div>
+                <label style={{fontSize:11,color:C.muted,display:'block',marginBottom:4}}>DATE *</label>
+                <input type="date" value={dateRdv} onChange={e=>setDateRdv(e.target.value)} style={{width:'100%',padding:'9px 12px',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none'}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,color:C.muted,display:'block',marginBottom:4}}>HEURE *</label>
+                <input type="time" value={heureRdv} onChange={e=>setHeureRdv(e.target.value)} style={{width:'100%',padding:'9px 12px',background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none'}}/>
+              </div>
+            </div>
+          </div>
+        )}
       </Grid>
       <Inp label="Motif" value={motif} onChange={e=>setMotif(e.target.value)} placeholder="Consultation, suivi, douleurs…"/>
       <Sel label="Assurance" value={assurance} onChange={e=>setAssurance(e.target.value)}
