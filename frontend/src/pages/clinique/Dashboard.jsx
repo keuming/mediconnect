@@ -217,6 +217,7 @@ function PageHome() {
     { icon:"📊", label:"Statistiques",      path:"stats",       color:C.green,  stat:"Rapports" },
     { icon:"🚶", label:"File d'attente",     path:"file-attente",color:C.teal,   stat:"Accueil patients" },
     { icon:"👁️", label:"Vue Propriétaire",   path:"proprietaire", color:C.amber,  stat:"Surveillance financière" },
+    { icon:"🏥", label:"Profil & Logo",       path:"profil-logo",  color:C.purple, stat:"Identité visuelle" },
     { icon:"🩺", label:"Ma file (Médecin)",  path:"file-medecin", color:C.green,  stat:"Mes patients" },
   ];
 
@@ -2244,6 +2245,7 @@ export default function Dashboard() {
       <Route path="file-attente"  element={<PageFileAttente />} />
       <Route path="file-medecin"  element={<PageFileAttenteMedecinClinique />} />
       <Route path="proprietaire"  element={<PageProprietaire />} />
+      <Route path="profil-logo"   element={<PageProfilLogo />} />
       <Route path="qualite"      element={<PageQualite />} />
       <Route path="stats"        element={<PageStats />} />
       <Route path="*"            element={<PageHome />} />
