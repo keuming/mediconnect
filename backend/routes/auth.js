@@ -93,11 +93,11 @@ router.post('/register', async (req, res) => {
     if (roleVal === 'clinique') {
       const cid = uuid();
       await db(
-        `INSERT INTO cliniques (id, nom, adresse, ville, telephone, email, user_id, specialites, nombre_lits)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `INSERT INTO cliniques (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT DO NOTHING`,
         [cid, nom_clinique||nom||prenom||'Clinique', adresse||null, ville||null,
-         telephone||null, email, userId, specialites||null, nombre_lits||null]
+         telephone||null, email, userId]
       );
       // Lier clinique_id à l'utilisateur
       await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [cid, userId]);
