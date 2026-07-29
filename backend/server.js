@@ -1696,6 +1696,66 @@ app.get('/api/public/clinique/:id/logo', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+
+// ── PATCH /api/rendez-vous/:id/confirmer ─────────────────────────
+app.patch('/api/rendez-vous/:id/confirmer', auth, async (req, res) => {
+  try {
+    const r = await db(
+      "UPDATE rendez_vous SET statut='confirme', updated_at=NOW() WHERE id=$1 RETURNING *",
+      [req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ success:false, message:'RDV non trouvé' });
+    res.json({ success:true, data:r.rows[0], message:'RDV confirmé' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── PATCH /api/rendez-vous/:id/statut ────────────────────────────
+app.patch('/api/rendez-vous/:id/statut', auth, async (req, res) => {
+  const { statut } = req.body;
+  const STATUTS = ['en_attente','confirme','annule','termine','reporte'];
+  if (!statut || !STATUTS.includes(statut))
+    return res.status(400).json({ success:false, message:'Statut invalide. Valeurs: '+STATUTS.join(', ') });
+  try {
+    const r = await db(
+      'UPDATE rendez_vous SET statut=$1, updated_at=NOW() WHERE id=$2 RETURNING *',
+      [statut, req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ success:false, message:'RDV non trouvé' });
+    res.json({ success:true, data:r.rows[0], message:`Statut mis à jour: ${statut}` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── GET /api/rendez-vous/patient/:patient_id ──────────────────────
+app.get('/api/rendez-vous/patient/:patient_id', auth, async (req, res) => {
+  try {
+    const r = await db(
+      `SELECT * FROM rendez_vous WHERE patient_id=$1 ORDER BY date_rdv DESC, heure_rdv DESC LIMIT 50`,
+      [req.params.patient_id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── GET /api/rendez-vous/stats ────────────────────────────────────
+app.get('/api/rendez-vous/stats', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    if (!cid) return res.status(400).json({ success:false, message:'clinique_id requis' });
+    const r = await db(
+      `SELECT
+        COUNT(*) FILTER (WHERE date_rdv = CURRENT_DATE) as rdv_aujourd_hui,
+        COUNT(*) FILTER (WHERE date_rdv = CURRENT_DATE AND statut='confirme') as confirmes_aujourd_hui,
+        COUNT(*) FILTER (WHERE date_rdv = CURRENT_DATE AND statut='en_attente') as en_attente_aujourd_hui,
+        COUNT(*) FILTER (WHERE date_rdv >= DATE_TRUNC('month', CURRENT_DATE)) as rdv_ce_mois,
+        COUNT(*) FILTER (WHERE statut='annule' AND date_rdv >= CURRENT_DATE - INTERVAL '30 days') as annules_30j,
+        COUNT(*) FILTER (WHERE date_rdv > CURRENT_DATE) as rdv_futurs
+       FROM rendez_vous WHERE clinique_id=$1`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
