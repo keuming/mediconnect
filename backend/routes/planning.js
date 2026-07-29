@@ -112,4 +112,112 @@ router.get('/mes-cliniques', auth, async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
+
+// ── GET /api/planning/public/disponibilites ───────────────────────
+// Route publique — patient voit les créneaux disponibles d'une clinique
+router.get('/public/disponibilites', async (req, res) => {
+  try {
+    const { clinique_id, medecin_id, date_debut, date_fin } = req.query;
+    if (!clinique_id && !medecin_id)
+      return res.status(400).json({ success:false, message:'clinique_id ou medecin_id requis' });
+
+    const debut = date_debut || new Date().toISOString().split('T')[0];
+    const fin   = date_fin   || new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0];
+
+    let where = "d.date >= $1 AND d.date <= $2 AND d.statut='disponible'";
+    const params = [debut, fin];
+    let idx = 3;
+
+    if (clinique_id) { where += ` AND d.clinique_id=$${idx++}`; params.push(clinique_id); }
+    if (medecin_id)  { where += ` AND d.medecin_id=$${idx++}`; params.push(medecin_id); }
+
+    const r = await db(`
+      SELECT
+        d.id, d.date, d.heure_debut, d.heure_fin, d.statut, d.recurrent,
+        d.medecin_id, d.clinique_id,
+        m.prenom as medecin_prenom, m.nom as medecin_nom, m.specialite,
+        c.nom as clinique_nom, c.adresse as clinique_adresse, c.ville as clinique_ville,
+        CASE WHEN rv.id IS NOT NULL THEN true ELSE false END as est_reserve
+      FROM disponibilites d
+      LEFT JOIN medecins m ON m.id = d.medecin_id
+      LEFT JOIN cliniques c ON c.id = d.clinique_id
+      LEFT JOIN rendez_vous rv
+        ON rv.medecin_id = d.medecin_id
+        AND rv.date_rdv = d.date
+        AND rv.heure_rdv = d.heure_debut
+        AND rv.statut NOT IN ('annule')
+      WHERE ${where}
+      ORDER BY d.date ASC, d.heure_debut ASC
+      LIMIT 200
+    `, params);
+
+    // Grouper par date pour faciliter l'affichage calendrier
+    const byDate = {};
+    r.rows.forEach(slot => {
+      const key = slot.date.toISOString ? slot.date.toISOString().split('T')[0] : slot.date;
+      if (!byDate[key]) byDate[key] = [];
+      byDate[key].push(slot);
+    });
+
+    res.json({
+      success: true,
+      data: r.rows,
+      by_date: byDate,
+      total: r.rows.length
+    });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── GET /api/planning/public/semaine ─────────────────────────────
+// Disponibilités de la semaine courante par clinique
+router.get('/public/semaine', async (req, res) => {
+  try {
+    const { clinique_id } = req.query;
+    if (!clinique_id) return res.status(400).json({ success:false, message:'clinique_id requis' });
+
+    const today = new Date();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - today.getDay() + 1);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const debut = monday.toISOString().split('T')[0];
+    const fin   = sunday.toISOString().split('T')[0];
+
+    const r = await db(`
+      SELECT
+        d.id, d.date, d.heure_debut, d.heure_fin, d.statut,
+        d.medecin_id, d.clinique_id,
+        m.prenom as medecin_prenom, m.nom as medecin_nom, m.specialite,
+        CASE WHEN rv.id IS NOT NULL THEN true ELSE false END as est_reserve
+      FROM disponibilites d
+      LEFT JOIN medecins m ON m.id = d.medecin_id
+      LEFT JOIN rendez_vous rv
+        ON rv.medecin_id = d.medecin_id
+        AND rv.date_rdv = d.date
+        AND rv.heure_rdv = d.heure_debut
+        AND rv.statut NOT IN ('annule')
+      WHERE d.clinique_id=$1
+        AND d.date >= $2 AND d.date <= $3
+        AND d.statut='disponible'
+      ORDER BY d.date, d.heure_debut
+    `, [clinique_id, debut, fin]);
+
+    const jours = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+    const semaine = {};
+    for (let i=0; i<7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate()+i);
+      const key = d.toISOString().split('T')[0];
+      semaine[key] = { jour:jours[i], date:key, creneaux:[] };
+    }
+    r.rows.forEach(slot => {
+      const key = slot.date.toISOString ? slot.date.toISOString().split('T')[0] : slot.date;
+      if (semaine[key]) semaine[key].creneaux.push(slot);
+    });
+
+    res.json({ success:true, semaine: Object.values(semaine) });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 module.exports = router;
