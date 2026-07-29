@@ -1070,26 +1070,27 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
         <span>🏥</span><span style={{fontSize:12,color:C.teal,fontWeight:600}}>Médecin de clinique</span>
         <button onClick={()=>setStep(1)} style={{marginLeft:"auto",background:"none",border:"none",color:C.teal,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>← Changer</button>
       </div>
-      {ldCl?<Loader/>:cliniques.length===0?<div style={{textAlign:"center",padding:"24px 16px",color:C.dim}}>
-            <div style={{fontSize:32,marginBottom:10}}>⚠️</div>
-            <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:6}}>Aucune clinique disponible</div>
-            <div style={{fontSize:12,color:C.dim,marginBottom:12}}>La connexion au serveur peut être momentanément indisponible.</div>
-            <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
-              <button onClick={()=>{qc.invalidateQueries(["pub-cliniques"]);qc.refetchQueries(["pub-cliniques"]);}} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Réessayer</button>
-              <button onClick={()=>window.open("https://mediconnect-backend-v2.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
-            </div>
-          </div>:(
-        <input
-          value={searchClinique}
-          onChange={e=>setSearchClinique(e.target.value)}
-          placeholder="🔍 Rechercher une clinique par nom ou ville..."
-          style={{width:"100%",padding:"10px 12px",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none",marginBottom:12,boxSizing:"border-box"}}
-          autoFocus
-        />
+      <input
+        value={searchClinique}
+        onChange={e=>setSearchClinique(e.target.value)}
+        placeholder="🔍 Rechercher une clinique par nom ou ville..."
+        style={{width:"100%",padding:"10px 12px",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none",marginBottom:12,boxSizing:"border-box"}}
+        autoFocus
+      />
+      {ldCl ? <Loader/> : cliniques.length===0 ? (
+        <div style={{textAlign:"center",padding:"24px 16px",color:C.dim}}>
+          <div style={{fontSize:32,marginBottom:10}}>⚠️</div>
+          <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:6}}>Aucune clinique disponible</div>
+          <div style={{fontSize:12,color:C.dim,marginBottom:12}}>La connexion au serveur peut être momentanément indisponible.</div>
+          <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+            <button onClick={()=>{qc.invalidateQueries(["pub-cliniques"]);qc.refetchQueries(["pub-cliniques"]);}} style={{background:C.green,border:"none",borderRadius:8,padding:"8px 14px",color:"#fff",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>🔄 Réessayer</button>
+          </div>
+        </div>
+      ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
           {cliniques.filter(cl=>!searchClinique||`${cl.nom||""} ${cl.ville||""}`.toLowerCase().includes(searchClinique.toLowerCase())).map(cl=>(
             <button key={cl.id} onClick={()=>{setCliniqueId(cl.id);setCliniqueNom(cl.nom||"Clinique");setStep(3);}}
-              style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
+              style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}
               onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:22}}>🏥</span>
@@ -1100,7 +1101,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
                 <span style={{color:C.green}}>→</span>
               </div>
             </button>
-          ))})
+          ))}
         </div>
       )}
       <div style={{display:"flex",gap:10}}>
