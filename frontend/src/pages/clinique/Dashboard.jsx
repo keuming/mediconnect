@@ -2229,6 +2229,117 @@ function PageProprietaire(){
   );
 }
 
+
+function PageProfilLogo(){
+  const { token } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [form, setForm] = React.useState({ slogan:'', adresse_complete:'', horaires:'', site_web:'' });
+  const [logo, setLogo] = React.useState(null);
+  const [preview, setPreview] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['clinique-profil'],
+    queryFn: async () => {
+      const r = await fetch('https://mediconnect-backend-v2.vercel.app/api/clinique/profil', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return r.json();
+    }
+  });
+
+  React.useEffect(() => {
+    if (data?.data) {
+      const d = data.data;
+      setForm({ slogan:d.slogan||'', adresse_complete:d.adresse_complete||'', horaires:d.horaires||'', site_web:d.site_web||'' });
+      if (d.logo) setPreview(d.logo);
+    }
+  }, [data]);
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2*1024*1024) { setMsg('Logo trop volumineux (max 2MB)'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => { setLogo(ev.target.result); setPreview(ev.target.result); };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setMsg('');
+    try {
+      const r = await fetch('https://mediconnect-backend-v2.vercel.app/api/clinique/logo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logo: logo||preview, ...form })
+      });
+      const d = await r.json();
+      setMsg(d.success ? 'Profil mis a jour avec succes' : d.message);
+      if (d.success) queryClient.invalidateQueries(['clinique-profil']);
+    } catch(e) { setMsg('Erreur reseau'); }
+    setSaving(false);
+  };
+
+  const profil = data?.data;
+
+  return (
+    <div>
+      <PageHeader title="Profil & Logo" subtitle="Identite visuelle — En-tete et pied de page des impressions"/>
+      {isLoading ? <Loader/> : (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,alignItems:'start'}}>
+          <div>
+            <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24,marginBottom:16}}>
+              <h3 style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:16}}>Logo de la clinique</h3>
+              <div style={{width:'100%',height:160,borderRadius:10,border:`2px dashed ${preview?C.green:C.border}`,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16,overflow:'hidden'}}>
+                {preview ? <img src={preview} alt="Logo" style={{maxHeight:140,maxWidth:'100%',objectFit:'contain'}}/> : <div style={{textAlign:'center'}}><div style={{fontSize:36}}>🏥</div><div style={{fontSize:13,color:C.muted}}>Aucun logo</div></div>}
+              </div>
+              <label style={{display:'block',padding:'10px 16px',background:C.green,borderRadius:8,color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',textAlign:'center'}}>
+                Choisir un logo (JPG/PNG max 2MB)
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} style={{display:'none'}}/>
+              </label>
+            </div>
+            <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:20}}>
+              <h3 style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Apercu en-tete impression</h3>
+              <div style={{background:'#fff',borderRadius:8,padding:14}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,paddingBottom:8,borderBottom:'2px solid #0A8F58'}}>
+                  {preview ? <img src={preview} alt="Logo" style={{height:44,objectFit:'contain'}}/> : <div style={{width:44,height:44,background:'#e5e7eb',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center'}}>🏥</div>}
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:'#1A2E25'}}>{profil?.nom||'Nom de la clinique'}</div>
+                    {form.slogan&&<div style={{fontSize:11,color:'#5A7A94',fontStyle:'italic'}}>{form.slogan}</div>}
+                    <div style={{fontSize:11,color:'#5A7A94'}}>{form.adresse_complete||profil?.adresse||'Adresse'} · {profil?.ville}</div>
+                    <div style={{fontSize:11,color:'#5A7A94'}}>{profil?.telephone}{profil?.email?' · '+profil.email:''}</div>
+                  </div>
+                </div>
+                <div style={{marginTop:6,fontSize:10,color:'#9CA3AF',textAlign:'center'}}>{form.horaires} {form.site_web?' · '+form.site_web:''}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24}}>
+            <h3 style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:16}}>Informations affichees</h3>
+            {[
+              {label:'Slogan',key:'slogan',ph:'Ex: Votre sante, notre priorite'},
+              {label:'Adresse complete',key:'adresse_complete',ph:'Ex: Cocody Riviera 2'},
+              {label:'Horaires',key:'horaires',ph:'Ex: Lun-Sam 7h-20h'},
+              {label:'Site web',key:'site_web',ph:'https://www.maclinique.ci'},
+            ].map(f=>(
+              <div key={f.key} style={{marginBottom:14}}>
+                <label style={{fontSize:11,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>{f.label.toUpperCase()}</label>
+                <input value={form[f.key]} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph}
+                  style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+              </div>
+            ))}
+            {msg&&<div style={{padding:'10px 14px',borderRadius:8,background:'rgba(10,143,88,.1)',color:C.green,fontSize:13,marginBottom:14}}>{msg}</div>}
+            <button onClick={handleSave} disabled={saving} style={{width:'100%',padding:'12px',background:C.green,border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
+              {saving?'Enregistrement...':'Enregistrer le profil'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   return (
     <Routes>
