@@ -1756,6 +1756,44 @@ app.get('/api/rendez-vous/stats', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+
+// ── PATCH CONSULTATIONS & ORDONNANCES ────────────────────────────
+app.post('/api/admin/patch-consultations', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false });
+  const sqls = [
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS traitement TEXT",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS notes TEXT",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS tension_arterielle VARCHAR(20)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS temperature VARCHAR(10)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS poids VARCHAR(10)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS taille VARCHAR(10)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS rdv_id UUID",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS pathologie VARCHAR(200)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS age_patient VARCHAR(10)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS sexe_patient VARCHAR(20)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS gravite VARCHAR(20) DEFAULT 'modere'",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS pays_code VARCHAR(5) DEFAULT 'CI'",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS montant_total DECIMAL(12,2)",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS statut VARCHAR(20) DEFAULT 'terminee'",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS consultation_id UUID",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS notes_ord TEXT",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS duree VARCHAR(50)",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS posologie TEXT",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS medecin_id UUID",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
+    "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS statut VARCHAR(20) DEFAULT 'active'",
+  ];
+  const results = [];
+  for (const sql of sqls) {
+    try { await db(sql); results.push({ ok:true, sql:sql.slice(0,60) }); }
+    catch(e) { results.push({ ok:false, sql:sql.slice(0,60), err:e.message }); }
+  }
+  res.json({ success:true, results });
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
