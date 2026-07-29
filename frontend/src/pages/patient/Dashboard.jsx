@@ -966,6 +966,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
   const [typeMed,setTypeMed]=useState("clinique");
   const [cliniqueId,setCliniqueId]=useState(medecinPreselect?.clinique_id||"");
   const [cliniqueNom,setCliniqueNom]=useState("");
+  const [searchClinique,setSearchClinique]=useState("");
   const [medecin,setMedecin]=useState(medecinPreselect||null);
   const [dateRdv,setDateRdv]=useState(today());
   const [heureRdv,setHeureRdv]=useState("09:00");
@@ -1078,8 +1079,15 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
               <button onClick={()=>window.open("https://mediconnect-backend-v2.vercel.app/api/public/cliniques","_blank")} style={{background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 14px",color:C.muted,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>🔍 Tester API</button>
             </div>
           </div>:(
+        <input
+          value={searchClinique}
+          onChange={e=>setSearchClinique(e.target.value)}
+          placeholder="🔍 Rechercher une clinique par nom ou ville..."
+          style={{width:"100%",padding:"10px 12px",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:10,color:C.text,fontSize:13,outline:"none",marginBottom:12,boxSizing:"border-box"}}
+          autoFocus
+        />
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
-          {cliniques.map(cl=>(
+          {cliniques.filter(cl=>!searchClinique||`${cl.nom||""} ${cl.ville||""}`.toLowerCase().includes(searchClinique.toLowerCase())).map(cl=>(
             <button key={cl.id} onClick={()=>{setCliniqueId(cl.id);setCliniqueNom(cl.nom||"Clinique");setStep(3);}}
               style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
               onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
