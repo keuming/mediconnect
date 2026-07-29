@@ -1629,6 +1629,73 @@ app.get('/api/proprietaire/resume-mensuel', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+
+// ══════════════════════════════════════════════════════════════════
+//  LOGO CLINIQUE — UPLOAD ET RÉCUPÉRATION
+// ══════════════════════════════════════════════════════════════════
+
+// ── Init colonne logo ─────────────────────────────────────────────
+app.post('/api/admin/init-logo-clinique', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorisé' });
+  try {
+    await db('ALTER TABLE cliniques ADD COLUMN IF NOT EXISTS logo TEXT');
+    await db('ALTER TABLE cliniques ADD COLUMN IF NOT EXISTS adresse_complete TEXT');
+    await db('ALTER TABLE cliniques ADD COLUMN IF NOT EXISTS slogan VARCHAR(300)');
+    await db('ALTER TABLE cliniques ADD COLUMN IF NOT EXISTS horaires VARCHAR(200)');
+    await db('ALTER TABLE cliniques ADD COLUMN IF NOT EXISTS site_web VARCHAR(200)');
+    res.json({ success: true, message: 'Colonnes logo et infos clinique ajoutées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Upload logo clinique (base64) ─────────────────────────────────
+app.post('/api/clinique/logo', auth, async (req, res) => {
+  try {
+    const { logo, slogan, adresse_complete, horaires, site_web } = req.body;
+    const cid = req.user?.clinique_id;
+    if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
+    if (!logo) return res.status(400).json({ success: false, message: 'Logo requis (base64)' });
+
+    // Valider taille (max 2MB base64 ≈ 2.7MB)
+    if (logo.length > 3000000)
+      return res.status(400).json({ success: false, message: 'Logo trop volumineux (max 2MB)' });
+
+    const r = await db(
+      `UPDATE cliniques SET logo=$1, slogan=$2, adresse_complete=$3, horaires=$4, site_web=$5
+       WHERE id=$6 RETURNING id, nom, logo, slogan, adresse_complete, horaires, site_web`,
+      [logo, slogan||null, adresse_complete||null, horaires||null, site_web||null, cid]
+    );
+    res.json({ success: true, data: r.rows[0], message: 'Logo mis à jour avec succès' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Récupérer infos + logo clinique ──────────────────────────────
+app.get('/api/clinique/profil', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
+    const r = await db(
+      `SELECT id, nom, adresse, adresse_complete, ville, telephone, email,
+              logo, slogan, horaires, site_web, created_at
+       FROM cliniques WHERE id=$1`, [cid]
+    );
+    res.json({ success: true, data: r.rows[0] || null });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Logo public par clinique_id (pour les impressions) ───────────
+app.get('/api/public/clinique/:id/logo', async (req, res) => {
+  try {
+    const r = await db(
+      'SELECT nom, logo, slogan, adresse_complete, ville, telephone, email, horaires, site_web FROM cliniques WHERE id=$1',
+      [req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: 'Clinique non trouvée' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
