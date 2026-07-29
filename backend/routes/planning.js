@@ -203,6 +203,14 @@ router.get('/public/semaine', async (req, res) => {
       ORDER BY d.date, d.heure_debut
     `, [clinique_id, debut, fin]);
 
+    // Dédupliquer par medecin_id + date + heure_debut
+    const seen = new Set();
+    const unique = r.rows.filter(slot => {
+      const key = `${slot.medecin_id}-${slot.date}-${slot.heure_debut}`;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+
     const jours = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
     const semaine = {};
     for (let i=0; i<7; i++) {
@@ -211,9 +219,9 @@ router.get('/public/semaine', async (req, res) => {
       const key = d.toISOString().split('T')[0];
       semaine[key] = { jour:jours[i], date:key, creneaux:[] };
     }
-    r.rows.forEach(slot => {
+    unique.forEach(slot => {
       const key = slot.date.toISOString ? slot.date.toISOString().split('T')[0] : slot.date;
-      if (semaine[key]) semaine[key].creneaux.push(slot);
+      if (semaine[key] && (slot.medecin_nom || slot.medecin_prenom)) semaine[key].creneaux.push(slot);
     });
 
     res.json({ success:true, semaine: Object.values(semaine) });
