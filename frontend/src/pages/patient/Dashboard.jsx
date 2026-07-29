@@ -1087,7 +1087,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
           autoFocus
         />
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
-          {cliniques.filter(cl=>!searchClinique||`${cl.nom||""} ${cl.ville||""}`.toLowerCase().includes(searchClinique.toLowerCase())).map(cl=>{
+          {cliniques.filter(cl=>!searchClinique||`${cl.nom||""} ${cl.ville||""}`.toLowerCase().includes(searchClinique.toLowerCase())).map(cl=>(
             <button key={cl.id} onClick={()=>{setCliniqueId(cl.id);setCliniqueNom(cl.nom||"Clinique");setStep(3);}}
               style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"12px 14px",cursor:"pointer",textAlign:"left",fontFamily:"inherit",transition:"all .15s"}}
               onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
@@ -1100,7 +1100,7 @@ function FormPriseRdvV2({onClose,onSuccess,medecinPreselect=null}){
                 <span style={{color:C.green}}>→</span>
               </div>
             </button>
-          )})}
+          ))})
         </div>
       )}
       <div style={{display:"flex",gap:10}}>
