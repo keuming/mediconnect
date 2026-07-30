@@ -449,7 +449,7 @@ function PageDossiers() {
   const [rdvConsult, setRdvConsult] = useState(null); // RDV depuis lequel on ouvre une consultation
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
-  const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"" });
+  const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
 
@@ -751,6 +751,38 @@ function PageDossiers() {
         </Grid>
         <Inp label="Allergies connues" value={pForm.allergies} onChange={fp("allergies")} placeholder="Pénicilline, Aspirine…" />
         <Inp label="Antécédents médicaux" value={pForm.antecedents} onChange={fp("antecedents")} placeholder="Diabète, HTA, Opération…" />
+
+        {/* Couverture assurance */}
+        <div style={{marginTop:8}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:8}}>Couverture Assurance</label>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            {[{val:false,label:"🚫 Non assuré"},{val:true,label:"🛡️ Assuré"}].map(opt=>(
+              <button key={String(opt.val)} onClick={()=>setPForm(p=>({...p,est_assure:opt.val,assurance:opt.val?p.assurance:"",numero_police:opt.val?p.numero_police:""}))}
+                style={{flex:1,padding:"10px",borderRadius:9,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",
+                  background:pForm.est_assure===opt.val?(opt.val?"rgba(10,143,88,.15)":"rgba(239,68,68,.1)"):"transparent",
+                  border:`1.5px solid ${pForm.est_assure===opt.val?(opt.val?C.green:"#EF4444"):C.border}`,
+                  color:pForm.est_assure===opt.val?(opt.val?C.green:"#EF4444"):C.muted}}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {pForm.est_assure&&(
+            <Grid cols={2} gap={10}>
+              <div>
+                <label style={{fontSize:11,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>COMPAGNIE D'ASSURANCE</label>
+                <select value={pForm.assurance} onChange={e=>setPForm(p=>({...p,assurance:e.target.value}))}
+                  style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:pForm.assurance?C.text:C.muted,fontSize:13,outline:"none"}}>
+                  <option value="">-- Sélectionner --</option>
+                  {["NSIA Vie CI","NSIA IARDT","Allianz CI","AXA CI","Saham Assurance CI","Sunu Assurances","CNAM (CMU)","Mutuelles CGRAE","Mutuelles MUGEFCI","AMI Assurances","Colina","Prima Assurance","Gras Savoye","SIA (Société Ivoirienne d'Assurance)","Autre"].map(a=>(
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+              <Inp label="N° Police / Matricule" value={pForm.numero_police} onChange={fp("numero_police")} placeholder="Ex: 2024-NSIA-000123"/>
+            </Grid>
+          )}
+        </div>
+
         <div style={{display:"flex",gap:10,marginTop:4}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
           <Btn style={{flex:2}} loading={addPat.isPending} onClick={()=>{ if(!pForm.prenom||!pForm.nom){toast.error("Prénom et nom requis");return;} addPat.mutate(pForm); }}>Créer le dossier</Btn>
