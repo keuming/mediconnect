@@ -403,9 +403,25 @@ app.use("/api/patients", require("./routes/patients_mobile"));
 app.get('/api/patients', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
-    const r = cid
-      ? await db('SELECT * FROM patients WHERE clinique_id=$1 ORDER BY nom,prenom LIMIT 500', [cid])
-      : await db('SELECT * FROM patients ORDER BY nom LIMIT 500');
+    const { q } = req.query;
+    let sql, params = [];
+    if (q) {
+      // Recherche par nom, prénom ou téléphone — toutes cliniques
+      params.push('%'+q.toLowerCase()+'%');
+      sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1) ORDER BY nom,prenom LIMIT 100`;
+    } else if (cid) {
+      // Patients de la clinique + patients enregistrés via app (sans clinique)
+      // qui ont déjà consulté dans cette clinique
+      sql = `SELECT DISTINCT p.* FROM patients p
+        LEFT JOIN consultations c ON c.patient_id=p.id AND c.clinique_id=$1
+        LEFT JOIN rendez_vous rv ON rv.patient_id=p.id AND rv.clinique_id=$1
+        WHERE p.clinique_id=$1 OR c.id IS NOT NULL OR rv.id IS NOT NULL
+        ORDER BY p.nom, p.prenom LIMIT 500`;
+      params = [cid];
+    } else {
+      sql = 'SELECT * FROM patients ORDER BY nom LIMIT 500';
+    }
+    const r = await db(sql, params);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
@@ -418,11 +434,13 @@ app.post('/api/patients', auth, async (req, res) => {
   if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
   try {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
+    const patientId = uuid();
     const r = await db(
       'INSERT INTO patients (id,clinique_id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [uuid(), req.user?.clinique_id, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]
+      [patientId, req.user?.clinique_id, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]
     );
-    res.status(201).json({ success:true, data:r.rows[0] });
+    // Retourner explicitement le code_secret pour affichage
+    res.status(201).json({ success:true, data:{ ...r.rows[0], code_secret:code } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/patients/:id', auth, async (req, res) => {
