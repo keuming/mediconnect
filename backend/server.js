@@ -2191,9 +2191,6 @@ app.post('/api/admin/backfill-codes-patients', async (req, res) => {
 });
 
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
-// FACTURATION AUTOMATIQUE
-const facturesAuto = require('./routes/factures-auto');
-app.use('/api', facturesAuto(pool, auth));
 
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
