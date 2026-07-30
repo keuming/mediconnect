@@ -1973,6 +1973,205 @@ app.post('/api/admin/init-examens', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1,$2,$3,$4,$5
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1 AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+    const cim = [
+      ['B54','Paludisme non precise','Maladies infectieuses'],
+      ['B50','Paludisme a Plasmodium falciparum','Maladies infectieuses'],
+      ['A09','Diarrhee et gastro-enterite infectieuse','Maladies infectieuses'],
+      ['A01','Fievre typhoide','Maladies infectieuses'],
+      ['J06','Infection respiratoire haute aigue','Appareil respiratoire'],
+      ['J18','Pneumopathie','Appareil respiratoire'],
+      ['J45','Asthme','Appareil respiratoire'],
+      ['I10','Hypertension arterielle essentielle','Appareil circulatoire'],
+      ['I50','Insuffisance cardiaque','Appareil circulatoire'],
+      ['E11','Diabete de type 2','Endocrinien / metabolique'],
+      ['E44','Malnutrition proteino-energetique','Endocrinien / metabolique'],
+      ['D50','Anemie par carence en fer','Sang'],
+      ['K29','Gastrite et duodenite','Appareil digestif'],
+      ['K59','Constipation / trouble fonctionnel intestinal','Appareil digestif'],
+      ['N39','Infection urinaire','Appareil genito-urinaire'],
+      ['O26','Suivi de grossesse','Grossesse et accouchement'],
+      ['M54','Lombalgie / dorsalgie','Osteo-articulaire'],
+      ['M79','Douleurs musculaires diffuses','Osteo-articulaire'],
+      ['G43','Migraine','Systeme nerveux'],
+      ['H10','Conjonctivite','Oeil'],
+      ['H66','Otite moyenne','Oreille'],
+      ['L23','Dermatite allergique de contact','Peau'],
+      ['R50','Fievre non precisee','Symptomes / signes'],
+      ['R51','Cephalees','Symptomes / signes'],
+      ['Z00','Examen medical general / bilan','Facteurs de recours'],
+    ];
+    for (const [code,lib,ch] of cim) {
+      await db('INSERT INTO affections_cim10 (code,libelle,chapitre) VALUES ($1,$2,$3) ON CONFLICT (code) DO NOTHING',[code,lib,ch]);
+    }
+    res.json({ success:true, message:`Nomenclature initialisee : ${actes.length} actes, ${cim.length} affections CIM-10` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Liste des actes (clinique + catalogue global) ─────────────────
+app.get('/api/actes', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db(
+      `SELECT * FROM actes_medicaux
+       WHERE actif IS NOT false AND (clinique_id IS NULL OR clinique_id=$1)
+       ORDER BY categorie, code`, [cid||null]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// ── Personnaliser un tarif pour sa clinique ──────────────────────
+app.post('/api/actes', auth, async (req, res) => {
+  const { code, libelle, categorie, tarif_base, taux_assurance } = req.body;
+  if (!code || !libelle) return res.status(400).json({ success:false, message:'code et libelle requis' });
+  try {
+    const r = await db(
+      `INSERT INTO actes_medicaux (clinique_id,code,libelle,categorie,tarif_base,taux_assurance)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [req.user?.clinique_id||null, code, libelle, categorie||null, tarif_base||0, taux_assurance??70]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Affections CIM-10 (recherche) ────────────────────────────────
+app.get('/api/affections', async (req, res) => {
+  try {
+    const { q } = req.query;
+    const r = q
+      ? await db(`SELECT * FROM affections_cim10
+                  WHERE LOWER(libelle) LIKE $1 OR LOWER(code) LIKE $1
+                  ORDER BY code LIMIT 50`, ['%'+q.toLowerCase()+'%'])
+      : await db('SELECT * FROM affections_cim10 ORDER BY chapitre, code LIMIT 300');
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// ── Enregistrer les actes d'une prise en charge ───────────────────
+app.post('/api/prise-en-charge', auth, async (req, res) => {
+  const { patient_id, actes, consultation_id, rdv_id, est_assure, taux_couverture } = req.body;
+  if (!patient_id || !Array.isArray(actes) || !actes.length)
+    return res.status(400).json({ success:false, message:'patient_id et actes requis' });
+  try {
+    const lignes = [];
+    for (const a of actes) {
+      const qte = parseInt(a.quantite||1);
+      const pu = parseFloat(a.prix_unitaire||0);
+      const total = qte * pu;
+      const taux = est_assure ? parseInt(taux_couverture ?? a.taux_assurance ?? 70) : 0;
+      const partAss = Math.round(total * taux / 100);
+      const partPat = total - partAss;
+      const r = await db(
+        `INSERT INTO prise_en_charge_actes
+         (patient_id,clinique_id,consultation_id,rdv_id,acte_id,code_acte,libelle_acte,
+          quantite,prix_unitaire,taux_assurance,part_assurance,part_patient)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [patient_id, req.user?.clinique_id||null, consultation_id||null, rdv_id||null,
+         a.acte_id||null, a.code||null, a.libelle||null, qte, pu, taux, partAss, partPat]
+      );
+      lignes.push(r.rows[0]);
+    }
+    const totaux = lignes.reduce((acc,l)=>({
+      total: acc.total + parseFloat(l.prix_unitaire)*l.quantite,
+      part_assurance: acc.part_assurance + parseFloat(l.part_assurance),
+      part_patient: acc.part_patient + parseFloat(l.part_patient),
+    }), {total:0, part_assurance:0, part_patient:0});
+    res.status(201).json({ success:true, data:lignes, totaux });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Actes d'un patient (pour facturation) ────────────────────────
+app.get('/api/prise-en-charge/:patient_id', auth, async (req, res) => {
+  try {
+    const r = await db(
+      `SELECT * FROM prise_en_charge_actes WHERE patient_id=$1
+       ORDER BY created_at DESC LIMIT 200`, [req.params.patient_id]
+    );
+    const totaux = r.rows.reduce((acc,l)=>({
+      total: acc.total + parseFloat(l.prix_unitaire)*l.quantite,
+      part_assurance: acc.part_assurance + parseFloat(l.part_assurance||0),
+      part_patient: acc.part_patient + parseFloat(l.part_patient||0),
+    }), {total:0, part_assurance:0, part_patient:0});
+    res.json({ success:true, data:r.rows, totaux });
+  } catch(e) { res.json({ success:true, data:[], totaux:{total:0,part_assurance:0,part_patient:0} }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);

@@ -439,6 +439,7 @@ function PagePlanning() {
 //  3. PAGE DME — DOSSIERS MÉDICAUX ÉLECTRONIQUES
 // ════════════════════════════════════════════════════════════════════
 function PageDossiers() {
+  const { token } = useAuthStore();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
