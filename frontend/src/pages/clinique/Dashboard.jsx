@@ -521,6 +521,85 @@ function PageDossiers() {
   });
   const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); }, onError:()=>toast.error("Erreur") });
 
+  const imprimerFacture = async () => {
+    const lignes = pec?.data||[];
+    if(!lignes.length){ toast.error("Aucun acte à facturer"); return; }
+    const t = pec?.totaux||{total:0,part_assurance:0,part_patient:0};
+    const clR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>({data:null}));
+    const cl = clR.data;
+    const num = "FACT-"+new Date().getFullYear()+"-"+String(Date.now()).slice(-6);
+    const win = window.open('','_blank');
+    win.document.write(`
+      <html><head><title>Facture ${num}</title><style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
+        .logo{height:58px;object-fit:contain;}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .ci{font-size:11px;color:#5A7A94;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
+        .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
+        .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+        table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;}
+        th{background:#065F3C;color:#fff;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;}
+        td{padding:8px;border-bottom:1px solid #e5e7eb;}
+        .r{text-align:right;}
+        .tot{background:#f8f9fa;font-weight:700;}
+        .final{background:#0A8F58;color:#fff;font-size:15px;font-weight:800;}
+        .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header">
+        ${cl?.logo?`<img src="${cl.logo}" class="logo"/>`:''}
+        <div>
+          <div class="cn">${cl?.nom||'MediConnect Africa'}</div>
+          <div class="ci">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div class="ci">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
+        </div>
+      </div>
+      <h2>Facture de soins ${num}</h2>
+      <div class="meta">
+        <div class="box">
+          <div class="lbl">Patient</div>
+          <div style="font-size:14px;font-weight:700;">${selected?.prenom||''} ${selected?.nom||''}</div>
+          <div class="ci">${selected?.telephone||''}</div>
+          ${selected?.code_secret?`<div class="ci">Dossier : ${selected.code_secret}</div>`:''}
+        </div>
+        <div class="box">
+          <div class="lbl">Couverture</div>
+          <div style="font-size:14px;font-weight:700;">${selected?.assurance||'Patient non assuré'}</div>
+          ${selected?.numero_police?`<div class="ci">Police : ${selected.numero_police}</div>`:''}
+          <div class="ci">Date : ${new Date().toLocaleDateString('fr-CI')}</div>
+        </div>
+      </div>
+      <table>
+        <tr><th>Code</th><th>Acte / Prestation</th><th class="r">Qté</th><th class="r">P.U.</th><th class="r">Total</th><th class="r">Assurance</th><th class="r">Patient</th></tr>
+        ${lignes.map(l=>`<tr>
+          <td><strong>${l.code_acte||'—'}</strong></td>
+          <td>${l.libelle_acte||'—'}</td>
+          <td class="r">${l.quantite}</td>
+          <td class="r">${Number(l.prix_unitaire).toLocaleString('fr-CI')}</td>
+          <td class="r">${(Number(l.prix_unitaire)*l.quantite).toLocaleString('fr-CI')}</td>
+          <td class="r">${Number(l.part_assurance||0).toLocaleString('fr-CI')}</td>
+          <td class="r"><strong>${Number(l.part_patient||0).toLocaleString('fr-CI')}</strong></td>
+        </tr>`).join('')}
+        <tr class="tot"><td colspan="4">TOTAL GÉNÉRAL</td>
+          <td class="r">${Number(t.total).toLocaleString('fr-CI')}</td>
+          <td class="r">${Number(t.part_assurance).toLocaleString('fr-CI')}</td>
+          <td class="r">${Number(t.part_patient).toLocaleString('fr-CI')}</td></tr>
+        <tr class="final"><td colspan="6">NET À PAYER PAR LE PATIENT</td><td class="r">${Number(t.part_patient).toLocaleString('fr-CI')} FCFA</td></tr>
+      </table>
+      <div class="footer">
+        <div>MediConnect Africa · CSN<br/>${cl?.site_web||'manager.mediconnect4africa.cloud'}</div>
+        <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
+      </div>
+      <div style="text-align:center;margin-top:18px;">
+        <button onclick="window.print()" style="padding:10px 24px;background:#0A8F58;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">🖨️ Imprimer la facture</button>
+      </div>
+      </body></html>`);
+    win.document.close();
+  };
+
   const imprimerOrdonnance = async (o) => {
     const logoR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>({data:null}));
     const cl = logoR.data;
@@ -776,8 +855,33 @@ function PageDossiers() {
 
             {/* Tab: Factures */}
             {activeTab==="factures" && (
-              <Panel title="Factures et paiements">
-                <Empty icon="📄" title="Historique financier patient" subtitle="Toutes les factures de ce patient apparaîtront ici" />
+              <Panel title="Facturation des actes"
+                actions={(pec?.data||[]).length>0?<Btn style={{padding:"6px 14px",fontSize:12}} onClick={imprimerFacture}>🖨️ Imprimer la facture</Btn>:null}>
+                {(pec?.data||[]).length===0
+                  ? <Empty icon="📄" title="Aucun acte facturable" subtitle="Les actes saisis lors de la prise en charge apparaîtront ici"/>
+                  : <>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:14}}>
+                        {[["Total actes",pec.totaux.total,C.text],["Part assurance",pec.totaux.part_assurance,C.teal],["Net patient",pec.totaux.part_patient,C.green]].map(([l,v,col])=>(
+                          <div key={l} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px"}}>
+                            <div style={{fontSize:11,color:C.dim,marginBottom:4}}>{l}</div>
+                            <div style={{fontSize:19,fontWeight:800,color:col}}>{fmtF(v)} F</div>
+                          </div>
+                        ))}
+                      </div>
+                      {(pec.data||[]).map(l=>(
+                        <div key={l.id} style={{background:C.hover,borderRadius:9,padding:"11px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:13,fontWeight:600,color:C.text}}>{l.libelle_acte}</div>
+                            <div style={{fontSize:11,color:C.dim}}>{l.code_acte} · {l.quantite} × {fmtF(l.prix_unitaire)} F · PEC {l.taux_assurance}%</div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:14,fontWeight:800,color:C.green}}>{fmtF(l.part_patient)} F</div>
+                            {Number(l.part_assurance)>0&&<div style={{fontSize:10,color:C.teal}}>assurance {fmtF(l.part_assurance)} F</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                }
               </Panel>
             )}
           </>
