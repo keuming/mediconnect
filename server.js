@@ -217,8 +217,6 @@ app.use(express.urlencoded({ extended: true }));
 // Rate limiting
 app.use('/api/auth', rateLimit({ windowMs:15*60*1000, max:50, skip:r=>r.method==='OPTIONS' }));
 app.use('/api/', rateLimit({ windowMs:60*1000, max:500, skip:r=>r.method==='OPTIONS' }));
-const facturesAuto = require('./routes/factures-auto');
-app.use('/api', facturesAuto(pool, authMiddleware));
 
 // ── HEALTH ────────────────────────────────────────────────────────
 
