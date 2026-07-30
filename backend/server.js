@@ -516,8 +516,8 @@ app.post('/api/ordonnances', auth, async (req, res) => {
   if (!patient_id||!medicaments) return res.status(400).json({ success:false, message:'Patient et médicaments requis' });
   try {
     const r = await db(
-      'INSERT INTO ordonnances (id,patient_id,clinique_id,medicaments,posologie,duree,notes_ord,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,medicaments,posologie||null,duree||null,notes_ord||null,consultation_id||null]
+      'INSERT INTO ordonnances (id,patient_id,medicaments,posologie,duree,notes_ord,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [uuid(),patient_id,medicaments,posologie||null,duree||null,notes_ord||null,consultation_id||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -723,9 +723,39 @@ app.put('/api/commandes/:id', auth, async (req, res) => {
 // ── PUBLIC RDV ────────────────────────────────────────────────────
 app.get('/api/public/cliniques', async (req, res) => {
   try {
-    const r = await db('SELECT c.*,COALESCE(c.ville,u.ville) AS ville,COALESCE(c.telephone,u.telephone) AS telephone FROM cliniques c LEFT JOIN utilisateurs u ON u.id=c.user_id WHERE c.is_active IS NOT false ORDER BY c.nom');
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
+    const { q, ville, type } = req.query;
+    // Fusionner cliniques MediConnect + établissements annuaire
+    let sql = `
+      SELECT
+        c.id, c.nom, c.ville, c.adresse,
+        COALESCE(c.telephone, u.telephone) AS telephone,
+        COALESCE(c.email, u.email) AS email,
+        c.logo, c.slogan, c.horaires, c.site_web,
+        'mediconnect' AS source,
+        true AS est_membre
+      FROM cliniques c
+      LEFT JOIN utilisateurs u ON u.id = c.user_id
+      WHERE (c.is_active IS NOT false OR c.is_active IS NULL)
+      UNION ALL
+      SELECT
+        id, nom, ville, adresse, telephone, NULL AS email,
+        NULL AS logo, NULL AS slogan, NULL AS horaires, NULL AS site_web,
+        'annuaire' AS source,
+        false AS est_membre
+      FROM etablissements_sante
+      WHERE NOT EXISTS (
+        SELECT 1 FROM cliniques c2 WHERE LOWER(c2.nom) = LOWER(etablissements_sante.nom)
+      )
+    `;
+    const params = [];
+    // Appliquer filtres sur la UNION via sous-requête
+    let finalSql = `SELECT * FROM (${sql}) t WHERE 1=1`;
+    if (q) { params.push('%'+q.toLowerCase()+'%'); finalSql += ` AND (LOWER(t.nom) LIKE $${params.length} OR LOWER(t.ville) LIKE $${params.length})`; }
+    if (ville) { params.push('%'+ville.toLowerCase()+'%'); finalSql += ` AND LOWER(t.ville) LIKE $${params.length}`; }
+    finalSql += ' ORDER BY est_membre DESC, nom ASC LIMIT 500';
+    const r = await db(finalSql, params);
+    res.json({ success:true, data:r.rows, total:r.rows.length });
+  } catch(e) { console.error('public/cliniques:', e.message); res.json({ success:true, data:[] }); }
 });
 app.post('/api/public/rdv', async (req, res) => {
   const { patient_nom, patient_telephone, clinique_id, medecin_id, etablissement_externe, prestataire_type, prestataire_id, date_rdv, heure_rdv, motif } = req.body;
