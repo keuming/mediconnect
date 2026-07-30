@@ -249,10 +249,19 @@ router.post('/register-patient', async (req, res) => {
        contact_urgence_5||null, telephone_urgence_5||null]
     );
 
-    // ── 3. Générer numéro de carte unique ─────────────────────────
-    const count = await client.query('SELECT COUNT(*) FROM mediconnect_card_requests');
-    const seq = String(parseInt(count.rows[0].count) + 1).padStart(6, '0');
-    const numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${seq}`;
+    // ── 3. Générer numéro de carte unique (collision-proof) ───────
+    let numeroCarte, attempts = 0;
+    while (attempts < 10) {
+      const count = await client.query('SELECT COUNT(*) FROM mediconnect_card_requests');
+      const seq = String(parseInt(count.rows[0].count) + 1 + attempts).padStart(6, '0');
+      const candidate = `MC-${pc}-${new Date().getFullYear()}-${seq}`;
+      const exists = await client.query('SELECT id FROM mediconnect_card_requests WHERE numero_carte=$1', [candidate]);
+      if (!exists.rows.length) { numeroCarte = candidate; break; }
+      attempts++;
+    }
+    if (!numeroCarte) {
+      numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+    }
 
     // ── 4. Créer demande MediConnect Card ─────────────────────────
     await client.query(
