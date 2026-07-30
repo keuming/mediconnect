@@ -454,7 +454,11 @@ function PageDossiers() {
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
 
   const { data, isLoading } = useQuery({ queryKey:["cl-patients"], queryFn:()=>cAPI.patients().then(r=>r.data.data||[]) });
-  const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:()=>selected?cAPI.consultations(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
+  const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:async()=>{
+    if(!selected) return [];
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/consultations?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json(); return d.data||[];
+  }, enabled:!!selected });
   const { data: ords } = useQuery({ queryKey:["cl-ords",selected?.id], queryFn:async()=>{
     if(!selected) return [];
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/ordonnances?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
