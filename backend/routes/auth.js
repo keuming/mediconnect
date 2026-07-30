@@ -249,6 +249,10 @@ router.post('/register-patient', async (req, res) => {
        contact_urgence_5||null, telephone_urgence_5||null]
     );
 
+    // Code dossier lisible (le PIN reste hashe pour l'auth)
+    const codeDossier = 'MC-' + ((prenom||'X')[0]+(nom||'X')[0]).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
+    await client.query('UPDATE patients SET code_secret=$1 WHERE id=$2', [codeDossier, patientId]);
+
     // ── 3. Générer numéro de carte unique (collision-proof) ───────
     let numeroCarte, attempts = 0;
     while (attempts < 10) {
@@ -284,6 +288,10 @@ router.post('/register-patient', async (req, res) => {
        contact_urgence_4||null, telephone_urgence_4||null,
        contact_urgence_5||null, telephone_urgence_5||null]
     );
+
+    // Code dossier lisible (le PIN reste hashe pour l'auth)
+    const codeDossier = 'MC-' + ((prenom||'X')[0]+(nom||'X')[0]).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
+    await client.query('UPDATE patients SET code_secret=$1 WHERE id=$2', [codeDossier, patientId]);
 
     await client.query('COMMIT');
     client.release();

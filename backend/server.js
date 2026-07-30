@@ -2172,6 +2172,24 @@ app.get('/api/prise-en-charge/:patient_id', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[], totaux:{total:0,part_assurance:0,part_patient:0} }); }
 });
 
+
+// ── Backfill + generation code dossier patient ────────────────────
+app.post('/api/admin/backfill-codes-patients', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    const manquants = await db("SELECT id,prenom,nom FROM patients WHERE code_secret IS NULL OR code_secret=''");
+    let n = 0;
+    for (const p of manquants.rows) {
+      const ini = ((p.prenom||'X')[0] + (p.nom||'X')[0]).toUpperCase();
+      const code = 'MC-' + ini + '-' + Math.floor(1000 + Math.random()*9000);
+      await db('UPDATE patients SET code_secret=$1 WHERE id=$2', [code, p.id]);
+      n++;
+    }
+    res.json({ success:true, message:`${n} code(s) dossier generes` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
