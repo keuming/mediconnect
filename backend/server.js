@@ -488,13 +488,13 @@ app.get('/api/consultations', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/consultations', auth, async (req, res) => {
-  const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id, pathologie, age_patient, sexe_patient, gravite } = req.body;
+  const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
   try {
     const mid = req.user?.medecin_id || req.user?.id;
     const r = await db(
-      'INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,traitement,notes,tension_arterielle,temperature,poids,taille,rdv_id,pathologie,age_patient,sexe_patient,gravite,pays_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,mid,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null,pathologie||null,age_patient||null,sexe_patient||null,gravite||'modere','CI']
+      'INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,traitement,notes,tension_arterielle,temperature,poids,taille,rdv_id,pathologie,age_patient,sexe_patient,gravite,pays_code,date_consultation,medecin_nom) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *',
+      [uuid(),patient_id,req.user?.clinique_id,mid,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null,pathologie||null,age_patient||null,sexe_patient||null,gravite||'modere','CI',new Date().toISOString().split('T')[0],medecin_nom||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -1785,6 +1785,10 @@ app.post('/api/admin/patch-consultations', async (req, res) => {
     "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS medecin_id UUID",
     "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
     "ALTER TABLE ordonnances ADD COLUMN IF NOT EXISTS statut VARCHAR(20) DEFAULT 'active'",
+    "ALTER TABLE consultations ALTER COLUMN motif DROP NOT NULL",
+    "ALTER TABLE consultations ALTER COLUMN diagnostic SET DEFAULT ''",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS date_consultation DATE DEFAULT CURRENT_DATE",
+    "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
   ];
   const results = [];
   for (const sql of sqls) {
