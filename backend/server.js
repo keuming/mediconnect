@@ -2152,7 +2152,32 @@ app.post('/api/prise-en-charge', auth, async (req, res) => {
       part_assurance: acc.part_assurance + parseFloat(l.part_assurance),
       part_patient: acc.part_patient + parseFloat(l.part_patient),
     }), {total:0, part_assurance:0, part_patient:0});
-    res.status(201).json({ success:true, data:lignes, totaux });
+    let facture = null;
+    let facture_avertissement = null;
+    if (consultation_id) {
+      try {
+        const { pool: dbPool } = require('./config/db');
+        const { withTransaction } = require('./helpers/dbIntrospect');
+        const { genererFactureConsultation } = require('./services/factureAuto');
+        const out = await withTransaction(dbPool, (c) =>
+          genererFactureConsultation(c, {
+            consultationId: consultation_id,
+            cliniqueId: req.user?.clinique_id,
+            utilisateurId: req.user?.id,
+          })
+        );
+        facture = out.facture;
+        if (out.deja_existante) {
+          facture_avertissement = 'Facture deja emise : les nouveaux actes restent a facturer';
+        }
+      } catch (e) {
+        console.error('[facture-auto hook]', e.code || '', e.message);
+        facture_avertissement = e.message;
+      }
+    } else {
+      facture_avertissement = 'Aucun consultation_id transmis : facture non generee';
+    }
+    res.status(201).json({ success:true, data:lignes, totaux, facture, facture_avertissement });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
