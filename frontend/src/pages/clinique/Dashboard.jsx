@@ -456,6 +456,11 @@ function PageDossiers() {
   const { data, isLoading } = useQuery({ queryKey:["cl-patients"], queryFn:()=>cAPI.patients().then(r=>r.data.data||[]) });
   const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:()=>selected?cAPI.consultations(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
   const { data: ords } = useQuery({ queryKey:["cl-ords",selected?.id], queryFn:()=>selected?cAPI.ordonnances(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
+  const { data: examens } = useQuery({ queryKey:["cl-examens",selected?.id], queryFn:async()=>{
+    if(!selected) return [];
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/examens?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json(); return d.data||[];
+  }, enabled:!!selected });
 
   const patients = (data||[]).filter(p => {
     const q = search.toLowerCase();
@@ -470,6 +475,73 @@ function PageDossiers() {
     onError: e => toast.error("Erreur: "+(e?.message||"Réessayez")),
   });
   const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); }, onError:()=>toast.error("Erreur") });
+
+  const imprimerOrdonnance = async (o) => {
+    const logoR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>({data:null}));
+    const cl = logoR.data;
+    const win = window.open('','_blank');
+    win.document.write(`
+      <html><head><title>Ordonnance</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:20px;}
+        .logo{height:60px;object-fit:contain;}
+        .clinique-nom{font-size:18px;font-weight:700;color:#065F3C;}
+        .clinique-info{font-size:11px;color:#5A7A94;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .section{margin-bottom:14px;}
+        .label{font-size:11px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+        .value{font-size:14px;color:#1a2e25;font-weight:500;}
+        .patient{background:#E8F8F1;border-radius:8px;padding:12px;margin-bottom:16px;}
+        .medicament{background:#f8f9fa;border-left:3px solid #0A8F58;padding:12px;border-radius:4px;margin-bottom:10px;}
+        .footer{margin-top:40px;border-top:1px solid #e5e7eb;padding-top:16px;display:flex;justify-content:space-between;font-size:11px;color:#8BA0B5;}
+        .signature{text-align:right;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header">
+        ${cl?.logo?`<img src="${cl.logo}" class="logo" alt="Logo"/>`:''}
+        <div>
+          <div class="clinique-nom">${cl?.nom||'MediConnect Africa'}</div>
+          <div class="clinique-info">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div class="clinique-info">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
+          ${cl?.horaires?`<div class="clinique-info">${cl.horaires}</div>`:''}
+        </div>
+      </div>
+      <h2>📋 Ordonnance Médicale</h2>
+      <div class="patient">
+        <div class="label">Patient</div>
+        <div class="value" style="font-size:16px;font-weight:700;">${selected?.prenom||''} ${selected?.nom||''}</div>
+        ${selected?.date_naissance?`<div class="clinique-info">Né(e) le ${new Date(selected.date_naissance).toLocaleDateString('fr-CI')}</div>`:''}
+        ${selected?.groupe_sanguin?`<div class="clinique-info">Groupe sanguin : ${selected.groupe_sanguin}</div>`:''}
+      </div>
+      <div class="section">
+        <div class="label">Date</div>
+        <div class="value">${new Date(o.created_at).toLocaleDateString('fr-CI',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+      </div>
+      <div class="section">
+        <div class="label">Prescription</div>
+        <div class="medicament">
+          <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${o.medicaments||o.medicament||'—'}</div>
+          ${o.posologie?`<div style="font-size:13px;color:#5A7A94;">Posologie : ${o.posologie}</div>`:''}
+          ${o.duree?`<div style="font-size:13px;color:#5A7A94;">Durée : ${o.duree}</div>`:''}
+          ${o.notes_ord?`<div style="font-size:12px;color:#8BA0B5;margin-top:6px;font-style:italic;">${o.notes_ord}</div>`:''}
+        </div>
+      </div>
+      <div class="footer">
+        <div>MediConnect Africa · ${cl?.site_web||'manager.mediconnect4africa.cloud'}</div>
+        <div class="signature">
+          <div style="margin-bottom:40px;">Signature du médecin</div>
+          <div style="font-weight:700;">${o.medecin_nom||cl?.nom||''}</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:20px;">
+        <button onclick="window.print()" style="padding:10px 24px;background:#0A8F58;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">🖨️ Imprimer</button>
+      </div>
+      </body></html>
+    `);
+    win.document.close();
+  };
+
 
   const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
   const fc = k => e => setCForm(p=>({...p,[k]:e.target.value}));
@@ -614,7 +686,10 @@ function PageDossiers() {
                       <div style={{ flex:1 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
                           <span style={{ fontSize:12, fontWeight:700, color:C.green }}>Ordonnance du {fmtDate(o.created_at)}</span>
-                          <Badge color="green">Active</Badge>
+                          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                            <Badge color="green">Active</Badge>
+                            <button onClick={()=>imprimerOrdonnance(o)} style={{padding:"3px 10px",background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ Imprimer</button>
+                          </div>
                         </div>
                         <div style={{ fontSize:13, color:C.text, marginBottom:4, fontWeight:600 }}>{o.medicaments||"—"}</div>
                         {o.posologie && <div style={{ fontSize:12, color:C.muted }}>Posologie : {o.posologie}</div>}
@@ -630,7 +705,27 @@ function PageDossiers() {
             {/* Tab: Examens */}
             {activeTab==="examens" && (
               <Panel title="Résultats d'examens et imagerie">
-                <Empty icon="🔬" title="Module examens" subtitle="Intégration laboratoire et radiologie — disponible prochainement" />
+                {(examens||[]).length===0
+                  ? <Empty icon="🔬" title="Aucun résultat" subtitle="Les résultats labo et imagerie apparaîtront ici dès leur saisie"/>
+                  : (examens||[]).map(e=>(
+                    <div key={e.id} style={{background:C.hover,borderRadius:10,padding:14,marginBottom:10,display:"flex",gap:14}}>
+                      <div style={{width:3,background:e.type_source==="labo"?C.purple:C.blue,borderRadius:2,flexShrink:0}}/>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                          <span style={{fontSize:12,fontWeight:700,color:e.type_source==="labo"?C.purple:C.blue}}>
+                            {e.type_source==="labo"?"🔬 Labo":"🩻 Imagerie"} · {e.type_analyse||e.type_examen||"—"}
+                          </span>
+                          <Badge color={e.statut==="valide"?"green":e.statut==="en_attente"?"amber":"gray"}>{e.statut||"—"}</Badge>
+                        </div>
+                        {e.interpretation && <div style={{fontSize:13,color:C.text,fontWeight:600,marginBottom:4}}>{e.interpretation}</div>}
+                        {e.resultat && <div style={{fontSize:13,color:C.text,marginBottom:4}}>{e.resultat}</div>}
+                        {e.observations && <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>{e.observations}</div>}
+                        {e.valeurs && <div style={{fontSize:12,color:C.muted}}>Valeurs : {typeof e.valeurs==="object"?Object.entries(e.valeurs).map(([k,v])=>`${k}:${v}`).join(", "):e.valeurs}</div>}
+                        <div style={{fontSize:11,color:C.dim,marginTop:4}}>{fmtDate(e.created_at)}</div>
+                      </div>
+                    </div>
+                  ))
+                }
               </Panel>
             )}
 
