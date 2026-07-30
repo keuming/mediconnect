@@ -491,7 +491,7 @@ app.post('/api/consultations', auth, async (req, res) => {
   const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
   try {
-    const mid = req.user?.medecin_id || req.user?.id;
+    const mid = req.user?.medecin_id || null;
     const r = await db(
       'INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,traitement,notes,tension_arterielle,temperature,poids,taille,rdv_id,pathologie,age_patient,sexe_patient,gravite,pays_code,date_consultation,medecin_nom) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *',
       [uuid(),patient_id,req.user?.clinique_id,mid,diagnostic,traitement||null,notes||null,tension_arterielle||null,temperature||null,poids||null,taille||null,rdv_id||null,pathologie||null,age_patient||null,sexe_patient||null,gravite||'modere','CI',new Date().toISOString().split('T')[0],medecin_nom||null]
@@ -1789,6 +1789,8 @@ app.post('/api/admin/patch-consultations', async (req, res) => {
     "ALTER TABLE consultations ALTER COLUMN diagnostic SET DEFAULT ''",
     "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS date_consultation DATE DEFAULT CURRENT_DATE",
     "ALTER TABLE consultations ADD COLUMN IF NOT EXISTS medecin_nom VARCHAR(200)",
+    "ALTER TABLE consultations DROP CONSTRAINT IF EXISTS consultations_medecin_id_fkey",
+    "ALTER TABLE consultations DROP CONSTRAINT IF EXISTS fk_consultations_medecin",
   ];
   const results = [];
   for (const sql of sqls) {
