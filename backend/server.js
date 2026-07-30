@@ -498,13 +498,13 @@ app.get('/api/consultations', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/consultations', auth, async (req, res) => {
-  const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom } = req.body;
+  const { patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille, rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom, code_cim10 } = req.body;
   if (!patient_id||!diagnostic) return res.status(400).json({ success:false, message:'Patient et diagnostic requis' });
   try {
     const mid = req.user?.medecin_id || null;
     const r = await db(
-      'INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,traitement,notes,note_finale,tension_arterielle,ta,temperature,poids,taille,rdv_id,pathologie,age_patient,sexe_patient,gravite,pays_code,date_consult,date_consultation,medecin_nom) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *',
-      [uuid(),patient_id,req.user?.clinique_id,mid,diagnostic,traitement||null,notes||null,notes||null,tension_arterielle||null,tension_arterielle||null,temperature||null,poids?parseFloat(poids):null,taille?parseInt(taille):null,rdv_id||null,pathologie||null,age_patient?parseInt(age_patient):null,sexe_patient||null,gravite||'modere','CI',new Date().toISOString().split('T')[0],new Date().toISOString().split('T')[0],medecin_nom||null]
+      'INSERT INTO consultations (id,patient_id,clinique_id,medecin_id,diagnostic,traitement,notes,note_finale,tension_arterielle,ta,temperature,poids,taille,rdv_id,pathologie,age_patient,sexe_patient,gravite,pays_code,date_consult,date_consultation,medecin_nom,code_cim10) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *',
+      [uuid(),patient_id,req.user?.clinique_id,mid,diagnostic,traitement||null,notes||null,notes||null,tension_arterielle||null,tension_arterielle||null,temperature||null,poids?parseFloat(poids):null,taille?parseInt(taille):null,rdv_id||null,pathologie||null,age_patient?parseInt(age_patient):null,sexe_patient||null,gravite||'modere','CI',new Date().toISOString().split('T')[0],new Date().toISOString().split('T')[0],medecin_nom||null,code_cim10||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
