@@ -453,6 +453,34 @@ function PageDossiers() {
   const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
+  const [actesSel, setActesSel] = useState([]);
+  const [searchActe, setSearchActe] = useState("");
+  const [searchCim, setSearchCim] = useState("");
+  const [codeCim, setCodeCim] = useState("");
+
+  const { data: catalogue } = useQuery({ queryKey:["cl-actes"], queryFn:async()=>{
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/actes`,{headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json(); return d.data||[];
+  }});
+  const { data: affections } = useQuery({ queryKey:["cl-cim10"], queryFn:async()=>{
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/affections`);
+    const d = await r.json(); return d.data||[];
+  }});
+  const { data: pec } = useQuery({ queryKey:["cl-pec",selected?.id], queryFn:async()=>{
+    if(!selected) return {data:[],totaux:{total:0,part_assurance:0,part_patient:0}};
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/prise-en-charge/${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
+    return await r.json();
+  }, enabled:!!selected });
+
+  const toggleActe = (a) => setActesSel(prev => {
+    const ex = prev.find(x=>x.code===a.code);
+    if(ex) return prev.filter(x=>x.code!==a.code);
+    return [...prev,{acte_id:a.id,code:a.code,libelle:a.libelle,prix_unitaire:Number(a.tarif_base),taux_assurance:a.taux_assurance,quantite:1}];
+  });
+  const totalActes = actesSel.reduce((s,a)=>s+a.prix_unitaire*a.quantite,0);
+  const tauxDefaut = pForm.est_assure?70:0;
+  const partAss = Math.round(totalActes*tauxDefaut/100);
+  const fmtF = n => Number(n||0).toLocaleString("fr-CI");
 
   const { data, isLoading } = useQuery({ queryKey:["cl-patients"], queryFn:()=>cAPI.patients().then(r=>r.data.data||[]) });
   const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:async()=>{
@@ -477,8 +505,15 @@ function PageDossiers() {
     return !q || `${p.prenom} ${p.nom} ${p.telephone||""}`.toLowerCase().includes(q);
   });
 
-  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:(data)=>{ toast.success("✅ Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); setNewPatient(data?.data?.data||data?.data||data); }, onError:()=>toast.error("Erreur") });
-  const addCons = useMutation({ mutationFn:d=>cAPI.addConsult(d), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
+  const addPat = useMutation({ mutationFn:d=>cAPI.addPatient(d), onSuccess:async(data)=>{
+    const np = data?.data?.data||data?.data||data;
+    if(actesSel.length>0&&np?.id){
+      await fetch(`https://mediconnect-backend-v2.vercel.app/api/prise-en-charge`,{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
+        body:JSON.stringify({patient_id:np.id,actes:actesSel,est_assure:pForm.est_assure,taux_couverture:pForm.est_assure?70:0})}).catch(()=>{});
+    }
+    toast.success("✅ Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); setNewPatient(np); setActesSel([]);
+  }, onError:()=>toast.error("Erreur") });
+  const addCons = useMutation({ mutationFn:d=>cAPI.addConsult({...d,code_cim10:codeCim||null}), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
   const addConsRdv = useMutation({
     mutationFn: d => api.post('/consultations/depuis-rdv', d),
     onSuccess: () => { toast.success("✅ Consultation enregistrée !"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); setRdvConsult(null); },
@@ -793,9 +828,49 @@ function PageDossiers() {
           )}
         </div>
 
-        <div style={{display:"flex",gap:10,marginTop:4}}>
+        {/* Actes de la prise en charge */}
+        <div style={{marginTop:14}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:8}}>Actes / Motif de venue</label>
+          <input value={searchActe} onChange={e=>setSearchActe(e.target.value)} placeholder="Rechercher un acte (consultation, radio, NFS...)"
+            style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
+          <div style={{maxHeight:150,overflowY:"auto",marginBottom:10}}>
+            {(catalogue||[]).filter(a=>!searchActe||`${a.code} ${a.libelle} ${a.categorie||""}`.toLowerCase().includes(searchActe.toLowerCase())).map(a=>{
+              const sel = actesSel.some(x=>x.code===a.code);
+              return (
+                <div key={a.id} onClick={()=>toggleActe(a)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:7,cursor:"pointer",marginBottom:4,
+                  background:sel?"rgba(10,143,88,.12)":"transparent",border:`1px solid ${sel?C.green:"transparent"}`}}>
+                  <span style={{fontSize:15,color:sel?C.green:C.dim}}>{sel?"☑":"☐"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{a.libelle}</div>
+                    <div style={{fontSize:10,color:C.dim}}>{a.code} · {a.categorie} · prise en charge {a.taux_assurance}%</div>
+                  </div>
+                  <span style={{fontSize:12,fontWeight:800,color:C.green}}>{fmtF(a.tarif_base)} F</span>
+                </div>
+              );
+            })}
+          </div>
+          {actesSel.length>0&&(
+            <div style={{background:"rgba(10,143,88,.06)",border:"1px solid rgba(10,143,88,.2)",borderRadius:9,padding:12}}>
+              {actesSel.map(a=>(
+                <div key={a.code} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <span style={{flex:1,fontSize:12,color:C.text}}>{a.libelle}</span>
+                  <input type="number" min={1} value={a.quantite} onChange={e=>setActesSel(p=>p.map(x=>x.code===a.code?{...x,quantite:Math.max(1,parseInt(e.target.value)||1)}:x))}
+                    style={{width:48,padding:"3px 6px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:5,color:C.text,fontSize:12,textAlign:"center"}}/>
+                  <span style={{fontSize:12,fontWeight:700,color:C.green,minWidth:70,textAlign:"right"}}>{fmtF(a.prix_unitaire*a.quantite)} F</span>
+                </div>
+              ))}
+              <div style={{borderTop:`1px solid ${C.border}`,marginTop:8,paddingTop:8,fontSize:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",color:C.muted}}><span>Total actes</span><strong style={{color:C.text}}>{fmtF(totalActes)} F</strong></div>
+                {pForm.est_assure&&<div style={{display:"flex",justifyContent:"space-between",color:C.muted,marginTop:3}}><span>Part assurance ({tauxDefaut}%)</span><strong style={{color:C.teal}}>{fmtF(partAss)} F</strong></div>}
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:14}}><strong style={{color:C.text}}>À payer par le patient</strong><strong style={{color:C.green,fontSize:16}}>{fmtF(totalActes-partAss)} F</strong></div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:10,marginTop:14}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
-          <Btn style={{flex:2}} loading={addPat.isPending} onClick={()=>{ if(!pForm.prenom||!pForm.nom){toast.error("Prénom et nom requis");return;} addPat.mutate(pForm); }}>Créer le dossier</Btn>
+          <Btn style={{flex:2}} loading={addPat.isPending} onClick={()=>{ if(!pForm.prenom||!pForm.nom){toast.error("Prénom et nom requis");return;} addPat.mutate(pForm); }}>Créer le dossier{actesSel.length>0?` — ${fmtF(totalActes-partAss)} F`:""}</Btn>
         </div>
       </Modal>
 
@@ -827,6 +902,23 @@ function PageDossiers() {
 
       {/* Modal: Nouvelle consultation */}
       <Modal open={showConsult} onClose={()=>setShowConsult(false)} title={`🩺 Consultation — ${selected?.prenom} ${selected?.nom}`} width={560}>
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:5}}>Affection (CIM-10)</label>
+          <input value={searchCim} onChange={e=>setSearchCim(e.target.value)} placeholder="Rechercher : paludisme, HTA, diabète..."
+            style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${codeCim?C.green:C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+          {searchCim&&!codeCim&&(
+            <div style={{maxHeight:130,overflowY:"auto",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8}}>
+              {(affections||[]).filter(a=>`${a.code} ${a.libelle}`.toLowerCase().includes(searchCim.toLowerCase())).slice(0,20).map(a=>(
+                <div key={a.code} onClick={()=>{setCodeCim(a.code);setSearchCim(`${a.code} — ${a.libelle}`);setCForm(p=>({...p,diagnostic:p.diagnostic||a.libelle}));}}
+                  style={{padding:"7px 10px",cursor:"pointer",fontSize:12,color:C.text,borderBottom:`1px solid ${C.border}`}}>
+                  <strong style={{color:C.green}}>{a.code}</strong> — {a.libelle}
+                  <div style={{fontSize:10,color:C.dim}}>{a.chapitre}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {codeCim&&<button onClick={()=>{setCodeCim("");setSearchCim("");}} style={{marginTop:5,background:"none",border:"none",color:C.teal,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>× Changer d'affection</button>}
+        </div>
         <Inp label="Diagnostic *" required value={cForm.diagnostic} onChange={fc("diagnostic")} placeholder="Ex: Hypertension artérielle" />
         <Inp label="Traitement prescrit" value={cForm.traitement} onChange={fc("traitement")} placeholder="Ex: Amlodipine 5mg" />
         <Grid cols={4} gap={10}>
