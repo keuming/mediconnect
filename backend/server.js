@@ -1830,6 +1830,138 @@ app.post('/api/admin/patch-consultations', async (req, res) => {
   res.json({ success:true, results });
 });
 
+
+// ══════════════════════════════════════════════════════════════════
+//  IMAGERIE / RADIOLOGIE
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/imagerie', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    let sql = 'SELECT * FROM examens_imagerie WHERE 1=1';
+    const p = [];
+    if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        sql += ` AND clinique_id=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p).catch(async () => {
+      // Table inexistante — créer et retourner vide
+      await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, medecin_id UUID,
+        type_examen VARCHAR(100), resultat TEXT, observations TEXT,
+        fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/imagerie', auth, async (req, res) => {
+  const { patient_id, type_examen, resultat, observations, date_examen, fichier_url } = req.body;
+  if (!patient_id || !type_examen) return res.status(400).json({ success: false, message: 'Patient et type examen requis' });
+  try {
+    const r = await db(
+      `INSERT INTO examens_imagerie (id,patient_id,clinique_id,medecin_id,type_examen,resultat,observations,fichier_url,date_examen)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,req.user?.medecin_id||null,
+       type_examen,resultat||null,observations||null,fichier_url||null,
+       date_examen||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RÉSULTATS LABORATOIRE
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/resultats-labo', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    let sql = 'SELECT * FROM resultats_labo WHERE 1=1';
+    const p = [];
+    if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        sql += ` AND clinique_id=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p).catch(async () => {
+      await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, labo_id UUID,
+        type_analyse VARCHAR(200), valeurs JSONB, interpretation TEXT,
+        fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/resultats-labo', auth, async (req, res) => {
+  const { patient_id, type_analyse, valeurs, interpretation, date_prelevement, fichier_url } = req.body;
+  if (!patient_id || !type_analyse) return res.status(400).json({ success: false, message: 'Patient et type analyse requis' });
+  try {
+    const r = await db(
+      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,type_analyse,
+       valeurs?JSON.stringify(valeurs):null,interpretation||null,fichier_url||null,
+       date_prelevement||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  EXAMENS (bulletins d'analyse + radio combinés)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/examens', auth, async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const p = [];
+    let where = 'WHERE 1=1';
+    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
+
+    const [imagerie, labo] = await Promise.all([
+      db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
