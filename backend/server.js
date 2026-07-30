@@ -2192,6 +2192,10 @@ app.post('/api/admin/backfill-codes-patients', async (req, res) => {
 
 // ── ERREURS (TOUJOURS EN DERNIER) ────────────────────────────────
 
+const { pool: dbPool } = require('./config/db');
+const facturesAuto = require('./routes/factures-auto');
+app.use('/api', facturesAuto(dbPool, auth));
+
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);
   res.status(err.status||500).json({ success:false, message: isProd && (!err.status || err.status>=500) ? 'Erreur interne' : err.message });
