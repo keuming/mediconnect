@@ -444,8 +444,12 @@ async function genererFactureConsultation(client, opts) {
       montant_total: totalBrut,
       part_patient: totalPatient,
       part_assurance: totalAssurance,
-      taux: tauxGlobal,
-      source_prise_en_charge: pec.source,
+      // Taux effectif reconstitue depuis les montants reels : quand la
+      // ventilation vient de prise_en_charge_actes, le taux global n'est
+      // pas lu ailleurs et afficher pec.taux (0) serait trompeur.
+      taux: totalBrut ? Math.round((totalAssurance * 100) / totalBrut) : 0,
+      source_prise_en_charge: pecIds.length ? 'prise_en_charge_actes' : pec.source,
+      plafond_applique: plafondApplique,
     },
     deja_existante: false,
   };
