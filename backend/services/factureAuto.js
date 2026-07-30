@@ -26,8 +26,10 @@ const T = {
   factures:      ['factures', 'facture'],
   lignes:        ['facture_lignes', 'factures_lignes', 'lignes_facture', 'facture_details'],
   consultations: ['consultations'],
+  // Source primaire : porte deja la ventilation calculee et un statut.
+  pecActes:      ['prise_en_charge_actes'],
   consultActes:  ['consultation_actes', 'consultations_actes', 'actes_consultation'],
-  actes:         ['actes', 'nomenclature_actes', 'actes_medicaux', 'nomenclature'],
+  actes:         ['actes_medicaux', 'nomenclature_actes', 'actes', 'nomenclature'],
   priseEnCharge: ['prises_en_charge', 'prise_en_charge', 'prises_charge'],
   patients:      ['patients'],
 };
@@ -35,8 +37,9 @@ const T = {
 const C = {
   numero:        ['numero', 'numero_facture', 'reference', 'ref'],
   totalBrut:     ['montant_total', 'total', 'montant', 'montant_brut'],
-  partPatient:   ['part_patient', 'montant_patient', 'reste_a_charge', 'a_charge_patient'],
-  partAssurance: ['part_assurance', 'montant_assurance', 'montant_pris_en_charge', 'part_assureur'],
+  // ticket_moder = ticket moderateur = part restant a la charge du patient
+  partPatient:   ['ticket_moder', 'ticket_moderateur', 'part_patient', 'montant_patient', 'reste_a_charge'],
+  partAssurance: ['montant_assur', 'part_assurance', 'montant_assurance', 'montant_pris_en_charge'],
   statut:        ['statut', 'status', 'etat'],
   dateFacture:   ['date_facture', 'date_emission', 'date_creation'],
   createdAt:     ['created_at', 'date_creation', 'cree_le'],
@@ -96,7 +99,42 @@ async function chargerActes(client, consultationId, consultation, actesFournis) 
       tarif: toInt(a.tarif ?? a.prix ?? a.montant),
       quantite: toInt(a.quantite ?? a.qte ?? 1) || 1,
       taux: a.taux === undefined ? null : Number(a.taux),
+      part_assurance: null,
+      part_patient: null,
+      pec_id: null,
     }));
+  }
+
+  // Source primaire : prise_en_charge_actes. Elle est auto-portante
+  // (code_acte, libelle_acte, prix_unitaire) et contient deja la
+  // ventilation, donc on ne recalcule rien et on ne joint pas
+  // actes_medicaux -- acte_id etant nullable, un JOIN perdrait des lignes.
+  const metaPec = await resolveTable(client, T.pecActes);
+  if (metaPec) {
+    const { rows } = await client.query(
+      `SELECT id, code_acte, libelle_acte, quantite, prix_unitaire,
+              taux_assurance, part_assurance, part_patient, statut
+         FROM "${metaPec.name}"
+        WHERE consultation_id = $1
+        ORDER BY created_at ASC`,
+      [consultationId]
+    );
+    // On facture en priorite ce qui est marque 'a_facturer' ; a defaut
+    // (relance apres regeneration forcee) on reprend toutes les lignes.
+    const aFacturer = rows.filter((r) => r.statut === 'a_facturer');
+    const retenues = aFacturer.length ? aFacturer : rows;
+    if (retenues.length) {
+      return retenues.map((r) => ({
+        code: r.code_acte,
+        libelle: r.libelle_acte || 'Acte medical',
+        tarif: toInt(r.prix_unitaire),
+        quantite: toInt(r.quantite) || 1,
+        taux: r.taux_assurance == null ? null : Number(r.taux_assurance),
+        part_assurance: r.part_assurance == null ? null : toInt(r.part_assurance),
+        part_patient: r.part_patient == null ? null : toInt(r.part_patient),
+        pec_id: r.id,
+      }));
+    }
   }
 
   const metaLiaison = await resolveTable(client, T.consultActes);
@@ -280,6 +318,15 @@ async function genererFactureConsultation(client, opts) {
   const patientId = consultation.patient_id || null;
   const cliniqueFinale = cliniqueId || consultation.clinique_id || null;
 
+  // factures.patient_id est NOT NULL sans defaut : on echoue proprement.
+  if (!patientId) {
+    throw new FactureError(
+      'Consultation sans patient_id : facture impossible (factures.patient_id NOT NULL)',
+      'PATIENT_MANQUANT',
+      422
+    );
+  }
+
   // --- lignes
   const lignes = await chargerActes(client, consultationId, consultation, actesFournis);
   if (!lignes.length) {
@@ -298,21 +345,35 @@ async function genererFactureConsultation(client, opts) {
   const tauxGlobal = Math.max(0, Math.min(100, pec.taux));
   let totalBrut = 0;
   let totalAssurance = 0;
+  let totalPatientLignes = 0;
 
   const lignesCalc = lignes.map((l) => {
     const montant = toInt(l.tarif) * (toInt(l.quantite) || 1);
     const tauxLigne = l.taux == null ? tauxGlobal : Math.max(0, Math.min(100, Number(l.taux)));
-    const assurance = Math.round((montant * tauxLigne) / 100);
+    // Si prise_en_charge_actes a deja ventile la ligne, on reprend ses
+    // montants tels quels : la facture ne doit jamais contredire la prise
+    // en charge signee avec l'assureur.
+    const assurance = l.part_assurance != null
+      ? l.part_assurance
+      : Math.round((montant * tauxLigne) / 100);
+    const patient = l.part_patient != null ? l.part_patient : montant - assurance;
     totalBrut += montant;
     totalAssurance += assurance;
-    return { ...l, montant, taux: tauxLigne, part_assurance: assurance, part_patient: montant - assurance };
+    totalPatientLignes += patient;
+    return { ...l, montant, taux: tauxLigne, part_assurance: assurance, part_patient: patient };
   });
 
   // plafond eventuel de l'assureur
+  let plafondApplique = false;
   if (pec.plafond != null && totalAssurance > pec.plafond) {
     totalAssurance = pec.plafond;
+    plafondApplique = true;
   }
-  const totalPatient = totalBrut - totalAssurance;
+  // Hors plafond, on somme les parts patient reelles : cela preserve les
+  // arrondis ligne a ligne deja valides dans prise_en_charge_actes.
+  const totalPatient = plafondApplique
+    ? totalBrut - totalAssurance
+    : totalPatientLignes;
 
   // --- numero
   const numero = await genererNumero(client, metaFactures, cliniqueFinale);
@@ -325,12 +386,14 @@ async function genererFactureConsultation(client, opts) {
     patient_id:     { candidates: ['patient_id'],  value: patientId },
     clinique_id:    { candidates: ['clinique_id'], value: cliniqueFinale },
     medecin_id:     { candidates: ['medecin_id'],  value: consultation.medecin_id },
+    medecin_indep:  { candidates: ['medecin_independant_id'], value: consultation.medecin_independant_id },
     medecin_nom:    { candidates: ['medecin_nom'], value: consultation.medecin_nom },
     montant_total:  { candidates: C.totalBrut,     value: totalBrut },
     part_patient:   { candidates: C.partPatient,   value: totalPatient },
     part_assurance: { candidates: C.partAssurance, value: totalAssurance },
     taux:           { candidates: C.tauxPec,       value: tauxGlobal },
-    statut:         { candidates: C.statut,        value: totalPatient === 0 ? 'payee' : 'impayee' },
+    // Convention de la DB : 'en_attente' par defaut, 'payee' si rien a regler.
+    statut:         { candidates: C.statut,        value: totalPatient === 0 ? 'payee' : 'en_attente' },
     date_facture:   { candidates: C.dateFacture,   value: maintenant },
     created_at:     { candidates: C.createdAt,     value: maintenant },
     cree_par:       { candidates: ['cree_par', 'utilisateur_id', 'created_by'], value: utilisateurId },
@@ -359,6 +422,19 @@ async function genererFactureConsultation(client, opts) {
       const { rows } = await client.query(ins);
       lignesEnregistrees.push(rows[0]);
     }
+  }
+
+  // Les actes consommes passent de 'a_facturer' a 'facture' : dans la meme
+  // transaction que la facture, donc jamais de double facturation ni de
+  // ligne perdue si l'insert echoue.
+  const pecIds = lignesCalc.map((l) => l.pec_id).filter(Boolean);
+  if (pecIds.length) {
+    await client.query(
+      `UPDATE "prise_en_charge_actes"
+          SET statut = 'facture'
+        WHERE id = ANY($1::uuid[])`,
+      [pecIds]
+    );
   }
 
   return {

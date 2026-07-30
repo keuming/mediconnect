@@ -20,6 +20,22 @@ const { genererFactureConsultation } = require('../services/factureAuto');
 module.exports = function facturesAutoRoutes(pool, auth) {
   const router = express.Router();
 
+  // Si le middleware d'auth passe undefined (mauvais nom de variable au
+  // montage), Express leve au chargement et TOUT le backend tombe. On
+  // isole la panne sur ces deux routes : le reste de l'API survit et le
+  // log Vercel dit exactement quoi corriger.
+  if (typeof auth !== 'function') {
+    console.error(
+      '[facture-auto] MONTAGE INVALIDE : le 2e argument doit etre le middleware ' +
+      "d'authentification, recu : " + typeof auth + '. Routes desactivees.'
+    );
+    auth = (req, res) => res.status(500).json({
+      success: false,
+      code: 'AUTH_MIDDLEWARE_MANQUANT',
+      message: "Routes facturation mal montees dans server.js : middleware d'auth absent",
+    });
+  }
+
   router.post('/consultations/:id/facture', auth, async (req, res) => {
     try {
       const resultat = await withTransaction(pool, (client) =>
