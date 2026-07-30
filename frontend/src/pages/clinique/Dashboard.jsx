@@ -521,22 +521,79 @@ function PageDossiers() {
   });
   const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); }, onError:()=>toast.error("Erreur") });
 
-  const imprimerFacture = async () => {
-    const lignes = pec?.data||[];
-    if(!lignes.length){ toast.error("Aucun acte à facturer"); return; }
-    const t = pec?.totaux||{total:0,part_assurance:0,part_patient:0};
-    const clR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>({data:null}));
+  const imprimerFacture = async (arg) => {
+    // onClick transmet un SyntheticEvent en premier argument : on ne retient
+    // que les identifiants reels, sinon on prend la consultation la plus
+    // recente du patient selectionne.
+    const cid = (typeof arg === 'string' && arg) ? arg : (consults?.[0]?.id || null);
+    const H = { Authorization:`Bearer ${token}` };
+
+    let ref = null, lignes = [], t = null, proforma = false;
+
+    // Source de verite : la facture emise et persistee. Montants figes au
+    // moment de l'emission, bornes a UNE consultation.
+    if (cid) {
+      try {
+        const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/consultations/${cid}/facture`,{headers:H});
+        const d = await r.json();
+        if (d?.success && d?.data) {
+          ref = d.data.reference;
+          t = {
+            total: Number(d.data.montant_total||0),
+            part_assurance: Number(d.data.montant_assur||0),
+            part_patient: Number(d.data.ticket_moder||0),
+          };
+          lignes = (d.lignes||[]).map(l=>({
+            code: l.code||'—',
+            libelle: l.libelle||'—',
+            quantite: Number(l.quantite||1),
+            pu: Number(l.tarif||0),
+            montant: Number(l.montant|| Number(l.tarif||0)*Number(l.quantite||1) ||0),
+            assur: Number(l.montant_assur||0),
+            patient: Number(l.ticket_moder||0),
+          }));
+        }
+      } catch(_) { /* repli ci-dessous */ }
+    }
+
+    // Repli proforma : consultations anterieures a la facturation
+    // automatique, ou aucune facture emise. Le document est explicitement
+    // marque PROFORMA pour qu'il ne soit pas confondu avec une facture.
+    if (!ref || !lignes.length) {
+      const src = pec?.data||[];
+      if (!src.length) { toast.error("Aucun acte à facturer"); return; }
+      const tp = pec?.totaux||{total:0,part_assurance:0,part_patient:0};
+      proforma = true;
+      ref = "PROFORMA-"+new Date().getFullYear()+"-"+String(Date.now()).slice(-6);
+      t = {
+        total: Number(tp.total||0),
+        part_assurance: Number(tp.part_assurance||0),
+        part_patient: Number(tp.part_patient||0),
+      };
+      lignes = src.map(l=>({
+        code: l.code_acte||'—',
+        libelle: l.libelle_acte||'—',
+        quantite: Number(l.quantite||1),
+        pu: Number(l.prix_unitaire||0),
+        montant: Number(l.prix_unitaire||0)*Number(l.quantite||1),
+        assur: Number(l.part_assurance||0),
+        patient: Number(l.part_patient||0),
+      }));
+    }
+
+    const clR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:H}).then(r=>r.json()).catch(()=>({data:null}));
     const cl = clR.data;
-    const num = "FACT-"+new Date().getFullYear()+"-"+String(Date.now()).slice(-6);
+    const n = v => Number(v||0).toLocaleString('fr-CI');
     const win = window.open('','_blank');
     win.document.write(`
-      <html><head><title>Facture ${num}</title><style>
+      <html><head><title>${proforma?'Proforma':'Facture'} ${ref}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
         .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
         .cn{font-size:18px;font-weight:700;color:#065F3C;}
         .ci{font-size:11px;color:#5A7A94;}
         h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .warn{background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;border-radius:8px;padding:8px 12px;font-size:11px;text-align:center;margin-bottom:14px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
@@ -557,7 +614,8 @@ function PageDossiers() {
           <div class="ci">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
         </div>
       </div>
-      <h2>Facture de soins ${num}</h2>
+      <h2>${proforma?'Devis proforma':'Facture de soins'} ${ref}</h2>
+      ${proforma?`<div class="warn">Document non contractuel : aucune facture n'a encore été émise pour cette consultation. Les montants peuvent évoluer.</div>`:''}
       <div class="meta">
         <div class="box">
           <div class="lbl">Patient</div>
@@ -575,26 +633,26 @@ function PageDossiers() {
       <table>
         <tr><th>Code</th><th>Acte / Prestation</th><th class="r">Qté</th><th class="r">P.U.</th><th class="r">Total</th><th class="r">Assurance</th><th class="r">Patient</th></tr>
         ${lignes.map(l=>`<tr>
-          <td><strong>${l.code_acte||'—'}</strong></td>
-          <td>${l.libelle_acte||'—'}</td>
+          <td><strong>${l.code}</strong></td>
+          <td>${l.libelle}</td>
           <td class="r">${l.quantite}</td>
-          <td class="r">${Number(l.prix_unitaire).toLocaleString('fr-CI')}</td>
-          <td class="r">${(Number(l.prix_unitaire)*l.quantite).toLocaleString('fr-CI')}</td>
-          <td class="r">${Number(l.part_assurance||0).toLocaleString('fr-CI')}</td>
-          <td class="r"><strong>${Number(l.part_patient||0).toLocaleString('fr-CI')}</strong></td>
+          <td class="r">${n(l.pu)}</td>
+          <td class="r">${n(l.montant)}</td>
+          <td class="r">${n(l.assur)}</td>
+          <td class="r"><strong>${n(l.patient)}</strong></td>
         </tr>`).join('')}
         <tr class="tot"><td colspan="4">TOTAL GÉNÉRAL</td>
-          <td class="r">${Number(t.total).toLocaleString('fr-CI')}</td>
-          <td class="r">${Number(t.part_assurance).toLocaleString('fr-CI')}</td>
-          <td class="r">${Number(t.part_patient).toLocaleString('fr-CI')}</td></tr>
-        <tr class="final"><td colspan="6">NET À PAYER PAR LE PATIENT</td><td class="r">${Number(t.part_patient).toLocaleString('fr-CI')} FCFA</td></tr>
+          <td class="r">${n(t.total)}</td>
+          <td class="r">${n(t.part_assurance)}</td>
+          <td class="r">${n(t.part_patient)}</td></tr>
+        <tr class="final"><td colspan="6">NET À PAYER PAR LE PATIENT</td><td class="r">${n(t.part_patient)} FCFA</td></tr>
       </table>
       <div class="footer">
         <div>MediConnect Africa · CSN<br/>${cl?.site_web||'manager.mediconnect4africa.cloud'}</div>
         <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
       </div>
       <div style="text-align:center;margin-top:18px;">
-        <button onclick="window.print()" style="padding:10px 24px;background:#0A8F58;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">🖨️ Imprimer la facture</button>
+        <button onclick="window.print()" style="padding:10px 24px;background:#0A8F58;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">🖨️ Imprimer</button>
       </div>
       </body></html>`);
     win.document.close();
