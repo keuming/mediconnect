@@ -504,7 +504,7 @@ app.post('/api/consultations', auth, async (req, res) => {
 app.get('/api/ordonnances', auth, async (req, res) => {
   try {
     const { patient_id } = req.query; const cid = req.user?.clinique_id;
-    let sql='SELECT * FROM ordonnances WHERE 1=1'; const p=[];
+    let sql='SELECT *, medicament AS medicaments FROM ordonnances WHERE 1=1'; const p=[];
     if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
     else if (cid)   { p.push(cid);        sql+=` AND clinique_id=$${p.length}`; }
     sql+=' ORDER BY created_at DESC LIMIT 100';
@@ -512,12 +512,13 @@ app.get('/api/ordonnances', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/ordonnances', auth, async (req, res) => {
-  const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id } = req.body;
+  const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id, medecin_nom } = req.body;
   if (!patient_id||!medicaments) return res.status(400).json({ success:false, message:'Patient et médicaments requis' });
+  if (!posologie) return res.status(400).json({ success:false, message:'Posologie requise' });
   try {
     const r = await db(
-      'INSERT INTO ordonnances (id,patient_id,medicaments,posologie,duree,notes_ord,consultation_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [uuid(),patient_id,medicaments,posologie||null,duree||null,notes_ord||null,consultation_id||null]
+      'INSERT INTO ordonnances (id,patient_id,medicament,posologie,duree,notes_ord,consultation_id,medecin_id,medecin_nom,pays_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [uuid(),patient_id,medicaments,posologie,duree||null,notes_ord||null,consultation_id||null,req.user?.medecin_id||null,medecin_nom||null,'CI']
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
