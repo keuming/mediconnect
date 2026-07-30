@@ -409,17 +409,9 @@ app.get('/api/patients', auth, async (req, res) => {
       // Recherche par nom, prénom ou téléphone — toutes cliniques
       params.push('%'+q.toLowerCase()+'%');
       sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1) ORDER BY nom,prenom LIMIT 100`;
-    } else if (cid) {
-      // Patients de la clinique + patients enregistrés via app (sans clinique)
-      // qui ont déjà consulté dans cette clinique
-      sql = `SELECT DISTINCT p.* FROM patients p
-        LEFT JOIN consultations c ON c.patient_id=p.id AND c.clinique_id=$1
-        LEFT JOIN rendez_vous rv ON rv.patient_id=p.id AND rv.clinique_id=$1
-        WHERE p.clinique_id=$1 OR c.id IS NOT NULL OR rv.id IS NOT NULL
-        ORDER BY p.nom, p.prenom LIMIT 500`;
-      params = [cid];
     } else {
-      sql = 'SELECT * FROM patients ORDER BY nom LIMIT 500';
+      // Tous les patients — quelle que soit l'interface de création
+      sql = 'SELECT * FROM patients ORDER BY created_at DESC NULLS LAST, nom, prenom LIMIT 1000';
     }
     const r = await db(sql, params);
     res.json({ success:true, data:r.rows });
