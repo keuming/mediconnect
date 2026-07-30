@@ -2043,8 +2043,8 @@ app.post('/api/admin/init-nomenclature', async (req, res) => {
     ];
     for (const [code,lib,cat,tarif,taux] of actes) {
       await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
-                SELECT $1,$2,$3,$4,$5
-                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1 AND clinique_id IS NULL)`,
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
                 [code,lib,cat,tarif,taux]);
     }
 
