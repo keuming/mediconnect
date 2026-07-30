@@ -455,7 +455,12 @@ function PageDossiers() {
 
   const { data, isLoading } = useQuery({ queryKey:["cl-patients"], queryFn:()=>cAPI.patients().then(r=>r.data.data||[]) });
   const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:()=>selected?cAPI.consultations(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
-  const { data: ords } = useQuery({ queryKey:["cl-ords",selected?.id], queryFn:()=>selected?cAPI.ordonnances(selected.id).then(r=>r.data.data||[]):[], enabled:!!selected });
+  const { data: ords } = useQuery({ queryKey:["cl-ords",selected?.id], queryFn:async()=>{
+    if(!selected) return [];
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/ordonnances?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json();
+    return d.data||[];
+  }, enabled:!!selected });
   const { data: examens } = useQuery({ queryKey:["cl-examens",selected?.id], queryFn:async()=>{
     if(!selected) return [];
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/examens?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
