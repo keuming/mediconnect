@@ -2004,8 +2004,8 @@ function PageConsultation() {
   const [searchTrait, setSearchTrait] = useState("");
   const [lastConsult, setLastConsult] = useState(null);
   const [showOrd, setShowOrd] = useState(false);
-  const [lignes, setLignes] = useState([{nom:"",qte:"",posologie:""}]);
-  const addLigne = ()=>setLignes(l=>[...l,{nom:"",qte:"",posologie:""}]);
+  const [lignes, setLignes] = useState([{nom:"",qte:"",posologie:"",duree:""}]);
+  const addLigne = ()=>setLignes(l=>[...l,{nom:"",qte:"",posologie:"",duree:""}]);
   const delLigne = (i)=>setLignes(l=>l.filter((_,j)=>j!==i));
   const updLigne = (i,k,v)=>setLignes(l=>l.map((row,j)=>j===i?{...row,[k]:v}:row));
 
@@ -2052,7 +2052,7 @@ function PageConsultation() {
 
   const addOrd = useMutation({
     mutationFn: d => api.post('/ordonnances',d),
-    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setLignes([{nom:"",qte:"",posologie:""}]); },
+    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setLignes([{nom:"",qte:"",posologie:"",duree:""}]); },
     onError: ()=>toast.error("Erreur ordonnance"),
   });
 
@@ -2136,7 +2136,7 @@ function PageConsultation() {
 
             {/* ── Examen clinique & diagnostic ─────────────────── */}
             <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Examen clinique</div>
-            {[["Motif de la consultation *","motif","Raison de la consultation…",3],["H.D.M / Antécédents","hdm_antecedents","Histoire de la maladie, antécédents…",3],["Examen clinique","examen_clinique","Constatations à l'examen…",3],["Hypothèses diagnostiques","hypotheses_diagnostiques","Hypothèses envisagées…",3]].map(([label,key,ph,rows])=>(
+            {[["Motif de la consultation *","motif","Raison de la consultation…",5],["H.D.M / Antécédents","hdm_antecedents","Histoire de la maladie, antécédents…",4],["Examen clinique","examen_clinique","Constatations à l'examen…",5],["Hypothèses diagnostiques","hypotheses_diagnostiques","Hypothèses envisagées…",4]].map(([label,key,ph,rows])=>(
               <div key={key} style={{marginBottom:12}}>
                 <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                 <textarea value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} rows={rows} placeholder={ph}
@@ -2162,17 +2162,17 @@ function PageConsultation() {
                   })
                 }
               </div>
-              <textarea value={form.biologie_texte} onChange={e=>setForm(f=>({...f,biologie_texte:e.target.value}))} rows={2} placeholder="Précisions complémentaires (biologie)…"
+              <textarea value={form.biologie_texte} onChange={e=>setForm(f=>({...f,biologie_texte:e.target.value}))} rows={3} placeholder="Précisions complémentaires (biologie)…"
                 style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             <div style={{marginBottom:12}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>2 — Imagerie médicale</label>
-              <textarea value={form.imagerie_texte} onChange={e=>setForm(f=>({...f,imagerie_texte:e.target.value}))} rows={2} placeholder="Radiographie, échographie…"
+              <textarea value={form.imagerie_texte} onChange={e=>setForm(f=>({...f,imagerie_texte:e.target.value}))} rows={3} placeholder="Radiographie, échographie…"
                 style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             <div style={{marginBottom:16}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>3 — Autres</label>
-              <textarea value={form.autres_examens} onChange={e=>setForm(f=>({...f,autres_examens:e.target.value}))} rows={2} placeholder="Autres examens…"
+              <textarea value={form.autres_examens} onChange={e=>setForm(f=>({...f,autres_examens:e.target.value}))} rows={3} placeholder="Autres examens…"
                 style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
 
@@ -2181,7 +2181,7 @@ function PageConsultation() {
             <div style={{marginBottom:6,position:"relative"}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher (CIM-10)</label>
               <input value={searchDiag} onChange={e=>setSearchDiag(e.target.value)} placeholder="paludisme, HTA, diabète…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 12px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"12px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               {searchDiag.length>1 && diagResults.length>0 && (
                 <div style={{position:"absolute",zIndex:10,left:0,right:0,background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,marginTop:4,maxHeight:160,overflowY:"auto"}}>
                   {diagResults.map(a=>(
@@ -2205,14 +2205,14 @@ function PageConsultation() {
             </div>
             <div style={{marginBottom:16}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Diagnostic retenu *</label>
-              <input value={form.diagnostic} onChange={e=>setForm(f=>({...f,diagnostic:e.target.value}))} placeholder="Hypertension artérielle…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              <textarea value={form.diagnostic} onChange={e=>setForm(f=>({...f,diagnostic:e.target.value}))} rows={3} placeholder="Hypertension artérielle…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
 
             <div style={{marginBottom:6,position:"relative"}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher un traitement</label>
               <input value={searchTrait} onChange={e=>setSearchTrait(e.target.value)} placeholder="Amlodipine, paracétamol…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 12px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"12px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               {searchTrait.length>1 && (medicaments||[]).length>0 && (
                 <div style={{position:"absolute",zIndex:10,left:0,right:0,background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,marginTop:4,maxHeight:160,overflowY:"auto"}}>
                   {(medicaments||[]).slice(0,15).map(m=>(
@@ -2228,7 +2228,7 @@ function PageConsultation() {
             </div>
             <div style={{marginBottom:16}}>
               <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Traitement (ordonnance)</label>
-              <textarea value={form.traitement} onChange={e=>setForm(f=>({...f,traitement:e.target.value}))} rows={2} placeholder="Amlodipine 5mg, 1cp/jour…"
+              <textarea value={form.traitement} onChange={e=>setForm(f=>({...f,traitement:e.target.value}))} rows={3} placeholder="Amlodipine 5mg, 1cp/jour…"
                 style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
 
@@ -2262,43 +2262,48 @@ function PageConsultation() {
       )}
       {showOrd&&patient&&(
         <div onClick={()=>setShowOrd(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#0E1620",border:"1px solid #1E2F42",borderRadius:16,padding:28,width:480,maxWidth:"95vw"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:640,maxWidth:"96vw",maxHeight:"90vh",overflowY:"auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h2 style={{fontSize:16,fontWeight:700,color:"#F0F4F8",margin:0}}>💊 Ordonnance — {patient.prenom} {patient.nom}</h2>
-              <button onClick={()=>setShowOrd(false)} style={{background:"none",border:"none",color:"#8BA0B5",cursor:"pointer",fontSize:20}}>✕</button>
+              <h2 style={{fontSize:16,fontWeight:700,color:C.text,margin:0}}>💊 Ordonnance — {patient.prenom} {patient.nom}</h2>
+              <button onClick={()=>setShowOrd(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
             </div>
-            <div style={{background:"rgba(124,58,237,.08)",border:"1px solid rgba(124,58,237,.2)",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#8BA0B5"}}>
+            <div style={{background:"rgba(124,58,237,.08)",border:"1px solid rgba(124,58,237,.2)",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.muted}}>
               Consultation enregistrée ✅ — Voulez-vous ajouter une ordonnance ?
             </div>
             <div style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <label style={{fontSize:11,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase"}}>Médicaments *</label>
-                <button onClick={addLigne} style={{background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",borderRadius:6,padding:"4px 10px",color:"#A78BFA",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter un médicament</button>
+                <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase"}}>Médicaments *</label>
+                <button onClick={addLigne} style={{background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",borderRadius:6,padding:"5px 12px",color:"#7C3AED",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter une ligne</button>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr auto",gap:6,marginBottom:6}}>
-                {["Nom","Dosage","Posologie",""].map((h,i)=><div key={i} style={{fontSize:10,color:"#4E657A",fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr 1fr auto",gap:6,marginBottom:6,padding:"0 2px"}}>
+                {["Nom du médicament","Dosage","Posologie","Durée",""].map((h,i)=><div key={i} style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
               </div>
               {lignes.map((l,i)=>(
-                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr auto",gap:6,marginBottom:8,alignItems:"center"}}>
+                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr 1fr auto",gap:6,marginBottom:8,alignItems:"center"}}>
                   <input value={l.nom} onChange={e=>updLigne(i,"nom",e.target.value)} placeholder={i===0?"Paracétamol":"Médicament..."}
-                    style={{background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:8,padding:"8px 10px",color:"#F0F4F8",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.qte} onChange={e=>updLigne(i,"qte",e.target.value)} placeholder="500mg"
-                    style={{background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:8,padding:"8px 10px",color:"#F0F4F8",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.posologie} onChange={e=>updLigne(i,"posologie",e.target.value)} placeholder="1 cp matin/soir"
-                    style={{background:"#1A2535",border:"1.5px solid #1E2F42",borderRadius:8,padding:"8px 10px",color:"#F0F4F8",fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-                  <button onClick={()=>delLigne(i)} style={{background:lignes.length>1?"rgba(225,29,72,.1)":"transparent",border:lignes.length>1?"1px solid rgba(225,29,72,.2)":"none",borderRadius:6,padding:"6px 8px",color:lignes.length>1?"#E11D48":"#4E657A",cursor:lignes.length>1?"pointer":"default",fontSize:14,fontFamily:"inherit"}}>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <input value={l.duree} onChange={e=>updLigne(i,"duree",e.target.value)} placeholder="7 jours"
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <button onClick={()=>delLigne(i)} style={{background:lignes.length>1?"rgba(225,29,72,.1)":"transparent",border:lignes.length>1?"1px solid rgba(225,29,72,.2)":"none",borderRadius:6,padding:"7px 9px",color:lignes.length>1?"#E11D48":C.dim,cursor:lignes.length>1?"pointer":"default",fontSize:14,fontFamily:"inherit"}}>
                     {lignes.length>1?"✕":"—"}
                   </button>
                 </div>
               ))}
+              <button onClick={addLigne} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
             </div>
             <div style={{display:"flex",gap:10,marginTop:8}}>
-              <button onClick={()=>setShowOrd(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:"1.5px solid #1E2F42",color:"#8BA0B5",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Passer</button>
+              <button onClick={()=>setShowOrd(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Passer</button>
               <button disabled={addOrd.isPending} onClick={()=>{
                 const valides = lignes.filter(l=>l.nom.trim());
                 if(!valides.length){toast.error("Au moins un médicament requis");return;}
-                const medicament = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}`).join('\n');
-                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicament,posologie:valides[0]?.posologie||"",duree:""});
+                const medicament = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
+                const posologie = valides.map(l=>l.posologie).filter(Boolean).join(' | ');
+                const duree = valides.map(l=>l.duree).filter(Boolean).join(' | ');
+                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicament,posologie,duree});
               }} style={{flex:2,padding:"10px",borderRadius:9,background:"linear-gradient(135deg,#7C3AED,#0D9488)",border:"none",color:"#fff",cursor:addOrd.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addOrd.isPending?.65:1}}>
                 {addOrd.isPending?"⏳…":"💊 Créer l'ordonnance"}
               </button>
