@@ -4,3 +4,4 @@ uploads/
 *.log
 dist/
 .DS_Storecard-app/
+*.bak
