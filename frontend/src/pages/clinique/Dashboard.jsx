@@ -4,15 +4,27 @@ import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import useAuthStore from "../../context/authStore";
+import useThemeStore from "../../context/themeStore";
 import api from "../../services/api";
 
 // ── Palette & helpers ─────────────────────────────────────────────
-const C = {
+const PALETTE_DARK = {
   green:"#0A8F58", teal:"#0D9488", amber:"#D97706", red:"#E11D48",
   blue:"#2563EB", purple:"#7C3AED", bg:"#060C12", card:"#0E1620",
   input:"#141E2B", hover:"#1A2535", border:"#1E2F42",
   text:"#F0F4F8", muted:"#8BA0B5", dim:"#4E657A",
 };
+const PALETTE_LIGHT = {
+  green:"#0A8F58", teal:"#0D9488", amber:"#B45309", red:"#DC2626",
+  blue:"#2563EB", purple:"#7C3AED", bg:"#F5F7FA", card:"#FFFFFF",
+  input:"#FFFFFF", hover:"#F0F3F6", border:"#DCE3EA",
+  text:"#101B26", muted:"#5B6B7A", dim:"#8A97A3",
+};
+// Objet mutable partagé par tous les composants "Page*" de ce fichier.
+// AppLayout force le remontage complet (key={mode}) quand le thème change,
+// donc chaque composant relit ces valeurs à jour dès son prochain rendu.
+// eslint-disable-next-line prefer-const
+let C = { ...PALETTE_DARK };
 const fmt = (n) => Number(n||0).toLocaleString("fr-CI");
 const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"}) : "—";
@@ -2076,7 +2088,7 @@ function PageConsultation() {
 
       {showForm&&patient&&(
         <div onClick={()=>setShowForm(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:680,maxWidth:"95vw",maxHeight:"92vh",overflowY:"auto"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:900,maxWidth:"96vw",maxHeight:"92vh",overflowY:"auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <h2 style={{fontSize:17,fontWeight:700,color:C.text,margin:0}}>🩺 {patient.prenom} {patient.nom}</h2>
               <button onClick={()=>setShowForm(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
@@ -2124,7 +2136,7 @@ function PageConsultation() {
 
             {/* ── Examen clinique & diagnostic ─────────────────── */}
             <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Examen clinique</div>
-            {[["Motif de la consultation *","motif","Raison de la consultation…",2],["H.D.M / Antécédents","hdm_antecedents","Histoire de la maladie, antécédents…",2],["Examen clinique","examen_clinique","Constatations à l'examen…",2],["Hypothèses diagnostiques","hypotheses_diagnostiques","Hypothèses envisagées…",2]].map(([label,key,ph,rows])=>(
+            {[["Motif de la consultation *","motif","Raison de la consultation…",3],["H.D.M / Antécédents","hdm_antecedents","Histoire de la maladie, antécédents…",3],["Examen clinique","examen_clinique","Constatations à l'examen…",3],["Hypothèses diagnostiques","hypotheses_diagnostiques","Hypothèses envisagées…",3]].map(([label,key,ph,rows])=>(
               <div key={key} style={{marginBottom:12}}>
                 <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                 <textarea value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} rows={rows} placeholder={ph}
@@ -2900,6 +2912,8 @@ function PageProfilLogo(){
 }
 
 export default function Dashboard() {
+  const mode = useThemeStore(s => s.mode);
+  Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
   return (
     <Routes>
       <Route index               element={<PageHome />} />

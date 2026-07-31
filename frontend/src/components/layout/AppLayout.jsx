@@ -1,11 +1,20 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import useAuthStore from '../../context/authStore';
+import useThemeStore from '../../context/themeStore';
 
-const C = {
-  green:"#0A8F58", teal:"#0D9488", bg:"#060C12", card:"#0E1620",
+const PALETTE_DARK = {
+  green:"#0A8F58", teal:"#0D9488", amber:"#D97706", red:"#E11D48",
+  blue:"#2563EB", purple:"#7C3AED", bg:"#060C12", card:"#0E1620",
   border:"#1E2F42", text:"#F0F4F8", muted:"#8BA0B5", dim:"#4E657A",
 };
+const PALETTE_LIGHT = {
+  green:"#0A8F58", teal:"#0D9488", amber:"#B45309", red:"#DC2626",
+  blue:"#2563EB", purple:"#7C3AED", bg:"#F5F7FA", card:"#FFFFFF",
+  border:"#DCE3EA", text:"#101B26", muted:"#5B6B7A", dim:"#8A97A3",
+};
+// eslint-disable-next-line prefer-const
+let C = { ...PALETTE_DARK };
 
 // ── Navigation par rôle ───────────────────────────────────────────
 const NAV = {
@@ -150,6 +159,9 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const nav = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const mode = useThemeStore(s => s.mode);
+  const toggleTheme = useThemeStore(s => s.toggleTheme);
+  Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
 
   if (!user) return null;
 
@@ -250,6 +262,11 @@ export default function AppLayout({ children }) {
           </div>
 
           <div style={{ display:'flex',alignItems:'center',gap:12 }}>
+            <button onClick={toggleTheme} title={mode==='dark'?'Passer au thème clair':'Passer au thème sombre'}
+              style={{ display:'flex',alignItems:'center',gap:6,background:mode==='light'?'#F0F3F6':'rgba(255,255,255,.06)',border:`1px solid ${C.border}`,borderRadius:20,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:700,color:C.muted,fontFamily:'inherit' }}>
+              <span>{mode==='dark'?'🌙':'☀️'}</span>
+              {mode==='dark'?'Sombre':'Clair'}
+            </button>
             {role==='medecin'&&(
               <div style={{ display:'flex',alignItems:'center',gap:6,background:'rgba(124,58,237,.1)',border:'1px solid rgba(124,58,237,.3)',borderRadius:8,padding:'5px 12px',fontSize:11,color:'#7C3AED',fontWeight:700 }}>
                 <span style={{ width:6,height:6,background:'#7C3AED',borderRadius:'50%',animation:'pulse 2s infinite' }}/>
@@ -269,7 +286,7 @@ export default function AppLayout({ children }) {
         </header>
 
         {/* Page content */}
-        <div style={{ flex:1,padding:28,maxWidth:1400,width:'100%',margin:'0 auto',boxSizing:'border-box' }}>
+        <div key={mode} style={{ flex:1,padding:28,maxWidth:1400,width:'100%',margin:'0 auto',boxSizing:'border-box' }}>
           {children}
         </div>
       </main>
@@ -278,8 +295,8 @@ export default function AppLayout({ children }) {
         @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.3)} }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-track { background: #0E1620; }
-        ::-webkit-scrollbar-thumb { background: #1E2F42; border-radius: 2px; }
+        ::-webkit-scrollbar-track { background: ${C.card}; }
+        ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 2px; }
       `}</style>
     </div>
   );
