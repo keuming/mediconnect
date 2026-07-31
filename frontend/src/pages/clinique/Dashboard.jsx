@@ -1975,17 +1975,46 @@ function PageStats() {
 // ════════════════════════════════════════════════════════════════════
 function PageConsultation() {
   const qc = useQueryClient();
+  const { token } = useAuthStore();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [patient, setPatient] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});
+  const [form, setForm] = useState({
+    motif:"", diagnostic:"", traitement:"", ta:"", temperature:"", poids:"", taille:"", notes:"",
+    pouls:"", pc:"", fr:"", tso2:"", pb:"", pcui:"",
+    hdm_antecedents:"", examen_clinique:"", hypotheses_diagnostiques:"",
+    biologie_texte:"", imagerie_texte:"", autres_examens:"",
+    diagnostic_predefini:"", traitement_predefini:"", date_controle:"",
+  });
+  const [bioSel, setBioSel] = useState([]); // examens de biologie prédéfinis sélectionnés
+  const [searchDiag, setSearchDiag] = useState("");
+  const [searchTrait, setSearchTrait] = useState("");
   const [lastConsult, setLastConsult] = useState(null);
   const [showOrd, setShowOrd] = useState(false);
   const [lignes, setLignes] = useState([{nom:"",qte:"",posologie:""}]);
   const addLigne = ()=>setLignes(l=>[...l,{nom:"",qte:"",posologie:""}]);
   const delLigne = (i)=>setLignes(l=>l.filter((_,j)=>j!==i));
   const updLigne = (i,k,v)=>setLignes(l=>l.map((row,j)=>j===i?{...row,[k]:v}:row));
+
+  // Catalogues réutilisés depuis le module Dossiers (même clés = même cache)
+  const { data: catalogue } = useQuery({ queryKey:["cl-actes"], queryFn:async()=>{
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/actes`,{headers:{Authorization:`Bearer ${token}`}});
+    const d = await r.json(); return d.data||[];
+  }});
+  const actesBio = (catalogue||[]).filter(a=>a.categorie==="Laboratoire");
+  const { data: affections } = useQuery({ queryKey:["cl-cim10"], queryFn:async()=>{
+    const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/affections`);
+    const d = await r.json(); return d.data||[];
+  }});
+  const diagResults = searchDiag.length>1 ? (affections||[]).filter(a=>`${a.code} ${a.libelle}`.toLowerCase().includes(searchDiag.toLowerCase())).slice(0,15) : [];
+  const { data: medicaments } = useQuery({ queryKey:["cons-medicaments", searchTrait], queryFn:async()=>{
+    if (searchTrait.length<2) return [];
+    const r = await api.get(`/patients/medicaments?search=${encodeURIComponent(searchTrait)}`);
+    return r.data||[];
+  }});
+  const toggleBio = (a) => setBioSel(prev => prev.find(x=>x.code===a.code) ? prev.filter(x=>x.code!==a.code) : [...prev,a]);
+  const imcAuto = (form.poids && form.taille) ? (parseFloat(form.poids) / Math.pow(parseFloat(form.taille)/100, 2)).toFixed(1) : "";
 
   const chercher = async () => {
     if(code.length<3){toast.error("Code invalide");return;}
@@ -2000,7 +2029,12 @@ function PageConsultation() {
 
   const addMut = useMutation({
     mutationFn: d=>api.post('/consultations',d),
-    onSuccess: (data)=>{toast.success("✅ Consultation enregistrée !");setShowForm(false);setLastConsult(data?.data||data);setShowOrd(true);setForm({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:""});qc.invalidateQueries(["cl-stats"]);},
+    onSuccess: (data)=>{
+      toast.success("✅ Consultation enregistrée !");setShowForm(false);setLastConsult(data?.data||data);setShowOrd(true);
+      setForm({motif:"",diagnostic:"",traitement:"",ta:"",temperature:"",poids:"",taille:"",notes:"",pouls:"",pc:"",fr:"",tso2:"",pb:"",pcui:"",hdm_antecedents:"",examen_clinique:"",hypotheses_diagnostiques:"",biologie_texte:"",imagerie_texte:"",autres_examens:"",diagnostic_predefini:"",traitement_predefini:"",date_controle:""});
+      setBioSel([]);setSearchDiag("");setSearchTrait("");
+      qc.invalidateQueries(["cl-stats"]);
+    },
     onError: ()=>toast.error("Erreur enregistrement"),
   });
 
@@ -2042,20 +2076,16 @@ function PageConsultation() {
 
       {showForm&&patient&&(
         <div onClick={()=>setShowForm(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:560,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:680,maxWidth:"95vw",maxHeight:"92vh",overflowY:"auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <h2 style={{fontSize:17,fontWeight:700,color:C.text,margin:0}}>🩺 {patient.prenom} {patient.nom}</h2>
               <button onClick={()=>setShowForm(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
             </div>
-            {[["Motif *","motif","Raison de la consultation"],["Diagnostic *","diagnostic","Hypertension artérielle…"],["Traitement","traitement","Amlodipine 5mg…"]].map(([label,key,ph])=>(
-              <div key={key} style={{marginBottom:12}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
-                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
-                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-              </div>
-            ))}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:12}}>
-              {[["T.A.","ta","120/80"],["Temp","temperature","37"],["Poids","poids","70"],["Taille","taille","175"]].map(([label,key,ph])=>(
+
+            {/* ── Constantes médicales ─────────────────────────── */}
+            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Constantes médicales</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:6}}>
+              {[["T° (°C)","temperature","37"],["TA (mmHg)","ta","120/80"],["Pouls (bpm)","pouls","72"],["Poids (kg)","poids","70"]].map(([label,key,ph])=>(
                 <div key={key}>
                   <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                   <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
@@ -2063,16 +2093,154 @@ function PageConsultation() {
                 </div>
               ))}
             </div>
-            <div style={{marginBottom:16}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Notes</label>
-              <textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Observations…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+              <div>
+                <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Taille (cm)</label>
+                <input value={form.taille||""} onChange={e=>setForm(f=>({...f,taille:e.target.value}))} placeholder="175"
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>IMC (calculé)</label>
+                <input value={imcAuto} readOnly placeholder="—"
+                  style={{width:"100%",background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.dim,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+              {[["PC (cm)","pc"],["FR (cycles/min)","fr"]].map(([label,key])=>(
+                <div key={key}>
+                  <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                  <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+              ))}
             </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
+              {[["TSO2 (%)","tso2"],["PB (cm)","pb"],["PCui (cm)","pcui"]].map(([label,key])=>(
+                <div key={key}>
+                  <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                  <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Examen clinique & diagnostic ─────────────────── */}
+            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Examen clinique</div>
+            {[["Motif de la consultation *","motif","Raison de la consultation…",2],["H.D.M / Antécédents","hdm_antecedents","Histoire de la maladie, antécédents…",2],["Examen clinique","examen_clinique","Constatations à l'examen…",2],["Hypothèses diagnostiques","hypotheses_diagnostiques","Hypothèses envisagées…",2]].map(([label,key,ph,rows])=>(
+              <div key={key} style={{marginBottom:12}}>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                <textarea value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} rows={rows} placeholder={ph}
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+            ))}
+
+            {/* ── Examens para-cliniques ────────────────────────── */}
+            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",margin:"16px 0 8px"}}>Examens para-cliniques</div>
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:6}}>1 — Biologie</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
+                {actesBio.length===0
+                  ? <span style={{fontSize:11,color:C.dim}}>Aucun examen de biologie dans le catalogue</span>
+                  : actesBio.map(a=>{
+                    const sel = bioSel.some(x=>x.code===a.code);
+                    return (
+                      <button key={a.code} type="button" onClick={()=>toggleBio(a)}
+                        style={{padding:"5px 10px",borderRadius:20,border:`1.5px solid ${sel?C.teal:C.border}`,background:sel?"rgba(13,148,136,.15)":"transparent",color:sel?C.teal:C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {sel?"✓ ":""}{a.libelle}
+                      </button>
+                    );
+                  })
+                }
+              </div>
+              <textarea value={form.biologie_texte} onChange={e=>setForm(f=>({...f,biologie_texte:e.target.value}))} rows={2} placeholder="Précisions complémentaires (biologie)…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>2 — Imagerie médicale</label>
+              <textarea value={form.imagerie_texte} onChange={e=>setForm(f=>({...f,imagerie_texte:e.target.value}))} rows={2} placeholder="Radiographie, échographie…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>3 — Autres</label>
+              <textarea value={form.autres_examens} onChange={e=>setForm(f=>({...f,autres_examens:e.target.value}))} rows={2} placeholder="Autres examens…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+
+            {/* ── Diagnostic retenu & traitement ───────────────────── */}
+            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",margin:"16px 0 8px"}}>Diagnostic retenu & traitement</div>
+            <div style={{marginBottom:6,position:"relative"}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher (CIM-10)</label>
+              <input value={searchDiag} onChange={e=>setSearchDiag(e.target.value)} placeholder="paludisme, HTA, diabète…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 12px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              {searchDiag.length>1 && diagResults.length>0 && (
+                <div style={{position:"absolute",zIndex:10,left:0,right:0,background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,marginTop:4,maxHeight:160,overflowY:"auto"}}>
+                  {diagResults.map(a=>(
+                    <div key={a.code} onClick={()=>{
+                      setForm(f=>({...f,diagnostic_predefini:`${a.code} - ${a.libelle}`,diagnostic:f.diagnostic?f.diagnostic:a.libelle}));
+                      setSearchDiag("");
+                    }} style={{padding:"8px 12px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                      <span style={{color:C.teal,fontFamily:"monospace",marginRight:6}}>{a.code}</span>{a.libelle}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {form.diagnostic_predefini && (
+                <div style={{marginTop:6}}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:"rgba(13,148,136,.15)",color:C.teal,fontSize:11,fontWeight:700}}>
+                    {form.diagnostic_predefini}
+                    <span onClick={()=>setForm(f=>({...f,diagnostic_predefini:""}))} style={{cursor:"pointer"}}>✕</span>
+                  </span>
+                </div>
+              )}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Diagnostic retenu *</label>
+              <input value={form.diagnostic} onChange={e=>setForm(f=>({...f,diagnostic:e.target.value}))} placeholder="Hypertension artérielle…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+
+            <div style={{marginBottom:6,position:"relative"}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher un traitement</label>
+              <input value={searchTrait} onChange={e=>setSearchTrait(e.target.value)} placeholder="Amlodipine, paracétamol…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 12px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              {searchTrait.length>1 && (medicaments||[]).length>0 && (
+                <div style={{position:"absolute",zIndex:10,left:0,right:0,background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,marginTop:4,maxHeight:160,overflowY:"auto"}}>
+                  {(medicaments||[]).slice(0,15).map(m=>(
+                    <div key={m.id||m.nom} onClick={()=>{
+                      setForm(f=>({...f,traitement_predefini:m.nom,traitement:f.traitement?`${f.traitement}, ${m.nom}`:m.nom}));
+                      setSearchTrait("");
+                    }} style={{padding:"8px 12px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                      {m.nom}{m.dci?<span style={{color:C.muted}}> — {m.dci}</span>:null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Traitement (ordonnance)</label>
+              <textarea value={form.traitement} onChange={e=>setForm(f=>({...f,traitement:e.target.value}))} rows={2} placeholder="Amlodipine 5mg, 1cp/jour…"
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Date de contrôle</label>
+                <input type="date" value={form.date_controle} onChange={e=>setForm(f=>({...f,date_controle:e.target.value}))}
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Notes</label>
+                <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Observations…"
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Annuler</button>
               <button disabled={addMut.isPending} onClick={()=>{
                 if(!form.motif||!form.diagnostic){toast.error("Motif et diagnostic requis");return;}
-                addMut.mutate({patient_id:patient.id,...form,tension_arterielle:form.ta});
+                addMut.mutate({
+                  patient_id:patient.id, ...form, tension_arterielle:form.ta,
+                  biologie_predefinis: bioSel.map(a=>a.libelle).join(", ")||null,
+                });
               }} style={{flex:2,padding:"10px",borderRadius:9,background:`linear-gradient(135deg,${C.green},${C.teal})`,border:"none",color:"#fff",cursor:addMut.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addMut.isPending?.65:1}}>
                 {addMut.isPending?"⏳…":"✅ Enregistrer"}
               </button>
