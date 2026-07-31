@@ -108,10 +108,10 @@ const THead=({cols})=>(
 // ════════════════════════════════════════════════════════════════════
 function PageHome(){
   const nav=useNavigate();
-  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[]),retry:1});
-  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[]),retry:1});
-  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[]),retry:1});
-  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data.data||[]),retry:1});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[]),retry:1});
+  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data||[]),retry:1});
+  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data||[]),retry:1});
+  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data||[]),retry:1});
   const U=users||[];const CMD=cmds||[];const CL=clin||[];const PT=pats||[];
   const livrees=CMD.filter(c=>c.statut==="livree").length;
   const nMI=U.filter(u=>u.role==="medecin_independant").length;
@@ -216,10 +216,10 @@ function PageHome(){
 // MONÉTISATION
 // ════════════════════════════════════════════════════════════════════
 function PageMonetisation(){
-  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
-  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data.data||[])});
-  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[])});
-  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data||[])});
+  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data||[])});
+  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[])});
   const nc=clin?.length||0; const np=pats?.length||0;
   const livrees=(cmds||[]).filter(c=>c.statut==="livree").length;
   const nMI=(users||[]).filter(u=>u.role==="medecin_independant").length;
@@ -292,7 +292,7 @@ function PageUtilisateurs(){
   const [showDetail,setShowDetail]=useState(null);
   const [form,setForm]=useState({prenom:"",nom:"",email:"",password:"",role:"patient",telephone:"",ville:""});
 
-  const {data,isLoading}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[])});
   const toggleMut=useMutation({mutationFn:({id,v})=>aAPI.toggleUser(id,v),onSuccess:()=>{toast.success("Statut mis à jour");qc.invalidateQueries(["adm-users"]);},onError:()=>toast.error("Erreur")});
   const addMut=useMutation({mutationFn:d=>aAPI.addUser(d),onSuccess:()=>{toast.success("✅ Utilisateur créé !");qc.invalidateQueries(["adm-users"]);setShowAdd(false);setForm({prenom:"",nom:"",email:"",password:"",role:"patient",telephone:"",ville:""});},onError:e=>toast.error(e?.response?.data?.message||"Erreur création")});
 
@@ -442,7 +442,7 @@ function PageUtilisateurs(){
 // CLINIQUES
 // ════════════════════════════════════════════════════════════════════
 function PageCliniques(){
-  const {data,isLoading}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data||[])});
   const cl=data||[];
   return(
     <div>
@@ -483,8 +483,8 @@ function PageCliniques(){
 // MÉDECINS
 // ════════════════════════════════════════════════════════════════════
 function PageMedecins(){
-  const {data,isLoading}=useQuery({queryKey:["adm-med"],queryFn:()=>aAPI.medecins().then(r=>r.data.data||[])});
-  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-med"],queryFn:()=>aAPI.medecins().then(r=>r.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[])});
   const md=data||[]; const nMI=(users||[]).filter(u=>u.role==="medecin_independant").length;
   return(
     <div>
@@ -525,8 +525,8 @@ function PageMedecins(){
 // LIVREURS
 // ════════════════════════════════════════════════════════════════════
 function PageLivreurs(){
-  const {data,isLoading}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[])});
-  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[])});
   const cmds=data||[]; const livrees=cmds.filter(c=>c.statut==="livree"); const livreurs=(users||[]).filter(u=>u.role==="livreur");
   return(
     <div>
@@ -581,7 +581,7 @@ function PageLivreurs(){
 // ASSURANCES
 // ════════════════════════════════════════════════════════════════════
 function PageAssurances(){
-  const {data,isLoading}=useQuery({queryKey:["adm-ass"],queryFn:()=>aAPI.assurances().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-ass"],queryFn:()=>aAPI.assurances().then(r=>r.data||[])});
   const d=data||[];
   return(
     <div>
@@ -623,10 +623,10 @@ function PageAssurances(){
 // STATISTIQUES
 // ════════════════════════════════════════════════════════════════════
 function PageStatistiques(){
-  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
-  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
-  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data.data||[])});
-  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data.data||[])});
+  const {data:users}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[])});
+  const {data:clin}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data||[])});
+  const {data:cmds}=useQuery({queryKey:["adm-cmds"],queryFn:()=>aAPI.commandes().then(r=>r.data||[])});
+  const {data:pats}=useQuery({queryKey:["adm-pats"],queryFn:()=>aAPI.patients().then(r=>r.data||[])});
   const U=users||[];const CL=clin||[];const CMD=cmds||[];const PT=pats||[];
   const livrees=CMD.filter(c=>c.statut==="livree").length;
   const revT=livrees*T.livraison_plateforme+CL.length*T.clinique_mensuel+PT.length*T.patient_standard;
@@ -781,8 +781,8 @@ function PageMedecinsIndependants(){
   const [showDetail,setShowDetail]=useState(null);
   const [activeTab,setActiveTab]=useState("liste");
 
-  const {data:users,isLoading}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data.data||[])});
-  const {data:medecins}=useQuery({queryKey:["adm-med"],queryFn:()=>aAPI.medecins().then(r=>r.data.data||[])});
+  const {data:users,isLoading}=useQuery({queryKey:["adm-users"],queryFn:()=>aAPI.users().then(r=>r.data||[])});
+  const {data:medecins}=useQuery({queryKey:["adm-med"],queryFn:()=>aAPI.medecins().then(r=>r.data||[])});
 
   const miUsers=(users||[]).filter(u=>u.role==="medecin_independant");
   const miMedecins=medecins||[];
@@ -944,7 +944,7 @@ function PageMedecinsIndependants(){
 function PageCompagniesAssurance(){
   const [showAdd,setShowAdd]=useState(false);
   const [form,setForm]=useState({nom:"",type:"",contact:"",email:"",taux_couverture:80,zones:""});
-  const {data,isLoading}=useQuery({queryKey:["adm-ass"],queryFn:()=>aAPI.assurances().then(r=>r.data.data||[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-ass"],queryFn:()=>aAPI.assurances().then(r=>r.data||[])});
   const dossiers=data||[];
 
   const COMPAGNIES_CONNUES=[
@@ -1057,7 +1057,7 @@ function PageCompagniesAssurance(){
 // ════════════════════════════════════════════════════════════════════
 function PageFactures(){
   const [filter,setFilter]=useState("");
-  const {data,isLoading}=useQuery({queryKey:["adm-factures"],queryFn:()=>api.get("/factures").then(r=>r.data.data||[]).catch(()=>[])});
+  const {data,isLoading}=useQuery({queryKey:["adm-factures"],queryFn:()=>api.get("/factures").then(r=>r.data||[]).catch(()=>[])});
   const factures=data||[];
 
   const payees=factures.filter(f=>f.statut==="payee");
@@ -1137,7 +1137,7 @@ function PageFactures(){
 // CAISSE — SESSIONS DES CLINIQUES
 // ════════════════════════════════════════════════════════════════════
 function PageCaisse(){
-  const {data:cliniques}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data.data||[])});
+  const {data:cliniques}=useQuery({queryKey:["adm-clin"],queryFn:()=>aAPI.cliniques().then(r=>r.data||[])});
   const CL=cliniques||[];
 
   // Simuler des données de caisse par clinique
@@ -1228,7 +1228,7 @@ function PageCaisse(){
 function PagePaiements(){
   const [modeFilter,setModeFilter]=useState("");
   const [typeFilter,setTypeFilter]=useState("");
-  const {data}=useQuery({queryKey:["adm-factures"],queryFn:()=>api.get("/factures").then(r=>r.data.data||[]).catch(()=>[])});
+  const {data}=useQuery({queryKey:["adm-factures"],queryFn:()=>api.get("/factures").then(r=>r.data||[]).catch(()=>[])});
   const factures=(data||[]).filter(f=>f.statut==="payee");
 
   // Consolider paiements par mode
