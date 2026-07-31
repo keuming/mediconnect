@@ -314,7 +314,6 @@ function FormAddBulletin({onClose}) {
   const fileRef = useRef();
   const [fichier,setFichier] = useState(null);
   const [preview,setPreview] = useState(null);
-  const [uploadEnCours, setUploadEnCours] = useState(false);
   const [form,setForm] = useState({type:'Radiologie',categorie:'imagerie',patient_nom:'',notes:'',rapport:''});
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const TYPES = {
@@ -338,39 +337,6 @@ function FormAddBulletin({onClose}) {
     if(file.type.startsWith('image/')) { const r=new FileReader(); r.onload=ev=>setPreview(ev.target.result); r.readAsDataURL(file); }
     else setPreview(null);
   };
-
-// Upload direct vers Cloudinary (preset non signe, cote client). Formats
-// elargis a Word car le champ fichier de ce formulaire les accepte deja
-// (accept="image/*,.pdf,.doc,.docx").
-const CLOUDINARY_CLOUD_PAT = 'xau4buvq';
-const CLOUDINARY_PRESET_PAT = 'mediconnect_upload';
-const FORMATS_AUTORISES_PAT = [
-  'application/pdf', 'image/jpeg', 'image/jpg', 'image/png',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
-const TAILLE_MAX_PAT = 10 * 1024 * 1024; // 10 Mo
-
-async function uploadVersCloudinaryPatient(fichier) {
-  if (!FORMATS_AUTORISES_PAT.includes(fichier.type)) {
-    throw new Error('Format non autorise. Utilisez PDF, JPG, PNG, DOC ou DOCX.');
-  }
-  if (fichier.size > TAILLE_MAX_PAT) {
-    throw new Error('Fichier trop volumineux (10 Mo maximum).');
-  }
-  const form = new FormData();
-  form.append('file', fichier);
-  form.append('upload_preset', CLOUDINARY_PRESET_PAT);
-  const resourceType = fichier.type.startsWith('image/') ? 'image' : 'raw';
-  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_PAT}/${resourceType}/upload`, {
-    method: 'POST', body: form,
-  });
-  const d = await r.json();
-  if (!r.ok || !d.secure_url) {
-    throw new Error(d?.error?.message || 'Echec de l\'envoi du fichier');
-  }
-  return d.secure_url;
-}
 
   return (
     <div>
@@ -398,22 +364,10 @@ async function uploadVersCloudinaryPatient(fichier) {
       <Inp label="Notes personnelles" value={form.notes} onChange={f('notes')} placeholder="Contexte, date de la consultation, médecin référent…" rows={2}/>
       <div style={{display:'flex',gap:10,marginTop:4}}>
         <Btn variant="outline" style={{flex:1}} onClick={onClose}>Annuler</Btn>
-        <Btn style={{flex:2}} loading={addMut.isPending||uploadEnCours} onClick={async ()=>{
+        <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
           if(!form.type) { toast.error('Type requis'); return; }
-          let fichierUrl = null;
-          if (fichier) {
-            try {
-              setUploadEnCours(true);
-              fichierUrl = await uploadVersCloudinaryPatient(fichier);
-            } catch(err) {
-              toast.error(err.message || 'Echec de l\'envoi du fichier');
-              setUploadEnCours(false);
-              return;
-            }
-            setUploadEnCours(false);
-          }
-          addMut.mutate({type:form.type,categorie:form.categorie,patient_nom:form.patient_nom||undefined,fichier_nom:fichier?.name||null,fichier_url:fichierUrl,rapport:form.rapport||null,notes:form.notes||null});
-        }}>{uploadEnCours?'📎 Envoi du fichier…':'📁 Archiver dans le dossier'}</Btn>
+          addMut.mutate({type:form.type,categorie:form.categorie,patient_nom:form.patient_nom||undefined,fichier_nom:fichier?.name||null,rapport:form.rapport||null,notes:form.notes||null});
+        }}>📁 Archiver dans le dossier</Btn>
       </div>
     </div>
   );
@@ -754,13 +708,7 @@ export default function PageDossier() {
                       <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'Nouveau':'Traité'}</Badge>
                     </div>
                     <div style={{fontSize:11,color:C.dim,marginBottom:8}}>{fmtShort(b.created_at)}</div>
-                    {b.fichier_url
-                      ? <a href={b.fichier_url} target="_blank" rel="noopener noreferrer"
-                          style={{display:'block',fontSize:11,color:C.green,marginBottom:8,background:C.hover,borderRadius:6,padding:'4px 8px',textDecoration:'none',fontWeight:700}}>
-                          📎 {b.fichier_nom || 'Voir le document'} ↗
-                        </a>
-                      : b.fichier_nom&&<div style={{fontSize:11,color:C.muted,marginBottom:8,background:C.hover,borderRadius:6,padding:'4px 8px'}}>📎 {b.fichier_nom} <span style={{color:C.dim}}>(fichier non disponible)</span></div>
-                    }
+                    {b.fichier_nom&&<div style={{fontSize:11,color:C.muted,marginBottom:8,background:C.hover,borderRadius:6,padding:'4px 8px'}}>📎 {b.fichier_nom}</div>}
                     {b.rapport&&<div style={{fontSize:12,color:C.muted,lineHeight:1.5,marginBottom:8}}>{b.rapport.slice(0,100)}{b.rapport.length>100?'…':''}</div>}
                     {b.notes&&<div style={{fontSize:11,color:C.dim,fontStyle:'italic'}}>{b.notes.slice(0,60)}</div>}
                   </div>

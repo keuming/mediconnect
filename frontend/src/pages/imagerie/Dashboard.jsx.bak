@@ -12,36 +12,6 @@ const C = {
 };
 const fmtDate = d => d ? new Date(d).toLocaleDateString('fr-CI',{day:'numeric',month:'short',year:'numeric'}) : '—';
 
-// Upload direct vers Cloudinary (preset non signe, cote client). Le fichier
-// ne transite jamais par le backend Vercel, qui a des limites de payload
-// strictes en serverless. Validation de type/taille faite avant l'envoi
-// puisque le preset ne les impose pas cote Cloudinary.
-const CLOUDINARY_CLOUD = 'xau4buvq';
-const CLOUDINARY_PRESET = 'mediconnect_upload';
-const FORMATS_AUTORISES = ['application/pdf','image/jpeg','image/jpg','image/png'];
-const TAILLE_MAX = 10 * 1024 * 1024; // 10 Mo
-
-async function uploadVersCloudinary(fichier) {
-  if (!FORMATS_AUTORISES.includes(fichier.type)) {
-    throw new Error('Format non autorise. Utilisez PDF, JPG ou PNG.');
-  }
-  if (fichier.size > TAILLE_MAX) {
-    throw new Error('Fichier trop volumineux (10 Mo maximum).');
-  }
-  const form = new FormData();
-  form.append('file', fichier);
-  form.append('upload_preset', CLOUDINARY_PRESET);
-  const resourceType = fichier.type === 'application/pdf' ? 'raw' : 'image';
-  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`, {
-    method: 'POST', body: form,
-  });
-  const d = await r.json();
-  if (!r.ok || !d.secure_url) {
-    throw new Error(d?.error?.message || 'Echec de l\'envoi du fichier');
-  }
-  return d.secure_url;
-}
-
 const imgAPI = {
   bulletins: () => api.get('/bulletins', { params:{ categorie:'imagerie' } }).catch(()=>({ data:{ data:[] } })),
   addBulletin: d => api.post('/bulletins', d),
@@ -134,7 +104,6 @@ function PageBulletins() {
   const [type, setType] = useState('Radiologie');
   const [notes, setNotes] = useState('');
   const [succes, setSucces] = useState(false);
-  const [uploadEnCours, setUploadEnCours] = useState(false);
 
   const { data, isLoading } = useQuery({ queryKey:['img-bulletins'], queryFn:()=>imgAPI.bulletins().then(r=>r.data.data||[]) });
   const bulletins = data||[];
@@ -243,25 +212,10 @@ function PageBulletins() {
               </div>
 
               <button
-                onClick={async ()=>{
-                  if(!rapport.trim()&&!fichier){toast.error('Joignez un fichier ou rédigez un rapport');return;}
-                  let fichierUrl = null;
-                  if (fichier) {
-                    try {
-                      setUploadEnCours(true);
-                      fichierUrl = await uploadVersCloudinary(fichier);
-                    } catch(err) {
-                      toast.error(err.message || 'Echec de l\'envoi du fichier');
-                      setUploadEnCours(false);
-                      return;
-                    }
-                    setUploadEnCours(false);
-                  }
-                  addMut.mutate({ type,categorie:'imagerie',patient_nom:patientNom||null,rapport:rapport||null,fichier_nom:fichier?.name||null,fichier_url:fichierUrl,notes:notes||null });
-                }}
-                disabled={addMut.isPending||uploadEnCours}
-                style={{ width:'100%',background:`linear-gradient(135deg,${C.purple},#6D28D9)`,border:'none',borderRadius:12,padding:14,color:'#fff',fontSize:15,fontWeight:800,cursor:(addMut.isPending||uploadEnCours)?'not-allowed':'pointer',opacity:(addMut.isPending||uploadEnCours)?.7:1 }}>
-                {uploadEnCours?'📎 Envoi du fichier…':addMut.isPending?'⏳ Envoi en cours…':'📤 Envoyer le rapport'}
+                onClick={()=>{ if(!rapport.trim()&&!fichier){toast.error('Joignez un fichier ou rédigez un rapport');return;} addMut.mutate({ type,categorie:'imagerie',patient_nom:patientNom||null,rapport:rapport||null,fichier_nom:fichier?.name||null,notes:notes||null }); }}
+                disabled={addMut.isPending}
+                style={{ width:'100%',background:`linear-gradient(135deg,${C.purple},#6D28D9)`,border:'none',borderRadius:12,padding:14,color:'#fff',fontSize:15,fontWeight:800,cursor:addMut.isPending?'not-allowed':'pointer',opacity:addMut.isPending?.7:1 }}>
+                {addMut.isPending?'⏳ Envoi en cours…':'📤 Envoyer le rapport'}
               </button>
             </div>
           )}

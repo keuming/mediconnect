@@ -417,6 +417,14 @@ app.get('/api/patients', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+app.get('/api/patients/recherche', auth, async (req, res) => {
+  try {
+    const { code } = req.query;
+    if (!code) return res.status(400).json({ success:false, message:'Code requis' });
+    const r = await db('SELECT * FROM patients WHERE UPPER(code_secret)=UPPER($1) LIMIT 1', [code]);
+    res.json({ success:true, data:r.rows[0]||null });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
 app.get('/api/patients/:id', auth, async (req, res) => {
   try { const r = await db('SELECT * FROM patients WHERE id=$1', [req.params.id]); res.json({ success:true, data:r.rows[0]||null }); }
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
