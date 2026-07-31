@@ -65,7 +65,11 @@ router.post('/login-patient', async (req, res) => {
 router.post('/register', async (req, res) => {
   const { email, password, prenom, nom, role, telephone, pays_code, ville,
           // Champs spécifiques clinique
-          nom_clinique, adresse, specialites, nombre_lits } = req.body;
+          nom_clinique, adresse, specialites, nombre_lits,
+          // Rattachement a une clinique deja existante en base (evite les
+          // doublons quand plusieurs comptes appartiennent a la meme
+          // structure : secretaire, gerant, medecins...)
+          clinique_id_existante } = req.body;
   if (!email || !password)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
   try {
@@ -91,17 +95,31 @@ router.post('/register', async (req, res) => {
 
     // 2. Créer l'entrée dans la table métier selon le rôle
     if (roleVal === 'clinique') {
-      const cid = uuid();
-      await db(
-        `INSERT INTO cliniques (id, nom, adresse, ville, telephone, email, user_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT DO NOTHING`,
-        [cid, nom_clinique||nom||prenom||'Clinique', adresse||null, ville||null,
-         telephone||null, email, userId]
-      );
-      // Lier clinique_id à l'utilisateur
-      await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [cid, userId]);
-      clinique_id = cid;
+      if (clinique_id_existante) {
+        // Rattachement : on verifie que la clinique existe reellement avant
+        // de lier, pour ne jamais laisser un utilisateur avec un
+        // clinique_id qui pointe sur rien.
+        const check = await db('SELECT id FROM cliniques WHERE id=$1', [clinique_id_existante]);
+        if (!check.rows.length) {
+          return res.status(400).json({ success:false, message:'Clinique introuvable, rafraichissez la recherche' });
+        }
+        await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [clinique_id_existante, userId]);
+        clinique_id = clinique_id_existante;
+      } else {
+        if (!nom_clinique) {
+          return res.status(400).json({ success:false, message:'Nom de la clinique requis' });
+        }
+        const cid = uuid();
+        await db(
+          `INSERT INTO cliniques (id, nom, adresse, ville, telephone, email, user_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT DO NOTHING`,
+          [cid, nom_clinique, adresse||null, ville||null,
+           telephone||null, email, userId]
+        );
+        await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [cid, userId]);
+        clinique_id = cid;
+      }
 
     } else if (roleVal === 'pharmacie') {
       const pid = uuid();

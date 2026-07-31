@@ -37,7 +37,26 @@ export default function Register() {
     nom_ph:'', vehicule:'Moto', nom_ass:''
   });
   const [show, setShow]   = useState(false);
+  const [cliniqueQuery, setCliniqueQuery]   = useState('');
+  const [cliniquesList, setCliniquesList]   = useState([]);
+  const [cliniqueSel, setCliniqueSel]       = useState(null); // {id, nom, ville} ou null
+  const [cliniquesLoaded, setCliniquesLoaded] = useState(false);
   const { register, loading } = useAuthStore();
+
+  const chargerCliniques = async () => {
+    if (cliniquesLoaded) return;
+    try {
+      const r = await fetch('https://mediconnect-backend-v2.vercel.app/api/cliniques');
+      const d = await r.json();
+      setCliniquesList(d.data || []);
+    } catch { setCliniquesList([]); }
+    setCliniquesLoaded(true);
+  };
+
+  const cliniquesFiltrees = cliniqueQuery.trim().length < 2 ? [] :
+    cliniquesList.filter(c =>
+      (c.nom||'').toLowerCase().includes(cliniqueQuery.toLowerCase())
+    ).slice(0, 8);
   const navigate = useNavigate();
 
   const handleSubmit = async () => {
@@ -46,12 +65,23 @@ export default function Register() {
     if (form.password.length < 6) { toast.error('Mot de passe minimum 6 caractères.'); return; }
     if (!form.email || !form.prenom || !form.nom) { toast.error('Prénom, nom et email requis.'); return; }
 
+    if (role === 'clinique' && !cliniqueSel && !extraForm.nom_etab.trim()) {
+      toast.error("Recherchez votre clinique ou saisissez son nom si elle n'existe pas encore.");
+      return;
+    }
+
     const payload = {
       ...form,
       role,
       pays_code: pays,
       ville: ville,
       ...extraForm,
+      // nom_etab est le nom du champ de saisie libre ; le backend attend
+      // nom_clinique. Sans ce mapping le champ tape par l'utilisateur
+      // n'atteint jamais la base et la clinique se cree sous son
+      // prenom/nom a la place (bug source des doublons "Dr X").
+      nom_clinique: role === 'clinique' ? (cliniqueSel?.nom || extraForm.nom_etab) : undefined,
+      clinique_id_existante: role === 'clinique' ? (cliniqueSel?.id || undefined) : undefined,
     };
     delete payload.confirm;
 
@@ -214,7 +244,45 @@ export default function Register() {
 
             {role==='clinique' && (
               <>
-                {extraInp("Nom de l'établissement *", 'nom_etab', { placeholder:'Clinique Sainte Marie' })}
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:5 }}>
+                    Votre clinique existe-t-elle déjà dans MediConnect ?
+                  </label>
+                  <input
+                    value={cliniqueQuery}
+                    onFocus={chargerCliniques}
+                    onChange={e=>{ setCliniqueQuery(e.target.value); setCliniqueSel(null); }}
+                    placeholder="Tapez le nom pour rechercher..."
+                    style={{ width:'100%', background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:'10px 14px', color:C.text, fontSize:13, outline:'none' }}
+                  />
+                  {cliniquesFiltrees.length>0 && !cliniqueSel && (
+                    <div style={{ marginTop:6, border:`1.5px solid ${C.border}`, borderRadius:9, overflow:'hidden' }}>
+                      {cliniquesFiltrees.map(c=>(
+                        <div key={c.id} onClick={()=>{ setCliniqueSel(c); setCliniqueQuery(c.nom); }}
+                          style={{ padding:'10px 14px', cursor:'pointer', borderBottom:`1px solid ${C.border}`, fontSize:13, color:C.text }}
+                          onMouseEnter={e=>e.currentTarget.style.background=C.input}
+                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                          <div style={{ fontWeight:700 }}>{c.nom}</div>
+                          <div style={{ fontSize:11, color:C.muted }}>{c.ville||'Ville non renseignée'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {cliniqueSel && (
+                    <div style={{ marginTop:8, background:'rgba(10,143,88,.1)', border:'1px solid rgba(10,143,88,.3)', borderRadius:9, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:700, color:C.text }}>✓ {cliniqueSel.nom}</div>
+                        <div style={{ fontSize:11, color:C.muted }}>Vous serez rattaché à cette clinique existante</div>
+                      </div>
+                      <button type="button" onClick={()=>{ setCliniqueSel(null); setCliniqueQuery(''); }}
+                        style={{ background:'none', border:'none', color:C.muted, cursor:'pointer', fontSize:13 }}>✕</button>
+                    </div>
+                  )}
+                  <p style={{ fontSize:11, color:C.dim, marginTop:6 }}>
+                    Aucun résultat ? Renseignez le nom complet ci-dessous pour créer votre établissement.
+                  </p>
+                </div>
+                {!cliniqueSel && extraInp("Nom de l'établissement *", 'nom_etab', { placeholder:'Clinique Sainte Marie' })}
                 <div style={{ marginBottom:14 }}>
                   <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:5 }}>Type d'établissement</label>
                   <select value={extraForm.type_etab} onChange={e=>setExtra({...extraForm,type_etab:e.target.value})}
