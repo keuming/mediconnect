@@ -7,6 +7,18 @@ router.get('/bulletins', auth, async (req, res) => {
   try {
     const { categorie, statut } = req.query;
     let sql = 'SELECT * FROM bulletins WHERE 1=1'; const p = [];
+    // FAILLE CONFIDENTIALITE CORRIGEE : sans ce filtre, un patient voyait
+    // TOUS les bulletins de TOUS les patients (resultats labo/imagerie
+    // d'inconnus). Le filtre vient de req.user (token signe), jamais
+    // d'un parametre de requete que le client pourrait manipuler.
+    if (req.user?.role === 'patient') {
+      if (!req.user.patient_id) { return res.json({ success: true, data: [] }); }
+      p.push(req.user.patient_id);
+      sql += ` AND patient_id=$${p.length}`;
+    } else if (req.user?.clinique_id) {
+      p.push(req.user.clinique_id);
+      sql += ` AND clinique_id=$${p.length}`;
+    }
     if (categorie) { p.push(categorie); sql += ` AND categorie=$${p.length}`; }
     if (statut)    { p.push(statut);    sql += ` AND statut=$${p.length}`; }
     sql += ' ORDER BY created_at DESC LIMIT 100';
