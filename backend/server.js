@@ -449,9 +449,15 @@ app.post('/api/patients', auth, async (req, res) => {
   try {
     const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
     const patientId = uuid();
+    // BUG CRITIQUE CORRIGE : la table patients n'a pas de colonne clinique_id
+    // (le patient est un dossier partage entre cliniques, rattache via
+    // consultations/factures/rendez_vous, pas directement). L'INSERT
+    // precedent la visait quand meme -> "column clinique_id does not
+    // exist" -> AUCUNE creation de patient ne fonctionnait, pour aucune
+    // clinique, depuis l'origine.
     const r = await db(
-      'INSERT INTO patients (id,clinique_id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [patientId, req.user?.clinique_id, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]
+      'INSERT INTO patients (id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [patientId, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]
     );
     // Retourner explicitement le code_secret pour affichage
     res.status(201).json({ success:true, data:{ ...r.rows[0], code_secret:code } });
