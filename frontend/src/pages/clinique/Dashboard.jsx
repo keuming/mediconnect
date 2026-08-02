@@ -47,6 +47,8 @@ const cAPI = {
   addConsult:   (d) => api.post("/consultations", d),
   ordonnances:  (pid) => api.get(`/ordonnances?patient_id=${pid}`),
   addOrdonnance:(d) => api.post("/ordonnances", d),
+  patientParCode:(code) => api.get(`/patients/by-code/${encodeURIComponent(code)}`),
+  demanderExamen:(d) => api.post("/bulletins", d),
   // Stock
   stock:        () => api.get("/stock"),
   addStock:     (d) => api.post("/stock", d),
@@ -451,7 +453,7 @@ function PagePlanning() {
 //  3. PAGE DME — DOSSIERS MÉDICAUX ÉLECTRONIQUES
 // ════════════════════════════════════════════════════════════════════
 function PageDossiers() {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
@@ -462,6 +464,12 @@ function PageDossiers() {
   const [rdvConsult, setRdvConsult] = useState(null); // RDV depuis lequel on ouvre une consultation
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
+  const [showExamen, setShowExamen] = useState(false);
+  const [codeRecherche, setCodeRecherche] = useState("");
+  const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+  const [erreurRecherche, setErreurRecherche] = useState("");
+  const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", type:"NFS", notes:"" });
   const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
@@ -532,6 +540,35 @@ function PageDossiers() {
     onError: e => toast.error("Erreur: "+(e?.message||"Réessayez")),
   });
   const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); }, onError:()=>toast.error("Erreur") });
+
+  const demanderExamen = useMutation({
+    mutationFn: d => cAPI.demanderExamen(d),
+    onSuccess: () => { toast.success("Demande envoyée au service"); qc.invalidateQueries(["cl-examens",selected?.id]); setShowExamen(false); setPatientCible(null); setCodeRecherche(""); setExamenForm({ categorie:"laboratoire", type:"NFS", notes:"" }); },
+    onError: () => toast.error("Erreur lors de l'envoi de la demande"),
+  });
+
+  // Recherche par code dossier EXACT (ex: MC-KT-5069). Independante de
+  // `selected` : la clinique peut demander un examen pour un patient sans
+  // avoir a naviguer jusqu'a sa fiche dans la liste.
+  const rechercherParCode = async () => {
+    const code = codeRecherche.trim();
+    if (!code) { setErreurRecherche("Entrez un code dossier"); return; }
+    setRechercheEnCours(true); setErreurRecherche(""); setPatientCible(null);
+    try {
+      const r = await cAPI.patientParCode(code);
+      const p = r?.data?.data;
+      if (p?.id) { setPatientCible(p); }
+      else { setErreurRecherche("Aucun patient avec ce code"); }
+    } catch(e) {
+      setErreurRecherche(e?.response?.data?.message || "Aucun patient avec ce code");
+    }
+    setRechercheEnCours(false);
+  };
+
+  const TYPES_EXAMEN = {
+    laboratoire: ['NFS','Glycémie','Bilan lipidique','Bilan hépatique','Bilan rénal','Sérologie','Hémoculture','Ionogramme','HbA1c','Urine ECBU','Frottis','PCR','Groupe sanguin','Autre'],
+    imagerie: ['Radiologie','IRM','Scanner','Échographie','Mammographie','Scintigraphie'],
+  };
 
   const imprimerFacture = async (arg) => {
     // onClick transmet un SyntheticEvent en premier argument : on ne retient
@@ -741,13 +778,19 @@ function PageDossiers() {
   const fc = k => e => setCForm(p=>({...p,[k]:e.target.value}));
   const fo = k => e => setOForm(p=>({...p,[k]:e.target.value}));
 
-  const TABS = [
+  // Bureau des entrees : identite + factures (droit metier accorde),
+  // jamais le contenu medical (consultations, ordonnances, examens).
+  // sous_role absent = compte historique/proprietaire = acces complet.
+  const TABS_TOUTES = [
     { key:"infos", label:"Infos", icon:"👤" },
     { key:"consultations", label:"Consultations", icon:"🩺" },
     { key:"ordonnances", label:"Ordonnances", icon:"💊" },
     { key:"examens", label:"Examens", icon:"🔬" },
     { key:"factures", label:"Factures", icon:"📄" },
   ];
+  const TABS = user?.sous_role === "bureau_entrees"
+    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="factures")
+    : TABS_TOUTES;
 
   const bloodGroups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
 
@@ -898,7 +941,8 @@ function PageDossiers() {
 
             {/* Tab: Examens */}
             {activeTab==="examens" && (
-              <Panel title="Résultats d'examens et imagerie">
+              <Panel title="Résultats d'examens et imagerie"
+                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>{ setShowExamen(true); setPatientCible(selected||null); if(selected) setCodeRecherche(selected.code_secret||""); }}>🔬 Demander un examen</Btn>}>
                 {(examens||[]).length===0
                   ? <Empty icon="🔬" title="Aucun résultat" subtitle="Les résultats labo et imagerie apparaîtront ici dès leur saisie"/>
                   : (examens||[]).map(e=>(
@@ -1166,6 +1210,55 @@ function PageDossiers() {
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowOrd(false)}>Annuler</Btn>
           <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{ if(!oForm.medicaments){toast.error("Médicaments requis");return;} addOrd.mutate({...oForm,patient_id:selected.id}); }}>Créer l'ordonnance</Btn>
         </div>
+      </Modal>
+
+      <Modal open={showExamen} onClose={()=>{ setShowExamen(false); setPatientCible(null); setErreurRecherche(""); }} title="🔬 Demander un examen" width={520}>
+        {!patientCible ? (
+          <div>
+            <Inp label="Code dossier du patient *" value={codeRecherche}
+              onChange={e=>{ setCodeRecherche(e.target.value); setErreurRecherche(""); }}
+              placeholder="MC-XX-0000" />
+            {erreurRecherche && <div style={{fontSize:12,color:C.red,marginBottom:10}}>{erreurRecherche}</div>}
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <Btn variant="outline" style={{flex:1}} onClick={()=>setShowExamen(false)}>Annuler</Btn>
+              <Btn style={{flex:2}} loading={rechercheEnCours} onClick={rechercherParCode}>🔎 Rechercher</Btn>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <div style={{background:"rgba(10,143,88,.1)",border:"1px solid rgba(10,143,88,.3)",borderRadius:9,padding:"10px 14px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientCible.prenom} {patientCible.nom}</div>
+                <div style={{fontSize:11,color:C.muted}}>Dossier : {patientCible.code_secret||"—"}</div>
+              </div>
+              {patientCible.id!==selected?.id && (
+                <button type="button" onClick={()=>{ setPatientCible(null); setCodeRecherche(""); }}
+                  style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:13}}>✕</button>
+              )}
+            </div>
+            <Sel label="Catégorie" value={examenForm.categorie}
+              onChange={e=>setExamenForm(p=>({...p,categorie:e.target.value,type:TYPES_EXAMEN[e.target.value][0]}))}
+              options={[{v:"laboratoire",l:"🧪 Laboratoire"},{v:"imagerie",l:"🩻 Imagerie médicale"}]} />
+            <Sel label="Type d'examen *" value={examenForm.type} onChange={e=>setExamenForm(p=>({...p,type:e.target.value}))}
+              options={TYPES_EXAMEN[examenForm.categorie].map(t=>({v:t,l:t}))} />
+            <Inp label="Notes pour le service (optionnel)" value={examenForm.notes}
+              onChange={e=>setExamenForm(p=>({...p,notes:e.target.value}))}
+              placeholder="Contexte clinique, urgence, elements a rechercher…" rows={3} />
+            <div style={{display:"flex",gap:10,marginTop:4}}>
+              <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowExamen(false); setPatientCible(null); }}>Annuler</Btn>
+              <Btn style={{flex:2}} loading={demanderExamen.isPending} onClick={()=>{
+                demanderExamen.mutate({
+                  type: examenForm.type,
+                  categorie: examenForm.categorie,
+                  patient_id: patientCible.id,
+                  patient_nom: `${patientCible.prenom} ${patientCible.nom}`,
+                  emetteur_nom: selected ? `Dr. clinique` : undefined,
+                  notes: examenForm.notes || null,
+                });
+              }}>📤 Envoyer la demande</Btn>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
