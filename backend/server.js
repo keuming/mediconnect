@@ -463,6 +463,95 @@ app.post('/api/patients', auth, async (req, res) => {
     res.status(201).json({ success:true, data:{ ...r.rows[0], code_secret:code } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  RBAC PERSONNEL CLINIQUE
+// ══════════════════════════════════════════════════════════════════
+// sous_role : NULL = acces complet (compte historique/proprietaire).
+// Valeurs possibles : bureau_entrees, medecin, finance, rh.
+// Le compte personnel recoit le MEME clinique_id que le proprietaire
+// (pas proprietaire_clinique_id, reserve a la vue financiere du
+// proprietaire) : ainsi les 39+ routes existantes qui filtrent par
+// req.user.clinique_id fonctionnent sans modification.
+const SOUS_ROLES_VALIDES = ['bureau_entrees', 'medecin', 'finance', 'rh'];
+
+function requireSousRole(...autorises) {
+  return (req, res, next) => {
+    const sr = req.user?.sous_role;
+    if (!sr) return next(); // compte complet (proprietaire / historique)
+    if (autorises.includes(sr)) return next();
+    return res.status(403).json({ success:false, message:"Accès refusé pour votre rôle" });
+  };
+}
+
+app.post('/api/admin/init-rbac-clinique', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db("ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS sous_role VARCHAR(30)");
+    res.json({ success:true, message:'Colonne sous_role prête' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Creation d'un compte de personnel, reserve aux comptes a acces complet
+// (sous_role NULL) : un bureau_entrees ne peut pas creer d'autres comptes.
+app.post('/api/clinique/personnel', auth, requireSousRole(), async (req, res) => {
+  const { prenom, nom, email, password, telephone, sous_role } = req.body;
+  if (!prenom || !nom || !email || !password) {
+    return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+  }
+  if (!SOUS_ROLES_VALIDES.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES.join(', ')}` });
+  }
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+    if (exists.rows.length) return res.status(409).json({ success:false, message:'Email déjà utilisé' });
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(password, 10);
+    const r = await db(
+      `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,clinique_id,sous_role,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,'clinique',$5,$6,$7,true) RETURNING id,email,prenom,nom,sous_role,clinique_id`,
+      [email, hash, prenom, nom, telephone||null, cid, sous_role]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Liste du personnel de la clinique (comptes lies au meme clinique_id,
+// sous_role non nul)
+app.get('/api/clinique/personnel', auth, requireSousRole(), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.json({ success:true, data:[] });
+  try {
+    const r = await db(
+      `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+         FROM utilisateurs WHERE clinique_id=$1 AND sous_role IS NOT NULL
+        ORDER BY created_at DESC`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.put('/api/clinique/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const { sous_role, is_active } = req.body;
+  if (sous_role && !SOUS_ROLES_VALIDES.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES.join(', ')}` });
+  }
+  const cid = req.user?.clinique_id;
+  try {
+    // On ne modifie jamais un compte d'une AUTRE clinique, meme avec l'id exact.
+    const r = await db(
+      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+        WHERE id=$3 AND clinique_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+      [sous_role||null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
 app.put('/api/patients/:id', auth, async (req, res) => {
   const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance } = req.body;
   try {

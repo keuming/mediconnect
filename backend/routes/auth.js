@@ -23,7 +23,8 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
     const token = jwt.sign(
       { id: user.id, role: user.role, clinique_id: user.clinique_id,
-        patient_id: user.patient_id, medecin_id: user.medecin_id },
+        patient_id: user.patient_id, medecin_id: user.medecin_id,
+        sous_role: user.sous_role || null },
       JWT_SECRET, { expiresIn: '7d' }
     );
     const { password: _, ...u } = user;
