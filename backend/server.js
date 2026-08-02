@@ -604,7 +604,7 @@ app.delete('/api/rendez-vous/:id', auth, async (req, res) => {
 });
 
 // ── CONSULTATIONS ─────────────────────────────────────────────────
-app.get('/api/consultations', auth, async (req, res) => {
+app.get('/api/consultations', auth, requireSousRole('medecin'), async (req, res) => {
   try {
     const { patient_id } = req.query; const cid = req.user?.clinique_id;
     let sql='SELECT * FROM consultations WHERE 1=1'; const p=[];
@@ -614,7 +614,7 @@ app.get('/api/consultations', auth, async (req, res) => {
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.post('/api/consultations', auth, async (req, res) => {
+app.post('/api/consultations', auth, requireSousRole('medecin'), async (req, res) => {
   const {
     patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille,
     rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom, code_cim10,
@@ -654,7 +654,7 @@ app.post('/api/consultations', auth, async (req, res) => {
 });
 
 // ── ORDONNANCES ───────────────────────────────────────────────────
-app.get('/api/ordonnances', auth, async (req, res) => {
+app.get('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) => {
   try {
     const { patient_id } = req.query; const cid = req.user?.clinique_id;
     let sql='SELECT *, medicament AS medicaments FROM ordonnances WHERE 1=1'; const p=[];
@@ -664,7 +664,7 @@ app.get('/api/ordonnances', auth, async (req, res) => {
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.post('/api/ordonnances', auth, async (req, res) => {
+app.post('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) => {
   const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id, medecin_nom } = req.body;
   if (!patient_id||!medicaments) return res.status(400).json({ success:false, message:'Patient et médicaments requis' });
   if (!posologie) return res.status(400).json({ success:false, message:'Posologie requise' });
@@ -728,7 +728,7 @@ app.delete('/api/stock/:id', auth, async (req, res) => {
 });
 
 // ── FACTURES ──────────────────────────────────────────────────────
-app.get('/api/factures', auth, async (req, res) => {
+app.get('/api/factures', auth, requireSousRole('finance'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id; const pid=req.user?.patient_id;
     let sql='SELECT * FROM factures WHERE 1=1'; const p=[];
@@ -752,7 +752,7 @@ app.get('/api/factures/patient', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.post('/api/factures', auth, async (req, res) => {
+app.post('/api/factures', auth, requireSousRole('finance'), async (req, res) => {
   const { patient_nom, patient_id, montant, mode_paiement, statut, assurance } = req.body;
   try {
     const ref='FAC-'+Date.now().toString(36).toUpperCase();
@@ -772,7 +772,7 @@ app.put('/api/factures/:id', auth, async (req, res) => {
 });
 
 // ── CAISSE ────────────────────────────────────────────────────────
-app.get('/api/caisse', auth, async (req, res) => {
+app.get('/api/caisse', auth, requireSousRole('finance'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id;
     if (!cid) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
@@ -780,7 +780,7 @@ app.get('/api/caisse', auth, async (req, res) => {
     res.json({ success:true, data:r.rows[0]||{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
   } catch(e) { res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } }); }
 });
-app.get('/api/caisse/clinique', auth, async (req, res) => {
+app.get('/api/caisse/clinique', auth, requireSousRole('finance'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id;
     if (!cid) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0 } });
@@ -788,13 +788,13 @@ app.get('/api/caisse/clinique', auth, async (req, res) => {
     res.json({ success:true, data:r.rows[0]||{ statut:'fermee', total_encaisse:0 } });
   } catch(e) { res.json({ success:true, data:{ statut:'fermee', total_encaisse:0 } }); }
 });
-app.post('/api/caisse/ouvrir', auth, async (req, res) => {
+app.post('/api/caisse/ouvrir', auth, requireSousRole('finance'), async (req, res) => {
   try {
     const r=await db('INSERT INTO caisse_sessions (id,clinique_id) VALUES ($1,$2) RETURNING *',[uuid(),req.user?.clinique_id]);
     res.status(201).json({ success:true, data:r.rows[0], message:'Caisse ouverte !' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.post('/api/caisse/encaisser', auth, async (req, res) => {
+app.post('/api/caisse/encaisser', auth, requireSousRole('finance'), async (req, res) => {
   const { montant } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
   try {
@@ -802,7 +802,7 @@ app.post('/api/caisse/encaisser', auth, async (req, res) => {
     res.json({ success:true, message:`${Number(montant).toLocaleString('fr-CI')} FCFA encaissés` });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.post('/api/caisse/decaisser', auth, async (req, res) => {
+app.post('/api/caisse/decaisser', auth, requireSousRole('finance'), async (req, res) => {
   const { montant } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
   try {
@@ -810,7 +810,7 @@ app.post('/api/caisse/decaisser', auth, async (req, res) => {
     res.json({ success:true, message:'Décaissement enregistré' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.post('/api/caisse/cloturer', auth, async (req, res) => {
+app.post('/api/caisse/cloturer', auth, requireSousRole('finance'), async (req, res) => {
   try {
     const r=await db("UPDATE caisse_sessions SET statut='fermee',closed_at=NOW() WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' RETURNING *",[req.user?.clinique_id]);
     res.json({ success:true, data:r.rows[0], message:'Caisse clôturée' });
@@ -1559,7 +1559,7 @@ app.post('/api/admin/init-caisse-mouvements', async (req, res) => {
 });
 
 // ── Enregistrer un mouvement de caisse ───────────────────────────
-app.post('/api/caisse/mouvement', auth, async (req, res) => {
+app.post('/api/caisse/mouvement', auth, requireSousRole('finance'), async (req, res) => {
   const { type, montant, description, categorie, patient_nom, medecin_nom, mode_paiement, reference } = req.body;
   if (!type || !montant) return res.status(400).json({ success: false, message: 'type et montant requis' });
   try {
@@ -1592,7 +1592,7 @@ app.post('/api/caisse/mouvement', auth, async (req, res) => {
 });
 
 // ── Journal des mouvements (clinique + propriétaire) ─────────────
-app.get('/api/caisse/journal', auth, async (req, res) => {
+app.get('/api/caisse/journal', auth, requireSousRole('finance'), async (req, res) => {
   try {
     const { debut, fin, type, categorie } = req.query;
     let cid = req.user?.clinique_id || req.user?.proprietaire_clinique_id;
@@ -2006,7 +2006,7 @@ app.post('/api/admin/patch-consultations', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 //  IMAGERIE / RADIOLOGIE
 // ══════════════════════════════════════════════════════════════════
-app.get('/api/imagerie', auth, async (req, res) => {
+app.get('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
   try {
     const { patient_id } = req.query;
     const cid = req.user?.clinique_id;
@@ -2031,7 +2031,7 @@ app.get('/api/imagerie', auth, async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
-app.post('/api/imagerie', auth, async (req, res) => {
+app.post('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
   const { patient_id, type_examen, resultat, observations, date_examen, fichier_url } = req.body;
   if (!patient_id || !type_examen) return res.status(400).json({ success: false, message: 'Patient et type examen requis' });
   try {
@@ -2049,7 +2049,7 @@ app.post('/api/imagerie', auth, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 //  RÉSULTATS LABORATOIRE
 // ══════════════════════════════════════════════════════════════════
-app.get('/api/resultats-labo', auth, async (req, res) => {
+app.get('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
   try {
     const { patient_id } = req.query;
     const cid = req.user?.clinique_id;
@@ -2073,7 +2073,7 @@ app.get('/api/resultats-labo', auth, async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
-app.post('/api/resultats-labo', auth, async (req, res) => {
+app.post('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
   const { patient_id, type_analyse, valeurs, interpretation, date_prelevement, fichier_url } = req.body;
   if (!patient_id || !type_analyse) return res.status(400).json({ success: false, message: 'Patient et type analyse requis' });
   try {
@@ -2091,7 +2091,7 @@ app.post('/api/resultats-labo', auth, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 //  EXAMENS (bulletins d'analyse + radio combinés)
 // ══════════════════════════════════════════════════════════════════
-app.get('/api/examens', auth, async (req, res) => {
+app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
   try {
     const { patient_id } = req.query;
     const cid = req.user?.clinique_id;
@@ -2285,7 +2285,7 @@ app.get('/api/affections', async (req, res) => {
 });
 
 // ── Enregistrer les actes d'une prise en charge ───────────────────
-app.post('/api/prise-en-charge', auth, async (req, res) => {
+app.post('/api/prise-en-charge', auth, requireSousRole('medecin', 'finance'), async (req, res) => {
   const { patient_id, actes, consultation_id, rdv_id, est_assure, taux_couverture } = req.body;
   if (!patient_id || !Array.isArray(actes) || !actes.length)
     return res.status(400).json({ success:false, message:'patient_id et actes requis' });
@@ -2343,7 +2343,7 @@ app.post('/api/prise-en-charge', auth, async (req, res) => {
 });
 
 // ── Actes d'un patient (pour facturation) ────────────────────────
-app.get('/api/prise-en-charge/:patient_id', auth, async (req, res) => {
+app.get('/api/prise-en-charge/:patient_id', auth, requireSousRole('medecin', 'finance'), async (req, res) => {
   try {
     const r = await db(
       `SELECT * FROM prise_en_charge_actes WHERE patient_id=$1
