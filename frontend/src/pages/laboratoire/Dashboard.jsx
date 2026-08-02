@@ -47,6 +47,10 @@ const labAPI = {
   addBulletin: d => api.post('/bulletins', d),
   updBulletin: (id,d) => api.put(`/bulletins/${id}`, d),
 };
+// Une demande 'a_facturer' est deja rattachee a un vrai patient
+// (patient_id non nul) car creee par la clinique ou le patient lui-meme.
+// Un bulletin sans patient_id est un residu de l'ancien flux texte libre.
+const estDemandeIdentifiee = b => !!b.patient_id;
 
 const Badge = ({ children,color='gray' }) => {
   const m={green:[C.green,'rgba(10,143,88,.15)'],teal:[C.teal,'rgba(13,148,136,.15)'],amber:[C.amber,'rgba(217,119,6,.15)'],blue:[C.blue,'rgba(37,99,235,.15)'],gray:[C.muted,'rgba(255,255,255,.08)']};
@@ -127,15 +131,44 @@ function PageBulletins() {
   const [notes, setNotes] = useState('');
   const [succes, setSucces] = useState(false);
   const [uploadEnCours, setUploadEnCours] = useState(false);
+  const [bulletinActif, setBulletinActif] = useState(null); // demande a laquelle on repond (null = patient de passage)
+  const [codePatientPassage, setCodePatientPassage] = useState('');
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+  const [erreurRecherche, setErreurRecherche] = useState('');
+  const [patientPassage, setPatientPassage] = useState(null);
 
   const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data.data||[]) });
   const bulletins = data||[];
 
+  const reinitialiserFormulaire = () => {
+    setResultat(''); setFichier(null); setPatientNom(''); setNotes('');
+    setBulletinActif(null); setPatientPassage(null); setCodePatientPassage(''); setErreurRecherche('');
+  };
   const addMut = useMutation({
     mutationFn: d => labAPI.addBulletin(d),
-    onSuccess: () => { qc.invalidateQueries(['lab-bulletins']); setSucces(true); setTimeout(()=>setSucces(false),2500); setResultat(''); setFichier(null); setPatientNom(''); setNotes(''); },
+    onSuccess: () => { qc.invalidateQueries(['lab-bulletins']); setSucces(true); setTimeout(()=>setSucces(false),2500); reinitialiserFormulaire(); },
     onError: () => { toast.error('Erreur'); setSucces(true); setTimeout(()=>setSucces(false),2500); },
   });
+  // Repondre a une demande existante = completer sa ligne (PUT), jamais
+  // creer une seconde ligne detachee du patient d'origine.
+  const repondreMut = useMutation({
+    mutationFn: ({id,d}) => labAPI.updBulletin(id,d),
+    onSuccess: () => { qc.invalidateQueries(['lab-bulletins']); setSucces(true); setTimeout(()=>setSucces(false),2500); reinitialiserFormulaire(); },
+    onError: () => { toast.error('Erreur'); setSucces(true); setTimeout(()=>setSucces(false),2500); },
+  });
+  const rechercherPatientPassage = async () => {
+    const code = codePatientPassage.trim();
+    if (!code) { setErreurRecherche('Entrez un code dossier'); return; }
+    setRechercheEnCours(true); setErreurRecherche(''); setPatientPassage(null);
+    try {
+      const r = await api.get(`/patients/by-code/${encodeURIComponent(code)}`);
+      const p = r?.data?.data;
+      if (p?.id) setPatientPassage(p); else setErreurRecherche('Aucun patient avec ce code');
+    } catch(e) {
+      setErreurRecherche(e?.response?.data?.message || 'Aucun patient avec ce code');
+    }
+    setRechercheEnCours(false);
+  };
   const updMut = useMutation({
     mutationFn: ({id,statut}) => labAPI.updBulletin(id,{statut}),
     onSuccess: () => { toast.success('Mis à jour'); qc.invalidateQueries(['lab-bulletins']); },
@@ -170,7 +203,13 @@ function PageBulletins() {
               </div>
               <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
                 <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'En attente':'Traité'}</Badge>
-                {b.statut==='nouveau'&&(
+                {b.statut==='nouveau'&&estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>{ setBulletinActif(b); setType(b.type||'NFS'); setNotes(''); setResultat(''); setFichier(null); setTab('envoyer'); }}
+                    style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                    📝 Répondre
+                  </button>
+                )}
+                {b.statut==='nouveau'&&!estDemandeIdentifiee(b)&&(
                   <button onClick={()=>updMut.mutate({id:b.id,statut:'traite'})}
                     style={{ background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,cursor:'pointer',fontFamily:'inherit' }}>
                     ✅ Marquer traité
@@ -192,21 +231,52 @@ function PageBulletins() {
             </div>
           ):(
             <div style={{ background:C.input,border:`1px solid ${C.border}`,borderRadius:16,padding:24 }}>
-              <div style={{ fontSize:14,fontWeight:700,color:C.text,marginBottom:16 }}>📤 Envoyer des résultats d'analyses</div>
+              <div style={{ fontSize:14,fontWeight:700,color:C.text,marginBottom:16 }}>
+                {bulletinActif?`📝 Répondre — ${bulletinActif.patient_nom||'Patient'}`:'📤 Enregistrer un résultat'}
+              </div>
+
+              {bulletinActif ? (
+                <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{bulletinActif.patient_nom||'Patient'}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{bulletinActif.type} · demande du {fmtDate(bulletinActif.created_at)}</div>
+                  </div>
+                  <button type="button" onClick={reinitialiserFormulaire}
+                    style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                </div>
+              ) : (
+                <div style={{marginBottom:16}}>
+                  <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Patient de passage — code dossier *</label>
+                  {patientPassage ? (
+                    <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientPassage.prenom} {patientPassage.nom}</div>
+                        <div style={{fontSize:11,color:C.muted}}>Dossier : {patientPassage.code_secret||'—'}</div>
+                      </div>
+                      <button type="button" onClick={()=>{ setPatientPassage(null); setCodePatientPassage(''); }}
+                        style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',gap:8}}>
+                      <input value={codePatientPassage} onChange={e=>{ setCodePatientPassage(e.target.value); setErreurRecherche(''); }}
+                        placeholder="MC-XX-0000"
+                        style={{ flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box' }}/>
+                      <button onClick={rechercherPatientPassage} disabled={rechercheEnCours}
+                        style={{padding:'0 18px',background:C.teal,border:'none',borderRadius:9,color:'#fff',fontSize:13,fontWeight:700,cursor:rechercheEnCours?'not-allowed':'pointer',fontFamily:'inherit'}}>
+                        {rechercheEnCours?'…':'🔎'}
+                      </button>
+                    </div>
+                  )}
+                  {erreurRecherche && <div style={{fontSize:12,color:C.red,marginTop:6}}>{erreurRecherche}</div>}
+                </div>
+              )}
 
               <div style={{ marginBottom:14 }}>
                 <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Type d'analyse *</label>
-                <select value={type} onChange={e=>setType(e.target.value)}
-                  style={{ width:'100%',background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit' }}>
+                <select value={type} onChange={e=>setType(e.target.value)} disabled={!!bulletinActif}
+                  style={{ width:'100%',background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit',opacity:bulletinActif?.6:1 }}>
                   {TYPES_LAB.map(t=><option key={t}>{t}</option>)}
                 </select>
-              </div>
-
-              <div style={{ marginBottom:14 }}>
-                <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Nom du patient</label>
-                <input value={patientNom} onChange={e=>setPatientNom(e.target.value)} placeholder="Koné Adjoua"
-                  style={{ width:'100%',background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box' }}
-                  onFocus={e=>e.target.style.borderColor=C.teal} onBlur={e=>e.target.style.borderColor=C.border}/>
               </div>
 
               {/* Upload fichier résultats */}
@@ -237,6 +307,7 @@ function PageBulletins() {
               <button
                 onClick={async ()=>{
                   if(!resultat.trim()&&!fichier){toast.error('Joignez un fichier ou rédigez les résultats');return;}
+                  if(!bulletinActif&&!patientPassage){toast.error('Identifiez le patient (code dossier) avant d\'envoyer');return;}
                   let fichierUrl = null;
                   if (fichier) {
                     try {
@@ -249,11 +320,15 @@ function PageBulletins() {
                     }
                     setUploadEnCours(false);
                   }
-                  addMut.mutate({ type,categorie:'laboratoire',patient_nom:patientNom||null,rapport:resultat||null,fichier_nom:fichier?.name||null,fichier_url:fichierUrl,notes:notes||null });
+                  if (bulletinActif) {
+                    repondreMut.mutate({ id: bulletinActif.id, d: { statut:'traite', rapport:resultat||null, notes:notes||null, fichier_nom:fichier?.name||null, fichier_url:fichierUrl } });
+                  } else {
+                    addMut.mutate({ type,categorie:'laboratoire',patient_id:patientPassage.id,patient_nom:`${patientPassage.prenom} ${patientPassage.nom}`,statut:'traite',rapport:resultat||null,fichier_nom:fichier?.name||null,fichier_url:fichierUrl,notes:notes||null });
+                  }
                 }}
-                disabled={addMut.isPending||uploadEnCours}
-                style={{ width:'100%',background:`linear-gradient(135deg,${C.teal},${C.green})`,border:'none',borderRadius:12,padding:14,color:'#fff',fontSize:15,fontWeight:800,cursor:(addMut.isPending||uploadEnCours)?'not-allowed':'pointer',opacity:(addMut.isPending||uploadEnCours)?.7:1 }}>
-                {uploadEnCours?'📎 Envoi du fichier…':addMut.isPending?'⏳ Envoi en cours…':'📤 Envoyer les résultats'}
+                disabled={addMut.isPending||repondreMut.isPending||uploadEnCours}
+                style={{ width:'100%',background:`linear-gradient(135deg,${C.teal},${C.green})`,border:'none',borderRadius:12,padding:14,color:'#fff',fontSize:15,fontWeight:800,cursor:(addMut.isPending||repondreMut.isPending||uploadEnCours)?'not-allowed':'pointer',opacity:(addMut.isPending||repondreMut.isPending||uploadEnCours)?.7:1 }}>
+                {uploadEnCours?'📎 Envoi du fichier…':(addMut.isPending||repondreMut.isPending)?'⏳ Envoi en cours…':'📤 Envoyer les résultats'}
               </button>
             </div>
           )}

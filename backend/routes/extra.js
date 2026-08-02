@@ -48,11 +48,11 @@ router.post('/bulletins', auth, async (req, res) => {
 });
 
 router.put('/bulletins/:id', auth, async (req, res) => {
-  const { statut, rapport, notes } = req.body;
+  const { statut, rapport, notes, fichier_url, fichier_nom } = req.body;
   try {
     const r = await db(
-      "UPDATE bulletins SET statut=COALESCE($1,statut),rapport=COALESCE($2,rapport),notes=COALESCE($3,notes),updated_at=NOW() WHERE id=$4 RETURNING *",
-      [statut||null, rapport||null, notes||null, req.params.id]
+      "UPDATE bulletins SET statut=COALESCE($1,statut),rapport=COALESCE($2,rapport),notes=COALESCE($3,notes),fichier_url=COALESCE($4,fichier_url),fichier_nom=COALESCE($5,fichier_nom),updated_at=NOW() WHERE id=$6 RETURNING *",
+      [statut||null, rapport||null, notes||null, fichier_url||null, fichier_nom||null, req.params.id]
     );
     res.json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
