@@ -28,12 +28,20 @@ router.get('/bulletins', auth, async (req, res) => {
 });
 
 router.post('/bulletins', auth, async (req, res) => {
-  const { type, categorie, patient_nom, patient_id, emetteur_nom, notes, rapport, fichier_url, fichier_nom } = req.body;
+  const { type, categorie, patient_nom, emetteur_nom, notes, rapport, fichier_url, fichier_nom, statut } = req.body;
   if (!type) return res.status(400).json({ success: false, message: 'Type requis' });
   try {
+    // Un compte patient ne peut jamais creer un bulletin au nom d'un autre
+    // patient : le patient_id vient du token signe, pas du corps de la
+    // requete, meme si le champ est present dans le payload envoye.
+    // Les autres roles (clinique, labo, imagerie) restent libres de
+    // specifier le patient_id cible.
+    const patientId = req.user?.role === 'patient'
+      ? (req.user.patient_id || null)
+      : (req.body.patient_id || null);
     const r = await db(
-      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [type, categorie||'imagerie', patient_nom||null, patient_id||null, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null]
+      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom,statut) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statut||'nouveau']
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }

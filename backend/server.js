@@ -429,6 +429,20 @@ app.get('/api/patients/:id', auth, async (req, res) => {
   try { const r = await db('SELECT * FROM patients WHERE id=$1', [req.params.id]); res.json({ success:true, data:r.rows[0]||null }); }
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+// Recherche par code dossier EXACT (ex: MC-KT-5069) — utilisee par le
+// personnel labo/imagerie/clinique pour identifier un patient sans
+// naviguer dans une liste. Correspondance exacte uniquement (pas de LIKE) :
+// un labo doit connaitre le code precis, pas le deviner par tatonnement,
+// comme presenter une carte physique plutot que la decrire.
+app.get('/api/patients/by-code/:code', auth, async (req, res) => {
+  try {
+    const code = (req.params.code || '').trim().toUpperCase();
+    if (!code) return res.status(400).json({ success:false, message:'Code requis' });
+    const r = await db('SELECT * FROM patients WHERE UPPER(code_secret)=$1 LIMIT 1', [code]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Aucun patient avec ce code' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
 app.post('/api/patients', auth, async (req, res) => {
   const { prenom, nom, telephone, email, date_naissance, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police } = req.body;
   if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
