@@ -166,7 +166,19 @@ export default function AppLayout({ children }) {
   if (!user) return null;
 
   const role      = user.role || 'patient';
-  const navItems  = NAV[role] || [];
+  // Filtrage du menu clinique par sous_role du personnel. sous_role absent
+  // = compte historique/proprietaire = menu complet, comportement inchange
+  // pour tous les autres roles systeme (labo, imagerie, patient...).
+  const VISIBILITE_SOUS_ROLE = {
+    bureau_entrees: ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/caisse', '/clinique/facturation', '/clinique/specialites', '/clinique/stock'],
+    medecin:        ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/consultation', '/clinique/specialites', '/clinique/medecins', '/clinique/stock', '/clinique/stats'],
+    finance:        ['/clinique', '/clinique/caisse', '/clinique/facturation', '/clinique/assurance', '/clinique/dossiers-ass', '/clinique/stats'],
+    rh:             ['/clinique', '/clinique/medecins'],
+  };
+  const navItemsBrutes = NAV[role] || [];
+  const navItems = (role === 'clinique' && user.sous_role && VISIBILITE_SOUS_ROLE[user.sous_role])
+    ? navItemsBrutes.filter(item => VISIBILITE_SOUS_ROLE[user.sous_role].includes(item.path))
+    : navItemsBrutes;
   const roleColor = ROLE_COLORS[role] || C.green;
 
   const handleLogout = () => { logout(); nav('/login'); };
