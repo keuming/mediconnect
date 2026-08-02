@@ -49,8 +49,11 @@ export default function Register() {
       const r = await fetch('https://mediconnect-backend-v2.vercel.app/api/cliniques');
       const d = await r.json();
       setCliniquesList(d.data || []);
+      // Marquee "charge" uniquement en cas de succes : un echec reseau
+      // (cold start Vercel, coupure) ne doit pas bloquer la recherche
+      // pour le reste de la session sans recharger toute la page.
+      setCliniquesLoaded(true);
     } catch { setCliniquesList([]); }
-    setCliniquesLoaded(true);
   };
 
   const cliniquesFiltrees = cliniqueQuery.trim().length < 2 ? [] :
