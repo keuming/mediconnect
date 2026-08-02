@@ -728,7 +728,7 @@ app.delete('/api/stock/:id', auth, async (req, res) => {
 });
 
 // ── FACTURES ──────────────────────────────────────────────────────
-app.get('/api/factures', auth, requireSousRole('finance'), async (req, res) => {
+app.get('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id; const pid=req.user?.patient_id;
     let sql='SELECT * FROM factures WHERE 1=1'; const p=[];
@@ -752,7 +752,7 @@ app.get('/api/factures/patient', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.post('/api/factures', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { patient_nom, patient_id, montant, mode_paiement, statut, assurance } = req.body;
   try {
     const ref='FAC-'+Date.now().toString(36).toUpperCase();
@@ -772,7 +772,7 @@ app.put('/api/factures/:id', auth, async (req, res) => {
 });
 
 // ── CAISSE ────────────────────────────────────────────────────────
-app.get('/api/caisse', auth, requireSousRole('finance'), async (req, res) => {
+app.get('/api/caisse', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id;
     if (!cid) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
@@ -780,7 +780,7 @@ app.get('/api/caisse', auth, requireSousRole('finance'), async (req, res) => {
     res.json({ success:true, data:r.rows[0]||{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
   } catch(e) { res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } }); }
 });
-app.get('/api/caisse/clinique', auth, requireSousRole('finance'), async (req, res) => {
+app.get('/api/caisse/clinique', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id;
     if (!cid) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0 } });
@@ -788,13 +788,13 @@ app.get('/api/caisse/clinique', auth, requireSousRole('finance'), async (req, re
     res.json({ success:true, data:r.rows[0]||{ statut:'fermee', total_encaisse:0 } });
   } catch(e) { res.json({ success:true, data:{ statut:'fermee', total_encaisse:0 } }); }
 });
-app.post('/api/caisse/ouvrir', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/caisse/ouvrir', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const r=await db('INSERT INTO caisse_sessions (id,clinique_id) VALUES ($1,$2) RETURNING *',[uuid(),req.user?.clinique_id]);
     res.status(201).json({ success:true, data:r.rows[0], message:'Caisse ouverte !' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.post('/api/caisse/encaisser', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/caisse/encaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { montant } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
   try {
@@ -802,7 +802,7 @@ app.post('/api/caisse/encaisser', auth, requireSousRole('finance'), async (req, 
     res.json({ success:true, message:`${Number(montant).toLocaleString('fr-CI')} FCFA encaissés` });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.post('/api/caisse/decaisser', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/caisse/decaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { montant } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
   try {
@@ -810,7 +810,7 @@ app.post('/api/caisse/decaisser', auth, requireSousRole('finance'), async (req, 
     res.json({ success:true, message:'Décaissement enregistré' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.post('/api/caisse/cloturer', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/caisse/cloturer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const r=await db("UPDATE caisse_sessions SET statut='fermee',closed_at=NOW() WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' RETURNING *",[req.user?.clinique_id]);
     res.json({ success:true, data:r.rows[0], message:'Caisse clôturée' });
@@ -1559,7 +1559,7 @@ app.post('/api/admin/init-caisse-mouvements', async (req, res) => {
 });
 
 // ── Enregistrer un mouvement de caisse ───────────────────────────
-app.post('/api/caisse/mouvement', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/caisse/mouvement', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { type, montant, description, categorie, patient_nom, medecin_nom, mode_paiement, reference } = req.body;
   if (!type || !montant) return res.status(400).json({ success: false, message: 'type et montant requis' });
   try {
@@ -1592,7 +1592,7 @@ app.post('/api/caisse/mouvement', auth, requireSousRole('finance'), async (req, 
 });
 
 // ── Journal des mouvements (clinique + propriétaire) ─────────────
-app.get('/api/caisse/journal', auth, requireSousRole('finance'), async (req, res) => {
+app.get('/api/caisse/journal', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const { debut, fin, type, categorie } = req.query;
     let cid = req.user?.clinique_id || req.user?.proprietaire_clinique_id;
