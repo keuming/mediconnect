@@ -5,7 +5,7 @@ const { auth } = require('../middleware/auth');
 // ── BULLETINS ─────────────────────────────────────────────────────
 router.get('/bulletins', auth, async (req, res) => {
   try {
-    const { categorie, statut } = req.query;
+    const { categorie, statut, patient_id } = req.query;
     let sql = 'SELECT * FROM bulletins WHERE 1=1'; const p = [];
     // FAILLE CONFIDENTIALITE CORRIGEE : sans ce filtre, un patient voyait
     // TOUS les bulletins de TOUS les patients (resultats labo/imagerie
@@ -18,6 +18,12 @@ router.get('/bulletins', auth, async (req, res) => {
     } else if (req.user?.clinique_id) {
       p.push(req.user.clinique_id);
       sql += ` AND clinique_id=$${p.length}`;
+      // Filtre patient_id optionnel pour le personnel (ex: outil de
+      // recherche de resultats par code dossier). Toujours EN PLUS du
+      // cloisonnement clinique_id ci-dessus, jamais a sa place : le
+      // personnel ne peut interroger que les patients de sa propre
+      // clinique, meme en connaissant l'id d'un patient externe.
+      if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
     }
     if (categorie) { p.push(categorie); sql += ` AND categorie=$${p.length}`; }
     if (statut)    { p.push(statut);    sql += ` AND statut=$${p.length}`; }
@@ -28,7 +34,14 @@ router.get('/bulletins', auth, async (req, res) => {
 });
 
 router.post('/bulletins', auth, async (req, res) => {
-  const { type, categorie, patient_nom, emetteur_nom, notes, rapport, fichier_url, fichier_nom, statut } = req.body;
+  const {
+    type, categorie, patient_nom, emetteur_nom, notes, rapport, fichier_url, fichier_nom, statut,
+    // Fichier de PRESCRIPTION joint par le medecin a la demande -- colonnes
+    // distinctes de fichier_url/fichier_nom (reservees au RESULTAT que le
+    // labo/imagerie uploade plus tard via PUT). Les melanger ferait
+    // ecraser la prescription par le resultat au moment de la reponse.
+    fichier_prescription_url, fichier_prescription_nom,
+  } = req.body;
   if (!type) return res.status(400).json({ success: false, message: 'Type requis' });
   try {
     // Un compte patient ne peut jamais creer un bulletin au nom d'un autre
@@ -40,8 +53,8 @@ router.post('/bulletins', auth, async (req, res) => {
       ? (req.user.patient_id || null)
       : (req.body.patient_id || null);
     const r = await db(
-      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom,statut) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statut||'nouveau']
+      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statut||'nouveau', fichier_prescription_url||null, fichier_prescription_nom||null]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
