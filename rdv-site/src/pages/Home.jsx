@@ -176,10 +176,10 @@ export default function Home() {
       <section style={{ padding: '36px 5% 20px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(24px,3.5vw,36px)', color: V.text, marginBottom: 6, textAlign: 'center' }}>
-            Trouvez un soin, <span style={{ color: V.green, fontStyle: 'italic' }}>maintenant</span>
+            Le soin qu'il vous faut, <span style={{ color: V.green, fontStyle: 'italic' }}>là où il se trouve</span>
           </h1>
           <p style={{ color: V.muted, fontSize: 14, textAlign: 'center', marginBottom: 28 }}>
-            Cliniques, laboratoires et centres d'imagerie près de chez vous — en un instant.
+            Cliniques, laboratoires et centres d'imagerie d'Afrique de l'Ouest, localisés en quelques secondes — là où l'information manquait, MediConnect répond.
           </p>
 
           {/* Onglets type */}
