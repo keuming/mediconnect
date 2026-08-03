@@ -62,6 +62,19 @@ export default function Register() {
     ).slice(0, 8);
   const navigate = useNavigate();
 
+  // Position GPS optionnelle, demandee uniquement a la creation d'une
+  // NOUVELLE clinique (pas de sens si on rejoint une clinique existante,
+  // deja localisee). Ne bloque jamais l'inscription : refus, timeout ou
+  // navigateur non compatible -> on continue simplement sans coordonnees.
+  const capturerPosition = () => new Promise(resolve => {
+    if (!navigator.geolocation) { resolve({}); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+      () => resolve({}),
+      { timeout: 6000 }
+    );
+  });
+
   const handleSubmit = async () => {
     if (!role) { toast.error('Choisissez un rôle'); return; }
     if (form.password !== form.confirm) { toast.error('Les mots de passe ne correspondent pas.'); return; }
@@ -73,12 +86,15 @@ export default function Register() {
       return;
     }
 
+    const position = (role === 'clinique' && !cliniqueSel) ? await capturerPosition() : {};
+
     const payload = {
       ...form,
       role,
       pays_code: pays,
       ville: ville,
       ...extraForm,
+      ...position,
       // nom_etab est le nom du champ de saisie libre ; le backend attend
       // nom_clinique. Sans ce mapping le champ tape par l'utilisateur
       // n'atteint jamais la base et la clinique se cree sous son
