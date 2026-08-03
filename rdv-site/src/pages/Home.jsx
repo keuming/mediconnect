@@ -150,7 +150,7 @@ const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: V.m
 // ── Menu deroulant avec recherche (meme mecanisme que la selection de
 //    clinique existante a l'inscription) : on tape, une liste filtree
 //    apparait en dessous, on clique pour choisir. ──────────────────────
-function ComboboxRecherche({ label, valeur, onChoisir, options, placeholder, disabled }) {
+function ComboboxRecherche({ label, valeur, onChoisir, onTexteChange, options, placeholder, disabled }) {
   const [texte, setTexte] = useState(valeur || '');
   const [ouvert, setOuvert] = useState(false);
   const ref = useRef(null);
@@ -173,9 +173,10 @@ function ComboboxRecherche({ label, valeur, onChoisir, options, placeholder, dis
       <input
         value={texte}
         disabled={disabled}
-        onChange={e => { setTexte(e.target.value); setOuvert(true); }}
+        onChange={e => { setTexte(e.target.value); setOuvert(true); if (onTexteChange) onTexteChange(e.target.value); }}
         onFocus={() => setOuvert(true)}
         placeholder={placeholder}
+        onKeyDown={e => e.key === 'Enter' && setOuvert(false)}
         style={{ ...inputStyle, opacity: disabled ? .5 : 1, cursor: disabled ? 'not-allowed' : 'text' }}
       />
       {ouvert && !disabled && filtres.length > 0 && (
@@ -383,30 +384,16 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Specialites rapides — deplacees AVANT le formulaire, comme
-              point d'entree immediat pour qui sait deja ce qu'il cherche. */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
-            {SPECIALITES.map(s => (
-              <button key={s} onClick={() => choisirSpecialiteRapide(s)}
-                style={{
-                  background: q === s ? 'rgba(10,143,88,.15)' : 'rgba(255,255,255,.04)',
-                  border: `1px solid ${q === s ? V.green : V.border}`,
-                  borderRadius: 20, padding: '6px 14px', color: q === s ? V.green : V.muted, fontSize: 12, fontWeight: q === s ? 700 : 400,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}>
-                {s}
-              </button>
-            ))}
-          </div>
-
           {/* Barre de recherche */}
           <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 14 }}>
-              <div>
-                <label style={labelStyle}>Nom, spécialité ou analyse</label>
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Polyclinique du Sud, Cardiologie, NFS…"
-                  style={inputStyle} onKeyDown={e => e.key === 'Enter' && lancerRecherche()} />
-              </div>
+              <ComboboxRecherche
+                label="Nom, spécialité ou analyse" valeur={q}
+                onTexteChange={setQ}
+                onChoisir={(val, label) => choisirSpecialiteRapide(label)}
+                options={SPECIALITES.map(s => ({ value: s, label: s }))}
+                placeholder="Ex: Polyclinique du Sud, Cardiologie, NFS…"
+              />
 
               <ComboboxRecherche
                 label="Pays" valeur={paysLabel} onChoisir={choisirPays}
