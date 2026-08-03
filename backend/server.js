@@ -795,47 +795,104 @@ app.put('/api/factures/:id', auth, async (req, res) => {
 });
 
 // ── CAISSE ────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+//  CAISSES MULTIPLES (caisse generale, caisse pharmacie...)
+// ══════════════════════════════════════════════════════════════════
+// Gestion des caisses elles-memes -- creation reservee aux comptes a
+// acces complet et finance, PAS bureau_entrees (qui les UTILISE mais ne
+// doit pas pouvoir en creer de nouvelles a volonte).
+app.get('/api/caisses', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    if (!cid) return res.json({ success:true, data:[] });
+    const r = await db(
+      `SELECT c.*, cs.statut AS statut_session, cs.total_encaisse, cs.total_decaisse, cs.opened_at
+         FROM caisses c
+         LEFT JOIN caisse_sessions cs ON cs.caisse_id=c.id AND cs.date=CURRENT_DATE AND cs.statut='ouverte'
+        WHERE c.clinique_id=$1
+        ORDER BY c.created_at`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/caisses', auth, requireSousRole('finance'), async (req, res) => {
+  const { nom, operateur } = req.body;
+  if (!nom) return res.status(400).json({ success:false, message:'Nom de la caisse requis' });
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      'INSERT INTO caisses (id,clinique_id,nom,operateur) VALUES ($1,$2,$3,$4) RETURNING *',
+      [uuid(), cid, nom, operateur||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Sessions de caisse : desormais scopees par caisse_id, plusieurs
+// caisses peuvent etre ouvertes simultanement le meme jour. caisse_id
+// est obligatoire sur ouvrir/encaisser/decaisser/cloturer -- l'ancien
+// comportement "une seule caisse implicite par clinique" est retire
+// pour eviter qu'un encaissement atterrisse dans la mauvaise caisse.
 app.get('/api/caisse', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id;
-    if (!cid) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
-    const r=await db("SELECT * FROM caisse_sessions WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' ORDER BY opened_at DESC LIMIT 1",[cid]);
+    const { caisse_id } = req.query;
+    if (!cid || !caisse_id) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
+    const r=await db("SELECT * FROM caisse_sessions WHERE clinique_id=$1 AND caisse_id=$2 AND date=CURRENT_DATE AND statut='ouverte' ORDER BY opened_at DESC LIMIT 1",[cid,caisse_id]);
     res.json({ success:true, data:r.rows[0]||{ statut:'fermee', total_encaisse:0, total_decaisse:0 } });
   } catch(e) { res.json({ success:true, data:{ statut:'fermee', total_encaisse:0, total_decaisse:0 } }); }
 });
 app.get('/api/caisse/clinique', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id;
-    if (!cid) return res.json({ success:true, data:{ statut:'fermee', total_encaisse:0 } });
-    const r=await db("SELECT * FROM caisse_sessions WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' LIMIT 1",[cid]);
-    res.json({ success:true, data:r.rows[0]||{ statut:'fermee', total_encaisse:0 } });
-  } catch(e) { res.json({ success:true, data:{ statut:'fermee', total_encaisse:0 } }); }
+    if (!cid) return res.json({ success:true, data:[] });
+    const r=await db("SELECT * FROM caisse_sessions WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte'",[cid]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/caisse/ouvrir', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  const { caisse_id } = req.body;
+  if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
   try {
-    const r=await db('INSERT INTO caisse_sessions (id,clinique_id) VALUES ($1,$2) RETURNING *',[uuid(),req.user?.clinique_id]);
+    const caisse = await db('SELECT id FROM caisses WHERE id=$1 AND clinique_id=$2', [caisse_id, req.user?.clinique_id]);
+    if (!caisse.rows.length) return res.status(404).json({ success:false, message:'Caisse introuvable' });
+    const r=await db('INSERT INTO caisse_sessions (id,clinique_id,caisse_id) VALUES ($1,$2,$3) RETURNING *',[uuid(),req.user?.clinique_id,caisse_id]);
     res.status(201).json({ success:true, data:r.rows[0], message:'Caisse ouverte !' });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+  } catch(e) {
+    // Contrainte unique violee = caisse deja ouverte aujourd'hui (double
+    // clic, requetes concurrentes) -- message clair plutot qu'une 500 brute.
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Cette caisse est déjà ouverte aujourd\'hui' });
+    res.status(500).json({ success:false, message:e.message });
+  }
 });
 app.post('/api/caisse/encaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { montant } = req.body;
+  const { montant, caisse_id } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
+  if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
   try {
-    await db("UPDATE caisse_sessions SET total_encaisse=total_encaisse+$1 WHERE clinique_id=$2 AND date=CURRENT_DATE AND statut='ouverte'",[montant,req.user?.clinique_id]);
+    const r = await db("UPDATE caisse_sessions SET total_encaisse=total_encaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte' RETURNING id",[montant,req.user?.clinique_id,caisse_id]);
+    if (!r.rows.length) return res.status(400).json({ success:false, message:'Aucune session ouverte pour cette caisse aujourd\'hui' });
     res.json({ success:true, message:`${Number(montant).toLocaleString('fr-CI')} FCFA encaissés` });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.post('/api/caisse/decaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { montant } = req.body;
+  const { montant, caisse_id } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
+  if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
   try {
-    await db("UPDATE caisse_sessions SET total_decaisse=total_decaisse+$1 WHERE clinique_id=$2 AND date=CURRENT_DATE AND statut='ouverte'",[montant,req.user?.clinique_id]);
+    const r = await db("UPDATE caisse_sessions SET total_decaisse=total_decaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte' RETURNING id",[montant,req.user?.clinique_id,caisse_id]);
+    if (!r.rows.length) return res.status(400).json({ success:false, message:'Aucune session ouverte pour cette caisse aujourd\'hui' });
     res.json({ success:true, message:'Décaissement enregistré' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.post('/api/caisse/cloturer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  const { caisse_id } = req.body;
+  if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
   try {
-    const r=await db("UPDATE caisse_sessions SET statut='fermee',closed_at=NOW() WHERE clinique_id=$1 AND date=CURRENT_DATE AND statut='ouverte' RETURNING *",[req.user?.clinique_id]);
+    const r=await db("UPDATE caisse_sessions SET statut='fermee',closed_at=NOW() WHERE clinique_id=$1 AND caisse_id=$2 AND date=CURRENT_DATE AND statut='ouverte' RETURNING *",[req.user?.clinique_id,caisse_id]);
+    if (!r.rows.length) return res.status(400).json({ success:false, message:'Aucune session ouverte pour cette caisse aujourd\'hui' });
     res.json({ success:true, data:r.rows[0], message:'Caisse clôturée' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
