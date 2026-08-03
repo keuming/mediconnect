@@ -5,17 +5,36 @@ const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-backend-v2.ve
 const GOOGLE_MAPS_KEY = 'AIzaSyAy6fm2ac6OZ35VEwfjfEf_jaOTbqz3eSI';
 
 const PAYS = [
-  { code: 'CI', label: "🇨🇮 Côte d'Ivoire" }, { code: 'SN', label: '🇸🇳 Sénégal' },
-  { code: 'BF', label: '🇧🇫 Burkina Faso' }, { code: 'GH', label: '🇬🇭 Ghana' },
-  { code: 'ML', label: '🇲🇱 Mali' }, { code: 'TG', label: '🇹🇬 Togo' },
-  { code: 'BJ', label: '🇧🇯 Bénin' }, { code: 'GN', label: '🇬🇳 Guinée' },
+  { code: 'CI', label: "Côte d'Ivoire", drapeau: '🇨🇮' },
+  { code: 'SN', label: 'Sénégal', drapeau: '🇸🇳' },
+  { code: 'BF', label: 'Burkina Faso', drapeau: '🇧🇫' },
+  { code: 'GH', label: 'Ghana', drapeau: '🇬🇭' },
+  { code: 'ML', label: 'Mali', drapeau: '🇲🇱' },
+  { code: 'TG', label: 'Togo', drapeau: '🇹🇬' },
+  { code: 'BJ', label: 'Bénin', drapeau: '🇧🇯' },
+  { code: 'GN', label: 'Guinée', drapeau: '🇬🇳' },
 ];
-const TYPES = [
-  { v: 'clinique', label: '🏥 Cliniques', couleur: '#0A8F58' },
-  { v: 'laboratoire', label: '🧪 Laboratoires', couleur: '#0D9488' },
-  { v: 'imagerie', label: '🩻 Imagerie', couleur: '#7C3AED' },
+
+const VILLES_PAR_PAYS = {
+  CI: ['Abidjan', 'Bouaké', 'Daloa', 'Yamoussoukro', 'San-Pédro', 'Korhogo', 'Man', 'Divo', 'Gagnoa', 'Anyama', 'Abengourou', 'Agboville', 'Grand-Bassam', 'Soubré', 'Adzopé'],
+  SN: ['Dakar', 'Thiès', 'Kaolack', 'Ziguinchor', 'Saint-Louis', 'Rufisque', 'Touba', 'Mbour'],
+  BF: ['Ouagadougou', 'Bobo-Dioulasso', 'Koudougou', 'Banfora', 'Ouahigouya'],
+  GH: ['Accra', 'Kumasi', 'Tamale', 'Sekondi-Takoradi', 'Cape Coast'],
+  ML: ['Bamako', 'Sikasso', 'Mopti', 'Kayes', 'Ségou'],
+  TG: ['Lomé', 'Sokodé', 'Kara', 'Kpalimé'],
+  BJ: ['Cotonou', 'Porto-Novo', 'Parakou', 'Abomey-Calavi'],
+  GN: ['Conakry', "N'Zérékoré", 'Kankan', 'Kindia'],
+};
+
+// Liste alignee sur les specialites reellement enregistrees en base
+// (specialites_clinique), completee de quelques disciplines courantes.
+const SPECIALITES = [
+  'Médecine générale', 'Cardiologie', 'Pédiatrie', 'Gynécologie', 'Gynéco-obstétrique',
+  'Dermatologie', 'Diabétologie', 'Gastro-entérologie', 'Hématologie', 'Néonatologie',
+  'Néphrologie', 'Neurologie', 'Ophtalmologie', 'ORL', 'Orthopédie', 'Psychiatrie',
+  'Radiologie', 'Rhumatologie', 'Stomatologie', 'Urologie', 'Chirurgie', 'Endocrinologie',
+  'Analyses sanguines', 'Imagerie médicale',
 ];
-const SPECIALITES_RAPIDES = ['Cardiologie', 'Pédiatrie', 'Gynécologie', 'Médecine générale', 'Radiologie', 'Analyses sanguines'];
 
 const V = {
   green: '#0A8F58', teal: '#0D9488', purple: '#7C3AED', amber: '#D97706', bg: '#060C12', card: '#0E1620',
@@ -24,8 +43,55 @@ const V = {
 };
 
 const btn = (extra = {}) => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg,${V.green},${V.teal})`, color: '#fff', border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 24px rgba(10,143,88,.35)', transition: 'all .2s', ...extra });
-const inputStyle = { width: '100%', background: V.input, border: `1.5px solid ${V.border}`, borderRadius: 10, padding: '12px 14px', color: V.text, fontSize: 14, outline: 'none', fontFamily: 'inherit' };
+const inputStyle = { width: '100%', background: V.input, border: `1.5px solid ${V.border}`, borderRadius: 10, padding: '12px 14px', color: V.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
 const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: V.muted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 };
+
+// ── Menu deroulant avec recherche (meme mecanisme que la selection de
+//    clinique existante a l'inscription) : on tape, une liste filtree
+//    apparait en dessous, on clique pour choisir. ──────────────────────
+function ComboboxRecherche({ label, valeur, onChoisir, options, placeholder, disabled }) {
+  const [texte, setTexte] = useState(valeur || '');
+  const [ouvert, setOuvert] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => { setTexte(valeur || ''); }, [valeur]);
+
+  useEffect(() => {
+    const fermer = (e) => { if (ref.current && !ref.current.contains(e.target)) setOuvert(false); };
+    document.addEventListener('mousedown', fermer);
+    return () => document.removeEventListener('mousedown', fermer);
+  }, []);
+
+  const filtres = texte.trim().length === 0
+    ? options.slice(0, 8)
+    : options.filter(o => o.label.toLowerCase().includes(texte.toLowerCase())).slice(0, 8);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <label style={labelStyle}>{label}</label>
+      <input
+        value={texte}
+        disabled={disabled}
+        onChange={e => { setTexte(e.target.value); setOuvert(true); }}
+        onFocus={() => setOuvert(true)}
+        placeholder={placeholder}
+        style={{ ...inputStyle, opacity: disabled ? .5 : 1, cursor: disabled ? 'not-allowed' : 'text' }}
+      />
+      {ouvert && !disabled && filtres.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: V.card, border: `1.5px solid ${V.border}`, borderRadius: 10, overflow: 'hidden', zIndex: 20, maxHeight: 240, overflowY: 'auto', boxShadow: '0 12px 30px rgba(0,0,0,.5)' }}>
+          {filtres.map(o => (
+            <div key={o.value} onClick={() => { onChoisir(o.value, o.label); setTexte(o.label); setOuvert(false); }}
+              style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: V.text, borderBottom: `1px solid ${V.border}` }}
+              onMouseEnter={e => e.currentTarget.style.background = V.hover}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              {o.icone ? `${o.icone} ` : ''}{o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Chargement paresseux de Google Maps JS API ──────────────────────
 let mapsPromise = null;
@@ -34,7 +100,7 @@ function chargerGoogleMaps() {
   if (mapsPromise) return mapsPromise;
   mapsPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&loading=async`;
     script.async = true;
     script.onload = resolve;
     script.onerror = reject;
@@ -52,7 +118,7 @@ function Carte({ resultats, position }) {
     let annule = false;
     chargerGoogleMaps().then(() => {
       if (annule || !ref.current) return;
-      const centre = position || { lat: 5.3364, lng: -4.0267 }; // Abidjan par defaut
+      const centre = position || { lat: 5.3364, lng: -4.0267 };
       mapRef.current = new window.google.maps.Map(ref.current, {
         center: centre, zoom: position ? 13 : 11,
         styles: [{ elementType: 'geometry', stylers: [{ color: '#0E1620' }] },
@@ -94,8 +160,9 @@ export default function Home() {
   const navigate = useNavigate();
   const [type, setType] = useState('clinique');
   const [q, setQ] = useState('');
-  const [ville, setVille] = useState('');
+  const [villeLabel, setVilleLabel] = useState('');
   const [pays, setPays] = useState('CI');
+  const [paysLabel, setPaysLabel] = useState("Côte d'Ivoire");
   const [presDeMoi, setPresDeMoi] = useState(false);
   const [position, setPosition] = useState(null);
   const [rayon, setRayon] = useState(2);
@@ -104,6 +171,9 @@ export default function Home() {
   const [resultats, setResultats] = useState([]);
   const [erreurGeo, setErreurGeo] = useState('');
 
+  const optionsPays = PAYS.map(p => ({ value: p.code, label: p.label, icone: p.drapeau }));
+  const optionsVille = (VILLES_PAR_PAYS[pays] || []).map(v => ({ value: v, label: v }));
+
   const lancerRecherche = useCallback(async (override = {}) => {
     setChargement(true);
     setRechercheLancee(true);
@@ -111,9 +181,10 @@ export default function Home() {
     params.set('type', override.type ?? type);
     const qVal = override.q ?? q;
     if (qVal) params.set('specialite', qVal);
-    const villeVal = override.ville ?? ville;
+    const villeVal = override.ville !== undefined ? override.ville : villeLabel;
     if (villeVal) params.set('ville', villeVal);
-    if (pays) params.set('pays', pays);
+    const paysVal = override.pays ?? pays;
+    if (paysVal) params.set('pays', paysVal);
     const pos = override.position !== undefined ? override.position : position;
     if (pos) {
       params.set('lat', pos.lat);
@@ -128,7 +199,7 @@ export default function Home() {
       setResultats([]);
     }
     setChargement(false);
-  }, [type, q, ville, pays, position, rayon]);
+  }, [type, q, villeLabel, pays, position, rayon]);
 
   const activerPresDeMoi = () => {
     setErreurGeo('');
@@ -156,6 +227,18 @@ export default function Home() {
     lancerRecherche({ q: s });
   };
 
+  const choisirPays = (code, label) => {
+    setPays(code);
+    setPaysLabel(label);
+    setVilleLabel('');
+    lancerRecherche({ pays: code, ville: '' });
+  };
+
+  const choisirVille = (valeur, label) => {
+    setVilleLabel(label);
+    lancerRecherche({ ville: label });
+  };
+
   const allerPrendreRdv = (etab) => {
     navigate('/rdv', { state: { etablissementPreselectionne: { id: etab.id, type: etab.type, nom: etab.nom, ville: etab.ville } } });
   };
@@ -176,15 +259,19 @@ export default function Home() {
       <section style={{ padding: '36px 5% 20px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(24px,3.5vw,36px)', color: V.text, marginBottom: 6, textAlign: 'center' }}>
-            Trouvez un soin, <span style={{ color: V.green, fontStyle: 'italic' }}>maintenant</span>
+            Le soin qu'il vous faut, <span style={{ color: V.green, fontStyle: 'italic' }}>là où il se trouve</span>
           </h1>
-          <p style={{ color: V.muted, fontSize: 14, textAlign: 'center', marginBottom: 28 }}>
-            Cliniques, laboratoires et centres d'imagerie près de chez vous — en un instant.
+          <p style={{ color: V.muted, fontSize: 14, textAlign: 'center', marginBottom: 22 }}>
+            Cliniques, laboratoires et centres d'imagerie d'Afrique de l'Ouest, localisés en quelques secondes — là où l'information manquait, MediConnect répond.
           </p>
 
           {/* Onglets type */}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-            {TYPES.map(t => (
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
+            {[
+              { v: 'clinique', label: '🏥 Cliniques', couleur: V.green },
+              { v: 'laboratoire', label: '🧪 Laboratoires', couleur: V.teal },
+              { v: 'imagerie', label: '🩻 Imagerie', couleur: V.purple },
+            ].map(t => (
               <button key={t.v} onClick={() => { setType(t.v); lancerRecherche({ type: t.v }); }}
                 style={{
                   padding: '9px 18px', borderRadius: 24, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
@@ -195,25 +282,41 @@ export default function Home() {
             ))}
           </div>
 
+          {/* Specialites rapides — deplacees AVANT le formulaire, comme
+              point d'entree immediat pour qui sait deja ce qu'il cherche. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
+            {SPECIALITES.map(s => (
+              <button key={s} onClick={() => choisirSpecialiteRapide(s)}
+                style={{
+                  background: q === s ? 'rgba(10,143,88,.15)' : 'rgba(255,255,255,.04)',
+                  border: `1px solid ${q === s ? V.green : V.border}`,
+                  borderRadius: 20, padding: '6px 14px', color: q === s ? V.green : V.muted, fontSize: 12, fontWeight: q === s ? 700 : 400,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                {s}
+              </button>
+            ))}
+          </div>
+
           {/* Barre de recherche */}
           <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 14 }}>
               <div>
-                <label style={labelStyle}>Spécialité / recherche</label>
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Cardiologie, NFS…"
+                <label style={labelStyle}>Nom, spécialité ou analyse</label>
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Polyclinique du Sud, Cardiologie, NFS…"
                   style={inputStyle} onKeyDown={e => e.key === 'Enter' && lancerRecherche()} />
               </div>
-              <div>
-                <label style={labelStyle}>Pays</label>
-                <select value={pays} onChange={e => setPays(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                  {PAYS.map(p => <option key={p.code} value={p.code}>{p.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Ville</label>
-                <input value={ville} onChange={e => setVille(e.target.value)} placeholder="Ex: Abidjan"
-                  disabled={presDeMoi} style={{ ...inputStyle, opacity: presDeMoi ? .5 : 1 }} onKeyDown={e => e.key === 'Enter' && lancerRecherche()} />
-              </div>
+
+              <ComboboxRecherche
+                label="Pays" valeur={paysLabel} onChoisir={choisirPays}
+                options={optionsPays} placeholder="Rechercher un pays…"
+              />
+
+              <ComboboxRecherche
+                label="Ville" valeur={villeLabel} onChoisir={choisirVille}
+                options={optionsVille} placeholder={pays ? 'Rechercher une ville…' : 'Choisissez un pays d\'abord'}
+                disabled={presDeMoi}
+              />
             </div>
 
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -237,15 +340,6 @@ export default function Home() {
               </button>
             </div>
             {erreurGeo && <div style={{ fontSize: 12, color: '#E11D48', marginTop: 10 }}>{erreurGeo}</div>}
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
-              {SPECIALITES_RAPIDES.map(s => (
-                <button key={s} onClick={() => choisirSpecialiteRapide(s)}
-                  style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${V.border}`, borderRadius: 20, padding: '5px 14px', color: V.muted, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </section>
