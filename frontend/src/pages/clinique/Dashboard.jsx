@@ -212,9 +212,9 @@ const Table = ({ columns, rows, emptyMsg="Aucune donnée" }) => (
 function PageHome() {
   const { user } = useAuthStore();
   const nav = useNavigate();
-  const { data: stats } = useQuery({ queryKey:["cl-stats"], queryFn:()=>cAPI.stats().then(r=>r.data.data||{}), retry:1 });
+  const { data: stats } = useQuery({ queryKey:["cl-stats"], queryFn:()=>cAPI.stats().then(r=>r.data||{}), retry:1 });
   const { data: rdvsData } = useQuery({ queryKey:["cl-rdvs-today"], queryFn:()=>cAPI.rdvs({ date:today() }).then(r=>r.data.data||[]), retry:1 });
-  const { data: stockData } = useQuery({ queryKey:["cl-stock-alerts"], queryFn:()=>cAPI.stock().then(r=>r.data.data||[]), retry:1 });
+  const { data: stockData } = useQuery({ queryKey:["cl-stock-alerts"], queryFn:()=>cAPI.stock().then(r=>r.data||[]), retry:1 });
 
   const rdvs = rdvsData||[]; const stock = stockData||[];
   const alertesStock = stock.filter(s=>s.quantite<=s.seuil_alerte);
@@ -572,7 +572,7 @@ function PageDossiers() {
     setRechercheEnCours(true); setErreurRecherche(""); setPatientCible(null);
     try {
       const r = await cAPI.patientParCode(code);
-      const p = r?.data?.data;
+      const p = r?.data;
       if (p?.id) { setPatientCible(p); }
       else { setErreurRecherche("Aucun patient avec ce code"); }
     } catch(e) {
@@ -1292,14 +1292,14 @@ function PageMedecins() {
   const [pForm, setPForm] = useState({ nom:"", poste:"", contrat:"CDI", salaire:"", date_embauche:"", statut:"Actif" });
   const [compteForm, setCompteForm] = useState({ prenom:"", nom:"", email:"", password:"", telephone:"", sous_role:"bureau_entrees" });
 
-  const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data.data||[]) });
+  const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data||[]) });
   const medecins = data||[];
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addMedecin(d), onSuccess:()=>{ toast.success("Médecin ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
   const updMut = useMutation({ mutationFn:({id,...d})=>cAPI.updateMedecin(id,d), onSuccess:()=>{ toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-medecins"]); }, onError:()=>toast.error("Erreur") });
 
   const { data: personnelData, isLoading: chargementPersonnel } = useQuery({
-    queryKey:["cl-personnel"], queryFn:()=>cAPI.personnel().then(r=>r.data.data||[]),
+    queryKey:["cl-personnel"], queryFn:()=>cAPI.personnel().then(r=>r.data||[]),
   });
   const personnel = personnelData||[];
   const addCompteMut = useMutation({
@@ -1527,7 +1527,7 @@ function PageStock() {
   const [tab, setTab] = useState("inventaire");
   const [form, setForm] = useState({ nom:"", categorie:"Médicament", quantite:"", unite:"boite", seuil_alerte:"", prix_unitaire:"", fournisseur:"", date_expiration:"" });
 
-  const { data, isLoading } = useQuery({ queryKey:["cl-stock"], queryFn:()=>cAPI.stock().then(r=>r.data.data||[]) });
+  const { data, isLoading } = useQuery({ queryKey:["cl-stock"], queryFn:()=>cAPI.stock().then(r=>r.data||[]) });
   const stock = data||[];
   const alertes = stock.filter(s=>s.quantite<=s.seuil_alerte);
   const totalValeur = stock.reduce((s,p)=>(s+(+p.quantite*(+p.prix_unitaire||0))),0);
@@ -1668,7 +1668,7 @@ function PageStock() {
 // ════════════════════════════════════════════════════════════════════
 function PageFacturation() {
   const [tab, setTab] = useState("tableau-bord");
-  const { data: factData } = useQuery({ queryKey:["cl-factures"], queryFn:()=>cAPI.factures().then(r=>r.data.data||[]) });
+  const { data: factData } = useQuery({ queryKey:["cl-factures"], queryFn:()=>cAPI.factures().then(r=>r.data||[]) });
   const factures = factData||[];
   const totalEncaisse = factures.filter(f=>f.statut==="payee").reduce((s,f)=>s+(+f.montant||0),0);
   const totalAttente  = factures.filter(f=>f.statut==="en_attente").reduce((s,f)=>s+(+f.montant||0),0);
@@ -1986,7 +1986,7 @@ function PageAssurance() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ patient_nom:"", compagnie:"NSIA Assurances", numero_police:"", taux_couverture:80, montant_plafond:500000 });
-  const { data, isLoading } = useQuery({ queryKey:["cl-dossiers"], queryFn:()=>cAPI.dossiers().then(r=>r.data.data||[]) });
+  const { data, isLoading } = useQuery({ queryKey:["cl-dossiers"], queryFn:()=>cAPI.dossiers().then(r=>r.data||[]) });
   const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateDossier(id,{statut}), onSuccess:()=>{ toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); } });
   const addMut = useMutation({ mutationFn:d=>cAPI.addDossier(d), onSuccess:()=>{ toast.success("Dossier soumis !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); } });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteDossier(id), onSuccess:()=>{ toast.success("Supprimé"); qc.invalidateQueries(["cl-dossiers"]); } });
@@ -2468,7 +2468,7 @@ function PageConsultation() {
 // ════════════════════════════════════════════════════════════════════
 function PageCaisse() {
   const [open, setOpen] = useState(false);
-  const { data } = useQuery({ queryKey:["cl-caisse"], queryFn:()=>cAPI.caisse().then(r=>r.data.data||{}), retry:1 });
+  const { data } = useQuery({ queryKey:["cl-caisse"], queryFn:()=>cAPI.caisse().then(r=>r.data||{}), retry:1 });
   const session = data||{};
   return (
     <div>
