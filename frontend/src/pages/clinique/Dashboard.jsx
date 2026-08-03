@@ -218,7 +218,7 @@ function PageHome() {
   const rdvAujourdhui = rdvs.length;
   const rdvConfirmes = rdvs.filter(r=>r.statut==="confirme").length;
 
-  const modules = [
+  const modulesTous = [
     { icon:"📅", label:"Planning & RDV",    path:"planning",    color:C.teal,   stat:`${rdvAujourdhui} RDV aujourd'hui` },
     { icon:"👤", label:"Dossiers patients", path:"dossiers",    color:C.blue,   stat:"DME complets" },
     { icon:"🩺", label:"Consultation",      path:"consultation",color:C.green,  stat:"En cours" },
@@ -234,6 +234,19 @@ function PageHome() {
     { icon:"🏥", label:"Profil & Logo",       path:"profil-logo",  color:C.purple, stat:"Identité visuelle" },
     { icon:"🩺", label:"Ma file (Médecin)",  path:"file-medecin", color:C.green,  stat:"Mes patients" },
   ];
+  // Grille de raccourcis de la page d'accueil clinique : meme regle de
+  // visibilite que la barre laterale (AppLayout.jsx), dupliquee ici car
+  // c'est un tableau JSX local, distinct de NAV.clinique. sous_role absent
+  // = compte historique/proprietaire = grille complete.
+  const MODULES_VISIBLES_PAR_SOUS_ROLE = {
+    bureau_entrees: ["planning", "dossiers", "caisse", "facturation", "stock", "file-attente"],
+    medecin:        ["planning", "dossiers", "consultation", "stock", "stats", "file-medecin"],
+    finance:        ["caisse", "facturation", "assurance", "stats", "proprietaire"],
+    rh:             ["medecins", "qualite"],
+  };
+  const modules = (user?.sous_role && MODULES_VISIBLES_PAR_SOUS_ROLE[user.sous_role])
+    ? modulesTous.filter(m => MODULES_VISIBLES_PAR_SOUS_ROLE[user.sous_role].includes(m.path))
+    : modulesTous;
 
   return (
     <div>
