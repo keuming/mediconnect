@@ -1163,6 +1163,14 @@ app.get('/api/public/medecins-independants', async (req, res) => {
 // lat/lng absents en base (clinique jamais geolocalisee) -> distance_km
 // vaut NULL et la clinique reste trouvable par ville/pays/nom, juste
 // exclue si un filtre "rayon" est explicitement demande.
+// Metropoles ouest-africaines dont les etablissements sont enregistres
+// par commune plutot que par le nom de l'agglomeration elle-meme.
+// A completer au fil des besoins (Dakar, Ouagadougou...).
+const AGGLOMERATIONS = {
+  'abidjan': ['ABIDJAN','COCODY','YOPOUGON','ABOBO','ADJAME','PLATEAU','TREICHVILLE',
+    'MARCORY','KOUMASSI','PORT-BOUET','ATTECOUBE','BINGERVILLE','ANYAMA','SONGON'],
+};
+
 app.get('/api/public/recherche-etablissements', async (req, res) => {
   try {
     const { type, q, pays, ville, specialite, lat, lng, rayon_km } = req.query;
@@ -1230,7 +1238,23 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
 
     if (q) { params.push('%' + q.toLowerCase() + '%'); sql += ` AND LOWER(t.nom) LIKE $${idx++}`; }
     if (pays) { params.push(pays); sql += ` AND t.pays_code = $${idx++}`; }
-    if (ville) { params.push('%' + ville.toLowerCase() + '%'); sql += ` AND LOWER(t.ville) LIKE $${idx++}`; }
+    if (ville) {
+      // Les cliniques importees en masse sont enregistrees par COMMUNE
+      // (Cocody, Yopougon, Abobo...), pas par la metropole qui les
+      // englobe. Chercher "Abidjan" ne matchait donc presque rien alors
+      // que la grande majorite des cliniques y sont bel et bien situees.
+      // AGGLOMERATIONS mappe une metropole vers ses communes connues ;
+      // on elargit la recherche uniquement quand la ville demandee est
+      // une metropole reconnue, sinon comportement inchange (LIKE simple).
+      const communes = AGGLOMERATIONS[ville.trim().toLowerCase()];
+      if (communes) {
+        const placeholders = communes.map(c => { params.push(c.toLowerCase()); return `$${idx++}`; });
+        sql += ` AND LOWER(t.ville) IN (${placeholders.join(',')})`;
+      } else {
+        params.push('%' + ville.toLowerCase() + '%');
+        sql += ` AND LOWER(t.ville) LIKE $${idx++}`;
+      }
+    }
     if (specialite) {
       params.push('%' + specialite.toLowerCase() + '%');
       sql += ` AND (
