@@ -1093,6 +1093,117 @@ app.get('/api/public/medecins-independants', async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  RECHERCHE UNIFIEE — rdv.mediconnect4africa.cloud (Phase 2)
+// ══════════════════════════════════════════════════════════════════
+// Fusionne cliniques + laboratoires + imageries en une seule liste, avec
+// un champ 'type' commun pour les distinguer cote client. Le calcul de
+// distance (Haversine) est fait en SQL pur : aucune cle Google requise
+// pour cette etape, seulement pour l'affichage carte cote frontend.
+// lat/lng absents en base (clinique jamais geolocalisee) -> distance_km
+// vaut NULL et la clinique reste trouvable par ville/pays/nom, juste
+// exclue si un filtre "rayon" est explicitement demande.
+app.get('/api/public/recherche-etablissements', async (req, res) => {
+  try {
+    const { type, q, pays, ville, specialite, lat, lng, rayon_km } = req.query;
+
+    const typesDemandes = type
+      ? type.split(',').map(t => t.trim()).filter(Boolean)
+      : ['clinique', 'laboratoire', 'imagerie'];
+
+    const hasGeo = lat && lng;
+    const latNum = hasGeo ? parseFloat(lat) : null;
+    const lngNum = hasGeo ? parseFloat(lng) : null;
+    const rayonNum = rayon_km ? parseFloat(rayon_km) : null;
+
+    // Formule de Haversine : distance en km entre deux points GPS.
+    // Retourne NULL si l'etablissement n'a pas de coordonnees -- on ne
+    // fait jamais semblant de connaitre une distance qu'on ignore.
+    const distanceExpr = hasGeo
+      ? `CASE WHEN t.latitude IS NOT NULL AND t.longitude IS NOT NULL THEN
+           6371 * acos(LEAST(1, GREATEST(-1,
+             cos(radians(${latNum})) * cos(radians(t.latitude)) *
+             cos(radians(t.longitude) - radians(${lngNum})) +
+             sin(radians(${latNum})) * sin(radians(t.latitude))
+           )))
+         ELSE NULL END`
+      : 'NULL';
+
+    const blocs = [];
+    const params = [];
+    let idx = 1;
+
+    if (typesDemandes.includes('clinique')) {
+      blocs.push(`
+        SELECT c.id, c.nom, c.ville, c.pays_code, c.adresse, c.telephone, c.email,
+               c.latitude, c.longitude, 'clinique' AS type,
+               array_remove(array_agg(DISTINCT sc.nom), NULL) AS specialites,
+               NULL::text[] AS analyses, NULL::text[] AS equipements
+          FROM cliniques c
+          LEFT JOIN specialites_clinique sc ON sc.clinique_id = c.id AND sc.disponible IS NOT false
+         WHERE (c.is_active IS NOT false)
+         GROUP BY c.id
+      `);
+    }
+    if (typesDemandes.includes('laboratoire')) {
+      blocs.push(`
+        SELECT l.id, l.nom, l.ville, l.pays_code, l.adresse, l.telephone, l.email,
+               l.latitude, l.longitude, 'laboratoire' AS type,
+               NULL::text[] AS specialites, l.analyses, NULL::text[] AS equipements
+          FROM laboratoires l
+         WHERE (l.is_active IS NOT false)
+      `);
+    }
+    if (typesDemandes.includes('imagerie')) {
+      blocs.push(`
+        SELECT i.id, i.nom, i.ville, i.pays_code, i.adresse, i.telephone, i.email,
+               i.latitude, i.longitude, 'imagerie' AS type,
+               NULL::text[] AS specialites, NULL::text[] AS analyses, i.equipements
+          FROM imageries i
+         WHERE (i.is_active IS NOT false)
+      `);
+    }
+
+    if (!blocs.length) return res.json({ success: true, data: [] });
+
+    let sql = `SELECT t.*, ${distanceExpr} AS distance_km FROM (${blocs.join(' UNION ALL ')}) t WHERE 1=1`;
+
+    if (q) { params.push('%' + q.toLowerCase() + '%'); sql += ` AND LOWER(t.nom) LIKE $${idx++}`; }
+    if (pays) { params.push(pays); sql += ` AND t.pays_code = $${idx++}`; }
+    if (ville) { params.push('%' + ville.toLowerCase() + '%'); sql += ` AND LOWER(t.ville) LIKE $${idx++}`; }
+    if (specialite) {
+      params.push('%' + specialite.toLowerCase() + '%');
+      sql += ` AND (
+        EXISTS (SELECT 1 FROM unnest(t.specialites) s WHERE LOWER(s) LIKE $${idx})
+        OR EXISTS (SELECT 1 FROM unnest(t.analyses) a WHERE LOWER(a) LIKE $${idx})
+        OR EXISTS (SELECT 1 FROM unnest(t.equipements) e WHERE LOWER(e) LIKE $${idx})
+      )`;
+      idx++;
+    }
+
+    sql += hasGeo
+      ? ` ORDER BY (distance_km IS NULL), distance_km ASC NULLS LAST, t.nom ASC`
+      : ` ORDER BY t.nom ASC`;
+    sql += ' LIMIT 200';
+
+    const r = await db(sql, params);
+    let rows = r.rows;
+
+    // Filtre par rayon APRES le calcul (Postgres n'autorise pas de
+    // reference a un alias calcule dans le WHERE de la meme requete sans
+    // sous-requete additionnelle ; plus simple et tout aussi correct de
+    // filtrer cote Node sur un resultat deja borne a 200 lignes).
+    if (hasGeo && rayonNum) {
+      rows = rows.filter(row => row.distance_km !== null && row.distance_km <= rayonNum);
+    }
+
+    res.json({ success: true, data: rows, total: rows.length });
+  } catch(e) {
+    console.error('recherche-etablissements:', e.message);
+    res.status(500).json({ success: false, message: e.message, data: [] });
+  }
+});
+
 
 // ── TABLE ETABLISSEMENTS SANTE ────────────────────────────────────
 app.post('/api/admin/init-etablissements', async (req, res) => {
