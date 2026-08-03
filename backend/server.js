@@ -1357,6 +1357,23 @@ app.get('/api/file-attente/liste', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── Affecter / reaffecter un medecin au ticket (bureau des entrees) ─
+app.put('/api/file-attente/:id/affecter', auth, async (req, res) => {
+  const { medecin_id } = req.body;
+  if (!medecin_id) return res.status(400).json({ success:false, message:'medecin_id requis' });
+  try {
+    const med = await db('SELECT prenom, nom FROM medecins WHERE id=$1', [medecin_id]);
+    if (!med.rows.length) return res.status(404).json({ success:false, message:'Médecin introuvable' });
+    const medecin_nom = `Dr. ${med.rows[0].prenom} ${med.rows[0].nom}`;
+    const r = await db(
+      `UPDATE file_attente SET medecin_id=$1, medecin_nom=$2 WHERE id=$3 RETURNING *`,
+      [medecin_id, medecin_nom, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Ticket introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── Appeler le patient suivant ─────────────────────────────────────
 app.put('/api/file-attente/:id/appeler', async (req, res) => {
   const auth = req.headers['authorization']?.replace('Bearer ','');

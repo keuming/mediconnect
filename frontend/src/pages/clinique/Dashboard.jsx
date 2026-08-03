@@ -2544,10 +2544,29 @@ function PageFileAttente(){
     refetchInterval: 10000,
   });
 
+  const { data: medecinsData } = useQuery({
+    queryKey: ['file-attente-medecins'],
+    queryFn: async () => {
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/medecins`, { headers });
+      const d = await r.json();
+      return d.data || [];
+    },
+  });
+  const medecinsListe = medecinsData || [];
+
   const updateStatut = async (id, action) => {
     await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/${id}/${action}`, { method: 'PUT', headers });
     queryClient.invalidateQueries(['file-attente']);
     queryClient.invalidateQueries(['file-attente-stats']);
+  };
+
+  const affecterMedecin = async (id, medecinId) => {
+    if (!medecinId) return;
+    await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/${id}/affecter`, {
+      method: 'PUT', headers, body: JSON.stringify({ medecin_id: medecinId }),
+    });
+    queryClient.invalidateQueries(['file-attente']);
+    toast.success('Patient affecté au médecin');
   };
 
   const liste = data?.data || [];
@@ -2635,7 +2654,24 @@ function PageFileAttente(){
                 <div style={{fontWeight:600,fontSize:14,color:C.text}}>{e.patient_nom}</div>
                 {e.patient_telephone&&<div style={{fontSize:11,color:C.dim,marginTop:2}}>{e.patient_telephone}</div>}
               </div>
-              <div style={{fontSize:13,color:C.muted}}>{e.medecin_nom||'Non assigné'}</div>
+              <div>
+                <select
+                  value={e.medecin_id||''}
+                  onChange={ev=>affecterMedecin(e.id, ev.target.value)}
+                  disabled={e.statut==='termine'||e.statut==='annule'}
+                  style={{
+                    width:'100%', fontSize:12, padding:'6px 8px', borderRadius:7,
+                    background:e.medecin_id?'rgba(13,148,136,.08)':'rgba(245,158,11,.08)',
+                    border:`1px solid ${e.medecin_id?'rgba(13,148,136,.3)':'rgba(245,158,11,.3)'}`,
+                    color:e.medecin_id?C.text:'#F59E0B', fontFamily:'inherit',
+                    cursor:(e.statut==='termine'||e.statut==='annule')?'not-allowed':'pointer',
+                  }}>
+                  <option value="">Non assigné</option>
+                  {medecinsListe.map(m=>(
+                    <option key={m.id} value={m.id}>Dr. {m.prenom} {m.nom}{m.specialite?` — ${m.specialite}`:''}</option>
+                  ))}
+                </select>
+              </div>
               <div style={{fontSize:12,color:C.dim}}>
                 {e.heure_scan ? new Date(e.heure_scan).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'}) : '—'}
               </div>
