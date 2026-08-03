@@ -1,0 +1,15 @@
+{
+  "short_name": "MediConnect RDV",
+  "name": "MediConnect RDV — Trouvez un soin, prenez rendez-vous",
+  "icons": [
+    {
+      "src": "https://manager.mediconnect4africa.cloud/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#060C12",
+  "background_color": "#060C12"
+}
