@@ -61,8 +61,14 @@ const cAPI = {
   addPersonnel: (d) => api.post("/clinique/personnel", d),
   updPersonnel: (id,d) => api.put(`/clinique/personnel/${id}`, d),
   // Finance
-  factures:     () => api.get("/factures"),
-  caisse:       () => api.get("/caisse"),
+  factures:      () => api.get("/factures"),
+  caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
+  caisses:       () => api.get("/caisses"),
+  addCaisse:     (d) => api.post("/caisses", d),
+  ouvrirCaisse:  (caisseId) => api.post("/caisse/ouvrir", { caisse_id: caisseId }),
+  encaisser:     (caisseId, d) => api.post("/caisse/encaisser", { ...d, caisse_id: caisseId }),
+  decaisser:     (caisseId, d) => api.post("/caisse/decaisser", { ...d, caisse_id: caisseId }),
+  cloturerCaisse:(caisseId) => api.post("/caisse/cloturer", { caisse_id: caisseId }),
   // Assurances
   dossiers:     () => api.get("/assurances"),
   addDossier:   (d) => api.post("/assurances", d),
@@ -2510,42 +2516,148 @@ function PageConsultation() {
 //  PAGE CAISSE (simplifiée)
 // ════════════════════════════════════════════════════════════════════
 function PageCaisse() {
-  const [open, setOpen] = useState(false);
-  const { data } = useQuery({ queryKey:["cl-caisse"], queryFn:()=>cAPI.caisse().then(r=>r.data||{}), retry:1 });
-  const session = data||{};
+  const qc = useQueryClient();
+  const [caisseId, setCaisseId] = useState(null);
+  const [showNouvelleCaisse, setShowNouvelleCaisse] = useState(false);
+  const [nomNouvelleCaisse, setNomNouvelleCaisse] = useState("");
+  const [montantEncaisse, setMontantEncaisse] = useState("");
+  const [modePaiement, setModePaiement] = useState("Espèces");
+  const [referenceEncaisse, setReferenceEncaisse] = useState("");
+  const [montantDecaisse, setMontantDecaisse] = useState("");
+  const [motifDecaisse, setMotifDecaisse] = useState("");
+
+  const { data: caissesData, isLoading: chargementCaisses } = useQuery({
+    queryKey: ["cl-caisses"], queryFn: () => cAPI.caisses().then(r => r.data || []),
+  });
+  const caisses = caissesData || [];
+
+  // Selectionne automatiquement la premiere caisse disponible, une fois
+  // chargee, si aucune n'est encore choisie.
+  React.useEffect(() => {
+    if (!caisseId && caisses.length > 0) setCaisseId(caisses[0].id);
+  }, [caisses, caisseId]);
+
+  const caisseActive = caisses.find(c => c.id === caisseId) || null;
+  const sessionOuverte = caisseActive?.statut_session === "ouverte";
+
+  const addCaisseMut = useMutation({
+    mutationFn: d => cAPI.addCaisse(d),
+    onSuccess: (r) => {
+      toast.success("Caisse créée !");
+      qc.invalidateQueries(["cl-caisses"]);
+      setShowNouvelleCaisse(false); setNomNouvelleCaisse("");
+      if (r?.data?.id) setCaisseId(r.data.id);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la création"),
+  });
+
+  const ouvrirMut = useMutation({
+    mutationFn: () => cAPI.ouvrirCaisse(caisseId),
+    onSuccess: () => { toast.success("Caisse ouverte !"); qc.invalidateQueries(["cl-caisses"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur à l'ouverture"),
+  });
+
+  const encaisserMut = useMutation({
+    mutationFn: () => cAPI.encaisser(caisseId, { montant: Number(montantEncaisse), mode: modePaiement, reference: referenceEncaisse || null }),
+    onSuccess: () => {
+      toast.success("Encaissement enregistré !");
+      qc.invalidateQueries(["cl-caisses"]);
+      setMontantEncaisse(""); setReferenceEncaisse("");
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'encaissement"),
+  });
+
+  const decaisserMut = useMutation({
+    mutationFn: () => cAPI.decaisser(caisseId, { montant: Number(montantDecaisse), motif: motifDecaisse || null }),
+    onSuccess: () => {
+      toast.success("Décaissement enregistré !");
+      qc.invalidateQueries(["cl-caisses"]);
+      setMontantDecaisse(""); setMotifDecaisse("");
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors du décaissement"),
+  });
+
+  const cloturerMut = useMutation({
+    mutationFn: () => cAPI.cloturerCaisse(caisseId),
+    onSuccess: () => { toast.success("Caisse clôturée !"); qc.invalidateQueries(["cl-caisses"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur à la clôture"),
+  });
+
   return (
     <div>
-      <PageHeader title="💰 Caisse" subtitle="Sessions d'encaissement et décaissements"
-        actions={!open&&<Btn onClick={()=>{setOpen(true);toast.success("Caisse ouverte !");}}>Ouvrir la caisse</Btn>} />
-      {!open
-        ? <Panel style={{maxWidth:400,margin:"0 auto",textAlign:"center",padding:48}}>
-            <div style={{fontSize:48,marginBottom:16}}>🔒</div>
-            <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}}>Caisse fermée</div>
-            <div style={{fontSize:13,color:C.muted,marginBottom:24}}>Ouvrez la caisse pour commencer les encaissements</div>
-            <Btn style={{width:"100%"}} onClick={()=>{setOpen(true);toast.success("Caisse ouverte !");}}>Ouvrir la caisse</Btn>
-          </Panel>
-        : <>
-            <Grid cols={3} gap={14} style={{marginBottom:20}}>
-              <Card label="Encaissements" value={`${fmt(session.total_encaisse||0)} F`} icon="✅" color={C.green} />
-              <Card label="Décaissements" value={`${fmt(session.total_decaisse||0)} F`} icon="📤" color={C.amber} />
-              <Card label="Solde caisse" value={`${fmt((session.total_encaisse||0)-(session.total_decaisse||0))} F`} icon="💰" color={C.teal} />
-            </Grid>
-            <Grid cols={2} gap={20}>
-              <Panel title="📥 Encaissement">
-                <Inp label="Montant (FCFA)" type="number" placeholder="5000" style={{marginBottom:10}} />
-                <Sel label="Mode de paiement" options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} style={{marginBottom:10}} />
-                <Inp label="Référence / Patient" placeholder="Nom du patient ou référence" style={{marginBottom:14}} />
-                <Btn style={{width:"100%"}} onClick={()=>toast.success("Encaissement enregistré !")}>Encaisser</Btn>
-              </Panel>
-              <Panel title="📤 Décaissement">
-                <Inp label="Montant (FCFA)" type="number" placeholder="2000" style={{marginBottom:10}} />
-                <Inp label="Motif" placeholder="Achat fournitures, remboursement…" style={{marginBottom:14}} />
-                <Btn variant="amber" style={{width:"100%"}} onClick={()=>toast.success("Décaissement enregistré !")}>Décaisser</Btn>
-                <Btn variant="danger" style={{width:"100%",marginTop:10}} onClick={()=>{setOpen(false);toast.success("Caisse clôturée !");}}>Clôturer la caisse</Btn>
-              </Panel>
-            </Grid>
-          </>
-      }
+      <PageHeader title="💰 Caisse" subtitle="Sessions d'encaissement et décaissements, par caisse"
+        actions={<Btn onClick={()=>setShowNouvelleCaisse(true)}>+ Nouvelle caisse</Btn>} />
+
+      {chargementCaisses ? <Loader/> : caisses.length === 0 ? (
+        <Empty icon="💰" title="Aucune caisse" subtitle="Créez votre première caisse (Caisse générale, Caisse pharmacie…) pour commencer."/>
+      ) : (
+        <>
+          {/* Selecteur de caisse, si plusieurs existent */}
+          {caisses.length > 1 && (
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+              {caisses.map(c => (
+                <button key={c.id} onClick={()=>setCaisseId(c.id)}
+                  style={{
+                    padding:"9px 16px",borderRadius:24,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`1.5px solid ${caisseId===c.id?C.green:C.border}`,
+                    background:caisseId===c.id?"rgba(10,143,88,.15)":"transparent",
+                    color:caisseId===c.id?C.green:C.muted,
+                  }}>
+                  {c.nom} {c.statut_session==="ouverte" ? "🟢" : "⚪"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!sessionOuverte ? (
+            <Panel style={{maxWidth:400,margin:"0 auto",textAlign:"center",padding:48}}>
+              <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+              <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}}>{caisseActive?.nom} fermée</div>
+              <div style={{fontSize:13,color:C.muted,marginBottom:24}}>Ouvrez la caisse pour commencer les encaissements du jour</div>
+              <Btn style={{width:"100%"}} loading={ouvrirMut.isPending} onClick={()=>ouvrirMut.mutate()}>Ouvrir la caisse</Btn>
+            </Panel>
+          ) : (
+            <>
+              <Grid cols={3} gap={14} style={{marginBottom:20}}>
+                <Card label="Encaissements" value={`${fmt(caisseActive.total_encaisse||0)} F`} icon="✅" color={C.green} />
+                <Card label="Décaissements" value={`${fmt(caisseActive.total_decaisse||0)} F`} icon="📤" color={C.amber} />
+                <Card label="Solde caisse" value={`${fmt((Number(caisseActive.total_encaisse)||0)-(Number(caisseActive.total_decaisse)||0))} F`} icon="💰" color={C.teal} />
+              </Grid>
+              <Grid cols={2} gap={20}>
+                <Panel title="📥 Encaissement">
+                  <Inp label="Montant (FCFA)" type="number" placeholder="5000" value={montantEncaisse} onChange={e=>setMontantEncaisse(e.target.value)} style={{marginBottom:10}} />
+                  <Sel label="Mode de paiement" value={modePaiement} onChange={e=>setModePaiement(e.target.value)} options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} style={{marginBottom:10}} />
+                  <Inp label="Référence / Patient" placeholder="Nom du patient ou référence" value={referenceEncaisse} onChange={e=>setReferenceEncaisse(e.target.value)} style={{marginBottom:14}} />
+                  <Btn style={{width:"100%"}} loading={encaisserMut.isPending} onClick={()=>{
+                    if(!montantEncaisse||Number(montantEncaisse)<=0){toast.error("Montant invalide");return;}
+                    encaisserMut.mutate();
+                  }}>Encaisser</Btn>
+                </Panel>
+                <Panel title="📤 Décaissement">
+                  <Inp label="Montant (FCFA)" type="number" placeholder="2000" value={montantDecaisse} onChange={e=>setMontantDecaisse(e.target.value)} style={{marginBottom:10}} />
+                  <Inp label="Motif" placeholder="Achat fournitures, remboursement…" value={motifDecaisse} onChange={e=>setMotifDecaisse(e.target.value)} style={{marginBottom:14}} />
+                  <Btn variant="amber" style={{width:"100%"}} loading={decaisserMut.isPending} onClick={()=>{
+                    if(!montantDecaisse||Number(montantDecaisse)<=0){toast.error("Montant invalide");return;}
+                    decaisserMut.mutate();
+                  }}>Décaisser</Btn>
+                  <Btn variant="danger" style={{width:"100%",marginTop:10}} loading={cloturerMut.isPending} onClick={()=>cloturerMut.mutate()}>Clôturer la caisse</Btn>
+                </Panel>
+              </Grid>
+            </>
+          )}
+        </>
+      )}
+
+      <Modal open={showNouvelleCaisse} onClose={()=>setShowNouvelleCaisse(false)} title="💰 Nouvelle caisse">
+        <Inp label="Nom de la caisse *" required value={nomNouvelleCaisse} onChange={e=>setNomNouvelleCaisse(e.target.value)} placeholder="Caisse générale, Caisse pharmacie…" />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowNouvelleCaisse(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addCaisseMut.isPending} onClick={()=>{
+            if(!nomNouvelleCaisse.trim()){toast.error("Nom requis");return;}
+            addCaisseMut.mutate({ nom: nomNouvelleCaisse.trim() });
+          }}>Créer la caisse</Btn>
+        </div>
+      </Modal>
     </div>
   );
 }
