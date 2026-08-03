@@ -419,14 +419,22 @@ app.get('/api/patients', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const { q } = req.query;
+    // FAILLE CONFIDENTIALITE CORRIGEE : toute clinique voyait TOUS les
+    // patients de TOUTES les cliniques. Un compte clinique ne voit
+    // desormais que les patients qu'il a lui-meme crees, plus les
+    // patients anciens (clinique_id NULL, crees avant ce correctif) pour
+    // ne rien faire disparaitre retroactivement. Les comptes sans
+    // clinique_id (admin...) gardent la visibilite complete, inchangee.
     let sql, params = [];
     if (q) {
-      // Recherche par nom, prénom ou téléphone — toutes cliniques
       params.push('%'+q.toLowerCase()+'%');
-      sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1) ORDER BY nom,prenom LIMIT 100`;
+      sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1)`;
+      if (cid) { params.push(cid); sql += ` AND (clinique_id=$${params.length} OR clinique_id IS NULL)`; }
+      sql += ' ORDER BY nom,prenom LIMIT 100';
     } else {
-      // Tous les patients — quelle que soit l'interface de création
-      sql = 'SELECT * FROM patients ORDER BY created_at DESC NULLS LAST, nom, prenom LIMIT 1000';
+      sql = 'SELECT * FROM patients WHERE 1=1';
+      if (cid) { params.push(cid); sql += ` AND (clinique_id=$${params.length} OR clinique_id IS NULL)`; }
+      sql += ' ORDER BY created_at DESC NULLS LAST, nom, prenom LIMIT 1000';
     }
     const r = await db(sql, params);
     res.json({ success:true, data:r.rows });
@@ -471,8 +479,8 @@ app.post('/api/patients', auth, async (req, res) => {
     // exist" -> AUCUNE creation de patient ne fonctionnait, pour aucune
     // clinique, depuis l'origine.
     const r = await db(
-      'INSERT INTO patients (id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [patientId, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null]
+      'INSERT INTO patients (id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police,clinique_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [patientId, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null, req.user?.clinique_id||null]
     );
     // Retourner explicitement le code_secret pour affichage
     res.status(201).json({ success:true, data:{ ...r.rows[0], code_secret:code } });
