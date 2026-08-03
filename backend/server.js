@@ -373,22 +373,27 @@ app.get('/api/public/medecins', async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/medecins', auth, async (req, res) => {
-  const { prenom, nom, specialite, telephone, email, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+  // BUG CRITIQUE CORRIGE : la table medecins n'a ni colonne telephone ni
+  // email (contact du medecin porte par son compte utilisateurs lie, pas
+  // par la fiche medecins elle-meme). L'INSERT precedent les visait quand
+  // meme -> "column telephone does not exist" -> creation impossible pour
+  // toute clinique.
+  const { prenom, nom, specialite, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   if (!prenom||!nom||!specialite) return res.status(400).json({ success:false, message:'Prénom, nom et spécialité requis' });
   try {
     const r = await db(
-      'INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,telephone,email,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
-      [uuid(), req.user?.clinique_id, prenom, nom, specialite, telephone||null, email||null, tarif||null, experience_ans||null, jours_travail||'Lun,Mar,Mer,Jeu,Ven', horaires_debut||'08:00', horaires_fin||'17:00']
+      'INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+      [uuid(), req.user?.clinique_id, prenom, nom, specialite, tarif||null, experience_ans||null, jours_travail||'Lun,Mar,Mer,Jeu,Ven', horaires_debut||'08:00', horaires_fin||'17:00']
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/medecins/:id', auth, async (req, res) => {
-  const { prenom, nom, specialite, statut, tarif, telephone, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+  const { prenom, nom, specialite, statut, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   try {
     const r = await db(
-      'UPDATE medecins SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),specialite=COALESCE($3,specialite),statut=COALESCE($4,statut),tarif=COALESCE($5,tarif),telephone=COALESCE($6,telephone),experience_ans=COALESCE($7,experience_ans),jours_travail=COALESCE($8,jours_travail),horaires_debut=COALESCE($9,horaires_debut),horaires_fin=COALESCE($10,horaires_fin),updated_at=NOW() WHERE id=$11 RETURNING *',
-      [prenom,nom,specialite,statut,tarif,telephone,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]
+      'UPDATE medecins SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),specialite=COALESCE($3,specialite),statut=COALESCE($4,statut),tarif=COALESCE($5,tarif),experience_ans=COALESCE($6,experience_ans),jours_travail=COALESCE($7,jours_travail),horaires_debut=COALESCE($8,horaires_debut),horaires_fin=COALESCE($9,horaires_fin),updated_at=NOW() WHERE id=$10 RETURNING *',
+      [prenom,nom,specialite,statut,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
