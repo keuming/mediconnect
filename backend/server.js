@@ -381,9 +381,15 @@ app.post('/api/medecins', auth, async (req, res) => {
   const { prenom, nom, specialite, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   if (!prenom||!nom||!specialite) return res.status(400).json({ success:false, message:'Prénom, nom et spécialité requis' });
   try {
+    // jours_travail est un ARRAY Postgres : une chaine brute separee par
+    // virgules ("Lun,Mar,...") produit "malformed array literal" -- il
+    // faut un vrai tableau JS pour que le driver pg le serialise correctement.
+    const joursArray = Array.isArray(jours_travail)
+      ? jours_travail
+      : (jours_travail || 'Lun,Mar,Mer,Jeu,Ven').split(',').map(s => s.trim()).filter(Boolean);
     const r = await db(
       'INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [uuid(), req.user?.clinique_id, prenom, nom, specialite, tarif||null, experience_ans||null, jours_travail||'Lun,Mar,Mer,Jeu,Ven', horaires_debut||'08:00', horaires_fin||'17:00']
+      [uuid(), req.user?.clinique_id, prenom, nom, specialite, tarif||null, experience_ans||null, joursArray, horaires_debut||'08:00', horaires_fin||'17:00']
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -391,9 +397,13 @@ app.post('/api/medecins', auth, async (req, res) => {
 app.put('/api/medecins/:id', auth, async (req, res) => {
   const { prenom, nom, specialite, statut, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
   try {
+    // Meme correction que POST : convertir en tableau JS uniquement si une
+    // valeur est fournie, sinon null pour laisser COALESCE garder l'ancienne.
+    const joursArrayMaj = jours_travail == null ? null
+      : (Array.isArray(jours_travail) ? jours_travail : jours_travail.split(',').map(s => s.trim()).filter(Boolean));
     const r = await db(
       'UPDATE medecins SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),specialite=COALESCE($3,specialite),statut=COALESCE($4,statut),tarif=COALESCE($5,tarif),experience_ans=COALESCE($6,experience_ans),jours_travail=COALESCE($7,jours_travail),horaires_debut=COALESCE($8,horaires_debut),horaires_fin=COALESCE($9,horaires_fin),updated_at=NOW() WHERE id=$10 RETURNING *',
-      [prenom,nom,specialite,statut,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin,req.params.id]
+      [prenom,nom,specialite,statut,tarif,experience_ans,joursArrayMaj,horaires_debut,horaires_fin,req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
