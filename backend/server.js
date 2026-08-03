@@ -822,8 +822,12 @@ app.post('/api/caisses', auth, requireSousRole('finance'), async (req, res) => {
   const cid = req.user?.clinique_id;
   if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
   try {
+    // date_ouverture est NOT NULL sans defaut sur cette table -- sans elle,
+    // l'INSERT echoue systematiquement ("null value ... violates not-null
+    // constraint"). Une caisse est consideree ouverte (creee) le jour de
+    // sa creation.
     const r = await db(
-      'INSERT INTO caisses (id,clinique_id,nom,operateur) VALUES ($1,$2,$3,$4) RETURNING *',
+      'INSERT INTO caisses (id,clinique_id,nom,operateur,date_ouverture) VALUES ($1,$2,$3,$4,CURRENT_DATE) RETURNING *',
       [uuid(), cid, nom, operateur||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
