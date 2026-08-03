@@ -934,6 +934,66 @@ app.get('/api/public/cliniques', async (req, res) => {
     res.json({ success:true, data:r.rows, total:r.rows.length });
   } catch(e) { console.error('public/cliniques:', e.message); res.json({ success:true, data:[] }); }
 });
+// ── Medecins d'une clinique (pour le flux public de prise de RDV) ──
+// rdv-site/src/pages/RDV.jsx appelait deja cette route ; elle n'a jamais
+// existe cote backend -> toute clinique reelle (non demo) tombait
+// silencieusement sur une liste vide.
+app.get('/api/public/cliniques/:id/medecins', async (req, res) => {
+  try {
+    const { specialite } = req.query;
+    let sql = `SELECT id, prenom, nom, specialite, tarif, experience_ans, statut
+                 FROM medecins WHERE clinique_id=$1 AND statut IS DISTINCT FROM 'Indisponible'`;
+    const params = [req.params.id];
+    if (specialite) { params.push(specialite); sql += ` AND specialite=$${params.length}`; }
+    sql += ' ORDER BY nom';
+    const r = await db(sql, params);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Creneaux disponibles d'un medecin (pour le flux public de RDV) ──
+// Genere des creneaux de 30 min a partir de la table disponibilites
+// (creee de longue date mais jamais exploitee par aucune route), en
+// excluant ceux deja pris dans rendez_vous. Fenetre : aujourd'hui a
+// J+30, pour rester utile sans devenir une liste infinie.
+app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
+  try {
+    const medecinId = req.params.id;
+    const dispos = await db(
+      `SELECT date, heure_debut, heure_fin FROM disponibilites
+        WHERE medecin_id=$1 AND statut='disponible'
+          AND date >= CURRENT_DATE AND date <= CURRENT_DATE + INTERVAL '30 days'
+        ORDER BY date, heure_debut`,
+      [medecinId]
+    );
+    const pris = await db(
+      `SELECT date_rdv, heure_rdv FROM rendez_vous
+        WHERE medecin_id=$1 AND date_rdv >= CURRENT_DATE
+          AND statut IS DISTINCT FROM 'annule'`,
+      [medecinId]
+    );
+    const occupes = new Set(pris.rows.map(p => {
+      const d = new Date(p.date_rdv).toISOString().split('T')[0];
+      return `${d} ${String(p.heure_rdv).slice(0,5)}`;
+    }));
+
+    const creneaux = [];
+    for (const d of dispos.rows) {
+      const jour = new Date(d.date).toISOString().split('T')[0];
+      let [h, m] = d.heure_debut.split(':').map(Number);
+      const [hFin, mFin] = d.heure_fin.split(':').map(Number);
+      while (h < hFin || (h === hFin && m < mFin)) {
+        const heureStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+        const cle = `${jour} ${heureStr}`;
+        if (!occupes.has(cle)) creneaux.push(cle);
+        m += 30;
+        if (m >= 60) { m -= 60; h += 1; }
+      }
+    }
+    res.json({ success: true, data: creneaux.slice(0, 60) });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
 app.post('/api/public/rdv', async (req, res) => {
   const { patient_nom, patient_telephone, clinique_id, medecin_id, etablissement_externe, prestataire_type, prestataire_id, date_rdv, heure_rdv, motif } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
