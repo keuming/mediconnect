@@ -1256,9 +1256,16 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
       }
     }
     if (specialite) {
+      // Un seul champ de recherche cote frontend : il doit trouver un
+      // etablissement AUSSI BIEN par son NOM ("Polyclinique du Sud") que
+      // par sa specialite/analyse/equipement ("Cardiologie"). Sans le
+      // LOWER(t.nom) LIKE ci-dessous, chercher un etablissement par son
+      // nom propre ne renvoyait jamais rien -- seule la specialite etait
+      // testee.
       params.push('%' + specialite.toLowerCase() + '%');
       sql += ` AND (
-        EXISTS (SELECT 1 FROM unnest(t.specialites) s WHERE LOWER(s) LIKE $${idx})
+        LOWER(t.nom) LIKE $${idx}
+        OR EXISTS (SELECT 1 FROM unnest(t.specialites) s WHERE LOWER(s) LIKE $${idx})
         OR EXISTS (SELECT 1 FROM unnest(t.analyses) a WHERE LOWER(a) LIKE $${idx})
         OR EXISTS (SELECT 1 FROM unnest(t.equipements) e WHERE LOWER(e) LIKE $${idx})
       )`;

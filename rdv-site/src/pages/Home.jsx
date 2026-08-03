@@ -199,8 +199,8 @@ export default function Home() {
           <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12, marginBottom: 14 }}>
               <div>
-                <label style={labelStyle}>Spécialité / recherche</label>
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Cardiologie, NFS…"
+                <label style={labelStyle}>Nom, spécialité ou analyse</label>
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Polyclinique du Sud, Cardiologie, NFS…"
                   style={inputStyle} onKeyDown={e => e.key === 'Enter' && lancerRecherche()} />
               </div>
               <div>
