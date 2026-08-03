@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
-const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-fed6.vercel.app').replace(/\/+$/, '') + '/api';
+const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-backend-v2.vercel.app').replace(/\/+$/, '') + '/api';
 
 const VILLES = ['Abidjan','Dakar','Ouagadougou','Accra','Bamako','Lomé','Cotonou','Conakry'];
 const SPECIALITES = ['Cardiologie','Pédiatrie','Gynécologie','Dermatologie','Neurologie','Médecine générale','Ophtalmologie','ORL','Orthopédie','Psychiatrie','Radiologie','Chirurgie'];
