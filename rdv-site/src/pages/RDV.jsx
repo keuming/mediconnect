@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-backend-v2.vercel.app').replace(/\/+$/, '') + '/api';
 
 const VILLES = ['Abidjan','Dakar','Ouagadougou','Accra','Bamako','Lomé','Cotonou','Conakry'];
+const PAYS = [
+  { code:'CI', label:"🇨🇮 Côte d'Ivoire", ville:'Abidjan' }, { code:'SN', label:'🇸🇳 Sénégal', ville:'Dakar' },
+  { code:'BF', label:'🇧🇫 Burkina Faso', ville:'Ouagadougou' }, { code:'GH', label:'🇬🇭 Ghana', ville:'Accra' },
+  { code:'ML', label:'🇲🇱 Mali', ville:'Bamako' }, { code:'TG', label:'🇹🇬 Togo', ville:'Lomé' },
+  { code:'BJ', label:'🇧🇯 Bénin', ville:'Cotonou' }, { code:'GN', label:'🇬🇳 Guinée', ville:'Conakry' },
+];
 const SPECIALITES = ['Cardiologie','Pédiatrie','Gynécologie','Dermatologie','Neurologie','Médecine générale','Ophtalmologie','ORL','Orthopédie','Psychiatrie','Radiologie','Chirurgie'];
 const ASSURANCES = ['Aucune','NSIA Assurances','Allianz CI','AXA CI','CNAM (CMU)','SANLAM','Saham Assurances','Atlantique Assurances'];
 const RELATIONS = ['Parent','Conjoint(e)','Enfant','Frère/Sœur','Ami(e)','Tuteur','Autre'];
@@ -44,7 +50,14 @@ const fmtDate = (dt) => {
 
 export default function RDV() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(1);
+  const [pays, setPays] = useState('CI');
+  // Etablissement deja choisi depuis la recherche reelle de Home.jsx :
+  // on saute directement l'etape de recherche (redondante) et on va au
+  // choix du medecin. Sans cette lecture, le patient revoyait un
+  // formulaire de recherche identique juste apres en avoir rempli un.
+  const preselection = location.state?.etablissementPreselectionne || null;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -65,8 +78,27 @@ export default function RDV() {
   const [patient, setPatient] = useState({ prenom: '', nom: '', telephone: '', email: '', ville_residence: 'Abidjan', assurance: 'Aucune', numero_police: '', motif: '' });
   const [accomp, setAccomp] = useState({ prenom: '', nom: '', telephone: '', relation: 'Parent' });
 
-  // Charger cliniques
+  // Si une clinique a deja ete choisie via la recherche de Home.jsx,
+  // on la recupere directement et on saute l'etape 1 -- pas besoin de
+  // refaire une recherche deja faite.
   useEffect(() => {
+    if (!preselection || preselection.type !== 'clinique') return;
+    fetch(`${API}/public/cliniques/${preselection.id}`)
+      .then(r => r.json())
+      .then(d => {
+        const c = d.success && d.data ? d.data : { id: preselection.id, nom: preselection.nom, ville: preselection.ville };
+        setClinique(c);
+        setStep(2);
+      })
+      .catch(() => {
+        setClinique({ id: preselection.id, nom: preselection.nom, ville: preselection.ville });
+        setStep(2);
+      });
+  }, []);
+
+  // Charger cliniques (uniquement si pas de preselection : etape 1 reelle)
+  useEffect(() => {
+    if (preselection) return;
     setLoading(true);
     const params = new URLSearchParams();
     if (ville) params.append('ville', ville);
@@ -76,7 +108,7 @@ export default function RDV() {
       .then(d => setCliniques(d.success && d.data.length > 0 ? d.data : DEMO_CLINIQUES.filter(c => !ville || c.ville === ville)))
       .catch(() => setCliniques(DEMO_CLINIQUES.filter(c => !ville || c.ville === ville)))
       .finally(() => setLoading(false));
-  }, [ville, specialite]);
+  }, [ville, specialite, preselection]);
 
   // Charger médecins quand clinique sélectionnée
   useEffect(() => {
@@ -213,6 +245,7 @@ export default function RDV() {
             <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 26, color: '#F0F4F8', marginBottom: 6, fontWeight: 400 }}>Choisissez un établissement</h2>
             <p style={{ color: '#8BA0B5', marginBottom: 24, fontSize: 13 }}>Filtrez par ville et spécialité</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, background: '#141E2B', border: '1px solid #1E2F42', borderRadius: 12, padding: 18, marginBottom: 20 }}>
+              {sel('Pays', pays, code => { setPays(code); const p = PAYS.find(x=>x.code===code); if (p) setVille(p.ville); }, PAYS.map(p=>p.code))}
               {sel('Ville', ville, setVille, VILLES)}
               {sel('Spécialité', specialite, setSpecialite, [{ v: '', l: 'Toutes les spécialités' }, ...SPECIALITES.map(s => ({ v: s, l: s }))])}
             </div>
