@@ -175,6 +175,12 @@ function PageBulletins() {
                 <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.type||'Imagerie'} — {b.patient_nom||'—'}</div>
                 <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
                 {b.notes&&<div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.notes}</div>}
+                {b.fichier_prescription_url&&(
+                  <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                    📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                  </a>
+                )}
                 {b.rapport&&<div style={{ fontSize:12,color:C.teal,marginTop:4,fontStyle:'italic' }}>📋 Rapport: {b.rapport.slice(0,80)}…</div>}
               </div>
               <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
