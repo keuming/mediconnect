@@ -176,10 +176,10 @@ export default function Home() {
       <section style={{ padding: '36px 5% 20px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(24px,3.5vw,36px)', color: V.text, marginBottom: 6, textAlign: 'center' }}>
-            Le soin qu'il vous faut, <span style={{ color: V.green, fontStyle: 'italic' }}>là où il se trouve</span>
+            Trouvez un soin, <span style={{ color: V.green, fontStyle: 'italic' }}>maintenant</span>
           </h1>
           <p style={{ color: V.muted, fontSize: 14, textAlign: 'center', marginBottom: 28 }}>
-            Cliniques, laboratoires et centres d'imagerie d'Afrique de l'Ouest, localisés en quelques secondes — là où l'information manquait, MediConnect répond.
+            Cliniques, laboratoires et centres d'imagerie près de chez vous — en un instant.
           </p>
 
           {/* Onglets type */}
@@ -199,8 +199,8 @@ export default function Home() {
           <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12, marginBottom: 14 }}>
               <div>
-                <label style={labelStyle}>Nom, spécialité ou analyse</label>
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Polyclinique du Sud, Cardiologie, NFS…"
+                <label style={labelStyle}>Spécialité / recherche</label>
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Ex: Cardiologie, NFS…"
                   style={inputStyle} onKeyDown={e => e.key === 'Enter' && lancerRecherche()} />
               </div>
               <div>
