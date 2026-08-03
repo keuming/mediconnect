@@ -57,6 +57,9 @@ const cAPI = {
   medecins:     () => api.get("/medecins"),
   addMedecin:   (d) => api.post("/medecins", d),
   updateMedecin:(id,d) => api.put(`/medecins/${id}`, d),
+  personnel:    () => api.get("/clinique/personnel"),
+  addPersonnel: (d) => api.post("/clinique/personnel", d),
+  updPersonnel: (id,d) => api.put(`/clinique/personnel/${id}`, d),
   // Finance
   factures:     () => api.get("/factures"),
   caisse:       () => api.get("/caisse"),
@@ -1287,12 +1290,30 @@ function PageMedecins() {
   const [showPersonnel, setShowPersonnel] = useState(false);
   const [form, setForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", tarif:"", experience_ans:"", statut:"Disponible", jours_travail:"Lun,Mar,Mer,Jeu,Ven", horaires_debut:"08:00", horaires_fin:"17:00" });
   const [pForm, setPForm] = useState({ nom:"", poste:"", contrat:"CDI", salaire:"", date_embauche:"", statut:"Actif" });
+  const [compteForm, setCompteForm] = useState({ prenom:"", nom:"", email:"", password:"", telephone:"", sous_role:"bureau_entrees" });
 
   const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data.data||[]) });
   const medecins = data||[];
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addMedecin(d), onSuccess:()=>{ toast.success("Médecin ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
   const updMut = useMutation({ mutationFn:({id,...d})=>cAPI.updateMedecin(id,d), onSuccess:()=>{ toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-medecins"]); }, onError:()=>toast.error("Erreur") });
+
+  const { data: personnelData, isLoading: chargementPersonnel } = useQuery({
+    queryKey:["cl-personnel"], queryFn:()=>cAPI.personnel().then(r=>r.data.data||[]),
+  });
+  const personnel = personnelData||[];
+  const addCompteMut = useMutation({
+    mutationFn: d => cAPI.addPersonnel(d),
+    onSuccess: () => { toast.success("Compte créé !"); qc.invalidateQueries(["cl-personnel"]); setShowPersonnel(false); setCompteForm({ prenom:"", nom:"", email:"", password:"", telephone:"", sous_role:"bureau_entrees" }); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la création du compte"),
+  });
+  const toggleCompteMut = useMutation({
+    mutationFn: ({id,is_active}) => cAPI.updPersonnel(id,{is_active}),
+    onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-personnel"]); },
+    onError: () => toast.error("Erreur"),
+  });
+  const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration" };
+  const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple" };
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
@@ -1385,20 +1406,28 @@ function PageMedecins() {
 
       {/* Tab: Personnel RH */}
       {tab==="personnel" && (
-        <Panel title="Personnel administratif et médical">
-          <Grid cols={3} gap={14} style={{marginBottom:20}}>
-            <Card label="Total personnel" value={PERSONNEL_DEMO.length} icon="👥" color={C.blue} />
-            <Card label="Masse salariale" value={`${fmt(PERSONNEL_DEMO.reduce((s,p)=>s+p.salaire,0))} F`} icon="💰" color={C.green} sub="Mensuelle" />
-            <Card label="CDI" value={PERSONNEL_DEMO.filter(p=>p.contrat==="CDI").length} icon="📄" color={C.teal} />
+        <Panel title="Comptes du personnel et rôles">
+          <Grid cols={4} gap={14} style={{marginBottom:20}}>
+            <Card label="Comptes créés" value={personnel.length} icon="👥" color={C.blue} />
+            {Object.entries(LABEL_SOUS_ROLE).map(([k,l])=>(
+              <Card key={k} label={l} value={personnel.filter(p=>p.sous_role===k).length} icon="🔑" color={C.teal} />
+            ))}
           </Grid>
-          <Table columns={[
-            { key:"nom", label:"Nom", render:v=><span style={{fontWeight:700}}>{v}</span> },
-            { key:"poste", label:"Poste" },
-            { key:"contrat", label:"Contrat", render:v=><Badge color="blue">{v}</Badge> },
-            { key:"salaire", label:"Salaire", render:v=><span style={{fontWeight:700,color:C.green}}>{fmt(v)} F</span> },
-            { key:"date_embauche", label:"Embauche", render:v=>fmtDate(v) },
-            { key:"statut", label:"Statut", render:v=><Badge color="green">{v}</Badge> },
-          ]} rows={PERSONNEL_DEMO} />
+          {chargementPersonnel ? <Loader/> : personnel.length===0
+            ? <Empty icon="👥" title="Aucun compte de personnel" subtitle="Créez un compte pour le bureau des entrées, un médecin, la finance ou la RH."/>
+            : <Table columns={[
+                { key:"prenom", label:"Nom", render:(v,row)=><span style={{fontWeight:700}}>{row.prenom} {row.nom}</span> },
+                { key:"email", label:"Email" },
+                { key:"sous_role", label:"Rôle", render:v=><Badge color={COULEUR_SOUS_ROLE[v]||"gray"}>{LABEL_SOUS_ROLE[v]||v}</Badge> },
+                { key:"is_active", label:"Statut", render:v=><Badge color={v?"green":"red"}>{v?"Actif":"Désactivé"}</Badge> },
+                { key:"id", label:"Actions", render:(v,row)=>(
+                  <Btn variant="outline" style={{padding:"4px 10px",fontSize:11}}
+                    onClick={()=>toggleCompteMut.mutate({id:row.id, is_active:!row.is_active})}>
+                    {row.is_active?"Désactiver":"Activer"}
+                  </Btn>
+                )},
+              ]} rows={personnel} />
+          }
         </Panel>
       )}
 
@@ -1459,17 +1488,30 @@ function PageMedecins() {
       </Modal>
 
       {/* Modal: Nouveau personnel */}
-      <Modal open={showPersonnel} onClose={()=>setShowPersonnel(false)} title="👥 Nouveau membre du personnel">
-        <Inp label="Nom complet *" required value={pForm.nom} onChange={fp("nom")} placeholder="Koné Adjoua" />
+      <Modal open={showPersonnel} onClose={()=>setShowPersonnel(false)} title="👥 Nouveau compte du personnel" width={520}>
         <Grid cols={2} gap={12}>
-          <Sel label="Poste" value={pForm.poste} onChange={fp("poste")} options={["",...POSTES]} />
-          <Sel label="Type de contrat" value={pForm.contrat} onChange={fp("contrat")} options={CONTRATS} />
-          <Inp label="Salaire mensuel (FCFA)" value={pForm.salaire} onChange={fp("salaire")} placeholder="150000" type="number" />
-          <Inp label="Date d'embauche" value={pForm.date_embauche} onChange={fp("date_embauche")} type="date" />
+          <Inp label="Prénom *" required value={compteForm.prenom} onChange={e=>setCompteForm(p=>({...p,prenom:e.target.value}))} placeholder="Adjoua" />
+          <Inp label="Nom *" required value={compteForm.nom} onChange={e=>setCompteForm(p=>({...p,nom:e.target.value}))} placeholder="Koné" />
         </Grid>
+        <Inp label="Email de connexion *" required type="email" value={compteForm.email} onChange={e=>setCompteForm(p=>({...p,email:e.target.value}))} placeholder="adjoua.kone@clinique.ci" />
+        <Grid cols={2} gap={12}>
+          <Inp label="Mot de passe temporaire *" required type="password" value={compteForm.password} onChange={e=>setCompteForm(p=>({...p,password:e.target.value}))} placeholder="Min. 6 caractères" />
+          <Inp label="Téléphone" value={compteForm.telephone} onChange={e=>setCompteForm(p=>({...p,telephone:e.target.value}))} placeholder="+225 07 00 00 00" />
+        </Grid>
+        <Sel label="Rôle dans la clinique *" value={compteForm.sous_role} onChange={e=>setCompteForm(p=>({...p,sous_role:e.target.value}))}
+          options={[
+            {v:"bureau_entrees", l:"🚶 Bureau des entrées — RDV, dossiers, caisse, facturation"},
+            {v:"medecin",        l:"🩺 Médecin — dossier médical complet"},
+            {v:"finance",        l:"💰 Finance — caisse, facturation, assurances"},
+            {v:"rh",             l:"👔 RH / Administration — personnel, contrats"},
+          ]} />
         <div style={{display:"flex",gap:10,marginTop:4}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowPersonnel(false)}>Annuler</Btn>
-          <Btn style={{flex:2}} onClick={()=>{ toast.success("Personnel ajouté !"); setShowPersonnel(false); }}>Ajouter</Btn>
+          <Btn style={{flex:2}} loading={addCompteMut.isPending} onClick={()=>{
+            if(!compteForm.prenom||!compteForm.nom||!compteForm.email||!compteForm.password){ toast.error("Prénom, nom, email et mot de passe requis"); return; }
+            if(compteForm.password.length<6){ toast.error("Mot de passe : 6 caractères minimum"); return; }
+            addCompteMut.mutate(compteForm);
+          }}>Créer le compte</Btn>
         </div>
       </Modal>
     </div>
