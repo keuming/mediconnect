@@ -46,6 +46,7 @@ const NAV = {
     { path:'/clinique/assurance',    icon:'🛡️', label:'Assurances' },
     { path:'/clinique/dossiers-ass', icon:'📋', label:'Dossiers assurance' },
     { path:'/clinique/stats',        icon:'📈', label:'Statistiques' },
+    { path:'/clinique/resultats-examens', icon:'🔬', label:'Résultats d\'examens' },
   ],
   pharmacie: [
     { path:'/pharmacie',            icon:'📊', label:'Dashboard' },
@@ -170,8 +171,8 @@ export default function AppLayout({ children }) {
   // = compte historique/proprietaire = menu complet, comportement inchange
   // pour tous les autres roles systeme (labo, imagerie, patient...).
   const VISIBILITE_SOUS_ROLE = {
-    bureau_entrees: ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/caisse', '/clinique/facturation', '/clinique/specialites', '/clinique/stock'],
-    medecin:        ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/consultation', '/clinique/specialites', '/clinique/medecins', '/clinique/stock', '/clinique/stats'],
+    bureau_entrees: ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/caisse', '/clinique/facturation', '/clinique/specialites', '/clinique/stock', '/clinique/resultats-examens'],
+    medecin:        ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/consultation', '/clinique/specialites', '/clinique/medecins', '/clinique/stock', '/clinique/stats', '/clinique/resultats-examens'],
     finance:        ['/clinique', '/clinique/caisse', '/clinique/facturation', '/clinique/assurance', '/clinique/dossiers-ass', '/clinique/stats'],
     rh:             ['/clinique', '/clinique/medecins'],
   };

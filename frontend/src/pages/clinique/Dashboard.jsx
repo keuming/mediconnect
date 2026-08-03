@@ -236,14 +236,15 @@ function PageHome() {
     { icon:"👁️", label:"Vue Propriétaire",   path:"proprietaire", color:C.amber,  stat:"Surveillance financière" },
     { icon:"🏥", label:"Profil & Logo",       path:"profil-logo",  color:C.purple, stat:"Identité visuelle" },
     { icon:"🩺", label:"Ma file (Médecin)",  path:"file-medecin", color:C.green,  stat:"Mes patients" },
+    { icon:"🔬", label:"Résultats d'examens", path:"resultats-examens", color:C.teal, stat:"Recherche par code" },
   ];
   // Grille de raccourcis de la page d'accueil clinique : meme regle de
   // visibilite que la barre laterale (AppLayout.jsx), dupliquee ici car
   // c'est un tableau JSX local, distinct de NAV.clinique. sous_role absent
   // = compte historique/proprietaire = grille complete.
   const MODULES_VISIBLES_PAR_SOUS_ROLE = {
-    bureau_entrees: ["planning", "dossiers", "caisse", "facturation", "stock", "file-attente"],
-    medecin:        ["planning", "dossiers", "consultation", "stock", "stats", "file-medecin"],
+    bureau_entrees: ["planning", "dossiers", "caisse", "facturation", "stock", "file-attente", "resultats-examens"],
+    medecin:        ["planning", "dossiers", "consultation", "stock", "stats", "file-medecin", "resultats-examens"],
     finance:        ["caisse", "facturation", "assurance", "stats", "proprietaire"],
     rh:             ["medecins", "qualite"],
   };
@@ -3142,6 +3143,99 @@ function PageProfilLogo(){
   );
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  RESULTATS D'EXAMENS PAR CODE — medecin + bureau des entrees
+// ════════════════════════════════════════════════════════════════════
+// Acces volontairement restreint aux SEULS bulletins d'examens (type,
+// statut, rapport, fichiers) : ni consultations, ni ordonnances, ni
+// aucune autre donnee du dossier medical. C'est ce qui permet au bureau
+// des entrees d'y acceder sans violer le cloisonnement medical du RBAC.
+function PageResultatsExamens() {
+  const { token } = useAuthStore();
+  const [code, setCode] = useState("");
+  const [patient, setPatient] = useState(null);
+  const [recherche, setRecherche] = useState(false);
+  const [erreur, setErreur] = useState("");
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const { data: bulletinsData, isLoading: chargement, refetch } = useQuery({
+    queryKey: ["resultats-examens-code", patient?.id],
+    queryFn: async () => {
+      if (!patient) return [];
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/bulletins?patient_id=${patient.id}`, { headers });
+      const d = await r.json();
+      return d.data || [];
+    },
+    enabled: !!patient,
+  });
+  const bulletins = bulletinsData || [];
+
+  const rechercherPatient = async () => {
+    const c = code.trim();
+    if (!c) { setErreur("Entrez un code dossier"); return; }
+    setRecherche(true); setErreur(""); setPatient(null);
+    try {
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/patients/by-code/${encodeURIComponent(c)}`, { headers });
+      const d = await r.json();
+      if (d?.success && d?.data?.id) setPatient(d.data);
+      else setErreur(d?.message || "Aucun patient avec ce code");
+    } catch(e) {
+      setErreur("Erreur de recherche");
+    }
+    setRecherche(false);
+  };
+
+  return (
+    <div>
+      <PageHeader title="🔬 Résultats d'examens" subtitle="Recherche par code dossier — laboratoire et imagerie uniquement" />
+
+      <Panel>
+        <div style={{display:"flex",gap:8,marginBottom:patient?16:0}}>
+          <Inp label="Code dossier du patient" value={code}
+            onChange={e=>{ setCode(e.target.value); setErreur(""); }}
+            placeholder="MC-XX-0000" style={{flex:1}} />
+          <Btn style={{alignSelf:"flex-end",padding:"11px 20px"}} loading={recherche} onClick={rechercherPatient}>🔎 Rechercher</Btn>
+        </div>
+        {erreur && <div style={{fontSize:12,color:C.red,marginTop:6}}>{erreur}</div>}
+
+        {patient && (
+          <>
+            <div style={{background:"rgba(10,143,88,.1)",border:"1px solid rgba(10,143,88,.3)",borderRadius:9,padding:"10px 14px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:C.text}}>{patient.prenom} {patient.nom}</div>
+                <div style={{fontSize:11,color:C.muted}}>Dossier : {patient.code_secret||"—"}</div>
+              </div>
+              <button type="button" onClick={()=>{ setPatient(null); setCode(""); }}
+                style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:13}}>✕ Nouvelle recherche</button>
+            </div>
+
+            {chargement ? <Loader/> : bulletins.length===0
+              ? <Empty icon="🔬" title="Aucun examen" subtitle="Aucune demande d'analyse ou d'imagerie pour ce patient."/>
+              : bulletins.map((b,i)=>(
+                <div key={b.id||i} style={{display:"flex",alignItems:"flex-start",gap:14,padding:"12px 0",borderBottom:i<bulletins.length-1?`1px solid ${C.border}`:"none"}}>
+                  <span style={{fontSize:22}}>{b.categorie==="imagerie"?"🩻":"🧪"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{b.type||"Examen"}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{fmtDate ? fmtDate(b.created_at) : new Date(b.created_at).toLocaleDateString("fr-CI")}</div>
+                    {b.rapport && <div style={{fontSize:12,color:C.teal,marginTop:4}}>{b.rapport}</div>}
+                    {b.fichier_url && (
+                      <a href={b.fichier_url} target="_blank" rel="noopener noreferrer"
+                        style={{display:"inline-block",fontSize:11,color:C.blue,marginTop:4,textDecoration:"none",fontWeight:700}}>
+                        📎 Voir le résultat ↗
+                      </a>
+                    )}
+                  </div>
+                  <Badge color={b.statut==="nouveau"?"blue":"green"}>{b.statut==="nouveau"?"En attente":"Traité"}</Badge>
+                </div>
+              ))
+            }
+          </>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const mode = useThemeStore(s => s.mode);
   Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
@@ -3159,6 +3253,7 @@ export default function Dashboard() {
       <Route path="dossiers-ass" element={<PageAssurance />} />
       <Route path="file-attente"  element={<PageFileAttente />} />
       <Route path="file-medecin"  element={<PageFileAttenteMedecinClinique />} />
+      <Route path="resultats-examens" element={<PageResultatsExamens />} />
       <Route path="proprietaire"  element={<PageProprietaire />} />
       <Route path="profil-logo"   element={<PageProfilLogo />} />
       <Route path="qualite"      element={<PageQualite />} />
