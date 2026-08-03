@@ -1181,20 +1181,29 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
       idx++;
     }
 
-    sql += hasGeo
-      ? ` ORDER BY (distance_km IS NULL), distance_km ASC NULLS LAST, t.nom ASC`
-      : ` ORDER BY t.nom ASC`;
-    sql += ' LIMIT 200';
+    // Tri : par nom en SQL dans tous les cas -- trier par distance_km en
+    // SQL echoue ("column distance_km does not exist") des que l'alias
+    // est mele a une autre expression dans le meme ORDER BY. Le tri par
+    // distance se fait donc en JS ci-dessous, sur un resultat deja borne
+    // a 200 lignes : negligeable en cout, et evite le piege Postgres.
+    sql += ' ORDER BY t.nom ASC LIMIT 200';
 
     const r = await db(sql, params);
     let rows = r.rows;
 
-    // Filtre par rayon APRES le calcul (Postgres n'autorise pas de
-    // reference a un alias calcule dans le WHERE de la meme requete sans
-    // sous-requete additionnelle ; plus simple et tout aussi correct de
-    // filtrer cote Node sur un resultat deja borne a 200 lignes).
-    if (hasGeo && rayonNum) {
-      rows = rows.filter(row => row.distance_km !== null && row.distance_km <= rayonNum);
+    // Filtre par rayon, PUIS tri par proximite si une position a ete
+    // fournie. Fait en JS pour la meme raison que ci-dessus : plus simple
+    // et tout aussi correct que de re-ecrire la requete avec une
+    // sous-requete juste pour satisfaire Postgres sur cet alias.
+    if (hasGeo) {
+      if (rayonNum) {
+        rows = rows.filter(row => row.distance_km !== null && row.distance_km <= rayonNum);
+      }
+      rows = rows.slice().sort((a, b) => {
+        if (a.distance_km === null) return 1;
+        if (b.distance_km === null) return -1;
+        return a.distance_km - b.distance_km;
+      });
     }
 
     res.json({ success: true, data: rows, total: rows.length });
