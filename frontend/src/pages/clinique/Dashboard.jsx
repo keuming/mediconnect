@@ -486,6 +486,8 @@ function PageDossiers() {
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
   const [erreurRecherche, setErreurRecherche] = useState("");
   const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", type:"NFS", notes:"" });
+  const [fichierPrescription, setFichierPrescription] = useState(null);
+  const [uploadPrescriptionEnCours, setUploadPrescriptionEnCours] = useState(false);
   const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
@@ -584,6 +586,24 @@ function PageDossiers() {
   const TYPES_EXAMEN = {
     laboratoire: ['NFS','Glycémie','Bilan lipidique','Bilan hépatique','Bilan rénal','Sérologie','Hémoculture','Ionogramme','HbA1c','Urine ECBU','Frottis','PCR','Groupe sanguin','Autre'],
     imagerie: ['Radiologie','IRM','Scanner','Échographie','Mammographie','Scintigraphie'],
+  };
+
+  // Upload direct vers Cloudinary (preset non signe, cote client), meme
+  // mecanisme que labo/imagerie/dossier patient. Sert ici a joindre la
+  // prescription du medecin (colonnes fichier_prescription_*, distinctes
+  // du resultat que le labo uploade plus tard).
+  const uploadPrescriptionVersCloudinary = async (fichier) => {
+    const formats = ['application/pdf','image/jpeg','image/jpg','image/png'];
+    if (!formats.includes(fichier.type)) throw new Error('Format non autorise. Utilisez PDF, JPG ou PNG.');
+    if (fichier.size > 10*1024*1024) throw new Error('Fichier trop volumineux (10 Mo maximum).');
+    const form = new FormData();
+    form.append('file', fichier);
+    form.append('upload_preset', 'mediconnect_upload');
+    const resourceType = fichier.type === 'application/pdf' ? 'raw' : 'image';
+    const r = await fetch(`https://api.cloudinary.com/v1_1/xau4buvq/${resourceType}/upload`, { method:'POST', body:form });
+    const d = await r.json();
+    if (!r.ok || !d.secure_url) throw new Error(d?.error?.message || "Echec de l'envoi du fichier");
+    return d.secure_url;
   };
 
   const imprimerFacture = async (arg) => {
@@ -1260,9 +1280,28 @@ function PageDossiers() {
             <Inp label="Notes pour le service (optionnel)" value={examenForm.notes}
               onChange={e=>setExamenForm(p=>({...p,notes:e.target.value}))}
               placeholder="Contexte clinique, urgence, elements a rechercher…" rows={3} />
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Prescription (optionnel)</label>
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e=>setFichierPrescription(e.target.files?.[0]||null)}
+                style={{fontSize:12,color:C.muted}} />
+              {fichierPrescription && <div style={{fontSize:11,color:C.green,marginTop:4}}>📎 {fichierPrescription.name}</div>}
+            </div>
             <div style={{display:"flex",gap:10,marginTop:4}}>
-              <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowExamen(false); setPatientCible(null); }}>Annuler</Btn>
-              <Btn style={{flex:2}} loading={demanderExamen.isPending} onClick={()=>{
+              <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowExamen(false); setPatientCible(null); setFichierPrescription(null); }}>Annuler</Btn>
+              <Btn style={{flex:2}} loading={demanderExamen.isPending||uploadPrescriptionEnCours} onClick={async ()=>{
+                let prescriptionUrl = null, prescriptionNom = null;
+                if (fichierPrescription) {
+                  try {
+                    setUploadPrescriptionEnCours(true);
+                    prescriptionUrl = await uploadPrescriptionVersCloudinary(fichierPrescription);
+                    prescriptionNom = fichierPrescription.name;
+                  } catch(err) {
+                    toast.error(err.message || "Echec de l'envoi du fichier");
+                    setUploadPrescriptionEnCours(false);
+                    return;
+                  }
+                  setUploadPrescriptionEnCours(false);
+                }
                 demanderExamen.mutate({
                   type: examenForm.type,
                   categorie: examenForm.categorie,
@@ -1270,8 +1309,11 @@ function PageDossiers() {
                   patient_nom: `${patientCible.prenom} ${patientCible.nom}`,
                   emetteur_nom: selected ? `Dr. clinique` : undefined,
                   notes: examenForm.notes || null,
+                  fichier_prescription_url: prescriptionUrl,
+                  fichier_prescription_nom: prescriptionNom,
                 });
-              }}>📤 Envoyer la demande</Btn>
+                setFichierPrescription(null);
+              }}>{uploadPrescriptionEnCours?'📎 Envoi du fichier…':'📤 Envoyer la demande'}</Btn>
             </div>
           </div>
         )}
