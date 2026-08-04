@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { V } from '../theme';
+import ThemeToggle from '../components/ThemeToggle';
 
 const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-backend-v2.vercel.app').replace(/\/+$/, '') + '/api';
 const GOOGLE_MAPS_KEY = 'AIzaSyAy6fm2ac6OZ35VEwfjfEf_jaOTbqz3eSI';
@@ -137,12 +139,6 @@ const SPECIALITES = [
   'Analyses sanguines', 'Imagerie médicale',
 ];
 
-const V = {
-  green: '#0A8F58', teal: '#0D9488', purple: '#7C3AED', amber: '#D97706', bg: '#060C12', card: '#0E1620',
-  input: '#141E2B', hover: '#1A2535', border: '#1E2F42',
-  text: '#F0F4F8', muted: '#8BA0B5', dim: '#4E657A',
-};
-
 const btn = (extra = {}) => ({ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: `linear-gradient(135deg,${V.green},${V.teal})`, color: '#fff', border: 'none', borderRadius: 12, padding: '14px 32px', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 6px 24px rgba(10,143,88,.35)', transition: 'all .2s', ...extra });
 const inputStyle = { width: '100%', background: V.input, border: `1.5px solid ${V.border}`, borderRadius: 10, padding: '12px 14px', color: V.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
 const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: V.muted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 };
@@ -158,14 +154,25 @@ function ComboboxRecherche({ label, valeur, onChoisir, onTexteChange, options, p
   useEffect(() => { setTexte(valeur || ''); }, [valeur]);
 
   useEffect(() => {
+    // 'mousedown' seul ne se declenche pas de facon fiable au tactile sur
+    // certains mobiles (Safari iOS notamment) -- le menu restait ouvert
+    // et, combine a un dropdown trop haut, donnait l'impression d'un
+    // modal noir bloquant l'ecran. On ecoute aussi 'touchstart'.
     const fermer = (e) => { if (ref.current && !ref.current.contains(e.target)) setOuvert(false); };
     document.addEventListener('mousedown', fermer);
-    return () => document.removeEventListener('mousedown', fermer);
+    document.addEventListener('touchstart', fermer, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', fermer);
+      document.removeEventListener('touchstart', fermer);
+    };
   }, []);
 
+  // 5 suggestions au lieu de 8 : sur petit ecran, 8 lignes + le champ
+  // au-dessus depassaient la hauteur visible et masquaient tout le
+  // reste de la page tant que l'utilisateur ne fermait pas le menu.
   const filtres = texte.trim().length === 0
-    ? options.slice(0, 8)
-    : options.filter(o => o.label.toLowerCase().includes(texte.toLowerCase())).slice(0, 8);
+    ? options.slice(0, 5)
+    : options.filter(o => o.label.toLowerCase().includes(texte.toLowerCase())).slice(0, 5);
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -180,7 +187,7 @@ function ComboboxRecherche({ label, valeur, onChoisir, onTexteChange, options, p
         style={{ ...inputStyle, opacity: disabled ? .5 : 1, cursor: disabled ? 'not-allowed' : 'text' }}
       />
       {ouvert && !disabled && filtres.length > 0 && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: V.card, border: `1.5px solid ${V.border}`, borderRadius: 10, overflow: 'hidden', zIndex: 20, maxHeight: 240, overflowY: 'auto', boxShadow: '0 12px 30px rgba(0,0,0,.5)' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: V.card, border: `1.5px solid ${V.border}`, borderRadius: 10, overflow: 'hidden', zIndex: 20, maxHeight: 190, overflowY: 'auto', WebkitOverflowScrolling: 'touch', boxShadow: '0 12px 30px rgba(0,0,0,.5)' }}>
           {filtres.map(o => (
             <div key={o.value} onClick={() => { onChoisir(o.value, o.label); setTexte(o.label); setOuvert(false); }}
               style={{ padding: '10px 14px', cursor: 'pointer', fontSize: 13, color: V.text, borderBottom: `1px solid ${V.border}` }}
@@ -349,12 +356,15 @@ export default function Home() {
     <div style={{ background: V.bg, minHeight: '100vh', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
 
       {/* NAV compacte */}
-      <nav style={{ position: 'sticky', top: 0, zIndex: 100, padding: '0 5%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(6,12,18,.95)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
+      <nav style={{ position: 'sticky', top: 0, zIndex: 100, padding: '0 5%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: V.navBg, backdropFilter: 'blur(20px)', borderBottom: `1px solid ${V.navBorder}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 36, height: 36, background: `linear-gradient(135deg,${V.green},${V.teal})`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, fontWeight: 900, color: '#fff' }}>+</div>
           <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 18, color: V.text }}>Medi<span style={{ color: V.green }}>Connect</span></span>
         </div>
-        <a href="https://manager.mediconnect4africa.cloud" target="_blank" rel="noreferrer" style={{ color: V.muted, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>Espace pro →</a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <ThemeToggle />
+            <a href="https://manager.mediconnect4africa.cloud" target="_blank" rel="noreferrer" style={{ color: V.muted, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>Espace pro →</a>
+          </div>
       </nav>
 
       {/* RECHERCHE — coeur de la page */}
@@ -491,7 +501,7 @@ export default function Home() {
       )}
 
       {/* FOOTER minimal */}
-      <footer style={{ background: 'rgba(4,8,14,.9)', borderTop: '1px solid rgba(255,255,255,.05)', padding: '32px 5%', textAlign: 'center' }}>
+      <footer style={{ background: V.footerBg, borderTop: `1px solid ${V.footerBorder}`, padding: '32px 5%', textAlign: 'center' }}>
         <div style={{ fontSize: 13, color: V.muted, marginBottom: 8 }}>
           Besoin d'aide ? <a href="tel:+2250507108648" style={{ color: V.green, fontWeight: 700, textDecoration: 'none' }}>📞 +225 05 07 10 86 48</a>
         </div>
