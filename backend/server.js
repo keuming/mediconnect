@@ -1055,6 +1055,48 @@ app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
+// ── Creneaux disponibles pour laboratoire/imagerie (pas de "medecin"
+// individuel a ces etablissements, donc pas de table disponibilites
+// applicable). Genere des creneaux standards 8h-17h par 30 min sur les
+// 14 prochains jours ouvres, en excluant ce qui est deja reserve dans
+// rendez_vous pour ce prestataire precis -- pas de double reservation
+// meme sans plage horaire saisie manuellement par l'etablissement.
+app.get('/api/public/etablissements/:type/:id/disponibilites', async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    if (!['laboratoire', 'imagerie'].includes(type)) {
+      return res.status(400).json({ success: false, message: 'Type invalide' });
+    }
+    const pris = await db(
+      `SELECT date_rdv, heure_rdv FROM rendez_vous
+        WHERE prestataire_type=$1 AND prestataire_id=$2 AND date_rdv >= CURRENT_DATE
+          AND statut IS DISTINCT FROM 'annule'`,
+      [type, id]
+    );
+    const occupes = new Set(pris.rows.map(p => {
+      const d = new Date(p.date_rdv).toISOString().split('T')[0];
+      return `${d} ${String(p.heure_rdv).slice(0,5)}`;
+    }));
+
+    const creneaux = [];
+    const aujourdhui = new Date();
+    for (let jourOffset = 1; creneaux.length < 60 && jourOffset <= 21; jourOffset++) {
+      const jour = new Date(aujourdhui);
+      jour.setDate(jour.getDate() + jourOffset);
+      if ([0, 6].includes(jour.getDay())) continue; // week-end exclu
+      const jourStr = jour.toISOString().split('T')[0];
+      for (let h = 8; h < 17; h++) {
+        for (const m of [0, 30]) {
+          const heureStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+          const cle = `${jourStr} ${heureStr}`;
+          if (!occupes.has(cle)) creneaux.push(cle);
+        }
+      }
+    }
+    res.json({ success: true, data: creneaux.slice(0, 60) });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
 app.post('/api/public/rdv', async (req, res) => {
   const { patient_nom, patient_telephone, clinique_id, medecin_id, etablissement_externe, prestataire_type, prestataire_id, date_rdv, heure_rdv, motif } = req.body;
   if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
