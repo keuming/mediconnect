@@ -48,9 +48,172 @@ const fmtDate = (dt) => {
   return `${new Date(d).toLocaleDateString('fr-CI', { weekday: 'short', day: 'numeric', month: 'long' })} à ${t}`;
 };
 
+// ── Flux autonome laboratoire / imagerie ────────────────────────────
+// Compose separement du flux clinique (qui garde son propre etat par
+// etapes numerotees 1-5) pour eviter tout risque de regression sur un
+// parcours deja fonctionnel : ce composant ne touche a aucune ligne du
+// flux clinique existant. Il n'y a pas de "medecin" a choisir pour un
+// laboratoire ou un centre d'imagerie -- juste un creneau direct.
+function FluxLaboImagerie({ preselection }) {
+  const navigate = useNavigate();
+  const [etapeLI, setEtapeLI] = useState(1); // 1: creneau, 2: infos patient, 3: envoi
+  const [chargementDispos, setChargementDispos] = useState(true);
+  const [dispos, setDispos] = useState([]);
+  const [creneau, setCreneau] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [patient, setPatient] = useState({ prenom: '', nom: '', telephone: '', email: '', motif: '' });
+
+  useEffect(() => {
+    setChargementDispos(true);
+    fetch(`${API}/public/etablissements/${preselection.type}/${preselection.id}/disponibilites`)
+      .then(r => r.json())
+      .then(d => setDispos(d.data || []))
+      .catch(() => setDispos([]))
+      .finally(() => setChargementDispos(false));
+    // eslint-disable-next-line
+  }, []);
+
+  const soumettre = async () => {
+    if (!patient.prenom || !patient.nom || !patient.telephone) {
+      toast.error('Prénom, nom et téléphone obligatoires');
+      return;
+    }
+    setSaving(true);
+    try {
+      const body = {
+        prestataire_type: preselection.type,
+        prestataire_id: preselection.id,
+        date_rdv: creneau.split(' ')[0],
+        heure_rdv: creneau.split(' ')[1],
+        motif: patient.motif,
+        patient_prenom: patient.prenom,
+        patient_nom: patient.nom,
+        patient_telephone: patient.telephone,
+        patient_email: patient.email,
+      };
+      const resp = await fetch(`${API}/public/rdv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.message);
+      toast.success('RDV confirmé !');
+      navigate('/confirmation', {
+        state: {
+          clinique: { nom: preselection.nom, ville: preselection.ville },
+          medecin: null,
+          creneau, patient,
+          specialite: preselection.type === 'laboratoire' ? 'Analyse de laboratoire' : 'Examen d\'imagerie',
+          reference: data.data.reference,
+          code_secret: data.data.code_secret,
+        },
+      });
+    } catch (err) {
+      toast.error(err.message || 'Erreur. Réessayez.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const icone = preselection.type === 'laboratoire' ? '🧪' : '🩻';
+  const libelleType = preselection.type === 'laboratoire' ? 'Laboratoire' : "Centre d'imagerie";
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#060C12', padding: '32px 5%', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div style={{ maxWidth: 640, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+          <span style={{ fontSize: 32 }}>{icone}</span>
+          <div>
+            <div style={{ fontSize: 11, color: '#0D9488', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px' }}>{libelleType}</div>
+            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: '#F0F4F8', fontWeight: 400 }}>{preselection.nom}</h1>
+          </div>
+        </div>
+
+        {etapeLI === 1 && (
+          <div>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: '#F0F4F8', marginBottom: 14, fontWeight: 400 }}>Choisissez un créneau</h2>
+            {chargementDispos ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#4E657A' }}>⏳ Chargement des disponibilités…</div>
+            ) : dispos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, background: '#0E1620', border: '1px solid #1E2F42', borderRadius: 16, color: '#4E657A' }}>
+                Aucun créneau disponible pour le moment. Contactez directement l'établissement.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(140px,1fr))', gap: 8, maxHeight: 360, overflowY: 'auto', marginBottom: 20 }}>
+                {dispos.map(c => (
+                  <button key={c} onClick={() => setCreneau(c)}
+                    style={{
+                      padding: '10px 8px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                      border: `1.5px solid ${creneau === c ? '#0A8F58' : '#1E2F42'}`,
+                      background: creneau === c ? 'rgba(10,143,88,.15)' : '#141E2B',
+                      color: creneau === c ? '#0A8F58' : '#8BA0B5',
+                    }}>
+                    {fmtDate(c)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button disabled={!creneau} onClick={() => setEtapeLI(2)}
+              style={{ width: '100%', background: creneau ? 'linear-gradient(135deg,#0A8F58,#0D9488)' : '#1A2535', color: '#fff', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 700, cursor: creneau ? 'pointer' : 'not-allowed' }}>
+              Continuer → Mes informations
+            </button>
+          </div>
+        )}
+
+        {etapeLI === 2 && (
+          <div>
+            <button onClick={() => setEtapeLI(1)} style={{ background: 'none', border: 'none', color: '#8BA0B5', cursor: 'pointer', fontSize: 13, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 6 }}>← Retour</button>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: '#F0F4F8', marginBottom: 6, fontWeight: 400 }}>Vos informations</h2>
+            <div style={{ background: '#141E2B', border: '1px solid #1E2F42', borderRadius: 12, padding: '10px 14px', marginBottom: 18, fontSize: 13, color: '#8BA0B5' }}>
+              📅 {fmtDate(creneau)}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 5 }}>Prénom *</label>
+                <input value={patient.prenom} onChange={e => setPatient(p => ({ ...p, prenom: e.target.value }))}
+                  style={{ width: '100%', background: '#1A2535', border: '1.5px solid #1E2F42', borderRadius: 10, padding: 12, color: '#F0F4F8', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 5 }}>Nom *</label>
+                <input value={patient.nom} onChange={e => setPatient(p => ({ ...p, nom: e.target.value }))}
+                  style={{ width: '100%', background: '#1A2535', border: '1.5px solid #1E2F42', borderRadius: 10, padding: 12, color: '#F0F4F8', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 5 }}>Téléphone *</label>
+              <input value={patient.telephone} onChange={e => setPatient(p => ({ ...p, telephone: e.target.value }))} placeholder="+225 07 00 00 00"
+                style={{ width: '100%', background: '#1A2535', border: '1.5px solid #1E2F42', borderRadius: 10, padding: 12, color: '#F0F4F8', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 5 }}>Email (optionnel)</label>
+              <input value={patient.email} onChange={e => setPatient(p => ({ ...p, email: e.target.value }))}
+                style={{ width: '100%', background: '#1A2535', border: '1.5px solid #1E2F42', borderRadius: 10, padding: 12, color: '#F0F4F8', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#8BA0B5', textTransform: 'uppercase', marginBottom: 5 }}>Motif (optionnel)</label>
+              <textarea value={patient.motif} onChange={e => setPatient(p => ({ ...p, motif: e.target.value }))} rows={3}
+                placeholder={preselection.type === 'laboratoire' ? 'Ex: bilan sanguin prescrit par mon médecin…' : 'Ex: radiographie du genou droit…'}
+                style={{ width: '100%', background: '#1A2535', border: '1.5px solid #1E2F42', borderRadius: 10, padding: 12, color: '#F0F4F8', fontSize: 14, resize: 'none', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            </div>
+            <button onClick={soumettre} disabled={saving}
+              style={{ width: '100%', background: 'linear-gradient(135deg,#0A8F58,#0D9488)', color: '#fff', border: 'none', borderRadius: 12, padding: 14, fontSize: 15, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? .7 : 1 }}>
+              {saving ? '⏳ Confirmation en cours…' : 'Confirmer le rendez-vous'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function RDV() {
   const navigate = useNavigate();
   const location = useLocation();
+  const preselectionBrute = location.state?.etablissementPreselectionne || null;
+  if (preselectionBrute && preselectionBrute.type !== 'clinique') {
+    return <FluxLaboImagerie preselection={preselectionBrute} />;
+  }
   const [step, setStep] = useState(1);
   const [pays, setPays] = useState('CI');
   // Etablissement deja choisi depuis la recherche reelle de Home.jsx :
