@@ -321,6 +321,11 @@ export default function Home() {
   const [position, setPosition] = useState(null);
   const [rayon, setRayon] = useState(2);
   const [rechercheLancee, setRechercheLancee] = useState(false);
+  // Filtre local par nom d'etablissement, applique instantanement sur
+  // les resultats deja charges -- pas de requete au serveur, pas de
+  // nouveau modal : utile quand on a deja une idee du nom recherche
+  // au milieu d'une liste de plusieurs centaines de resultats.
+  const [filtreNom, setFiltreNom] = useState('');
   const [chargement, setChargement] = useState(false);
   const [resultats, setResultats] = useState([]);
   const [erreurGeo, setErreurGeo] = useState('');
@@ -488,7 +493,12 @@ export default function Home() {
       </section>
 
       {/* RESULTATS */}
-      {rechercheLancee && (
+      {(() => {
+        const nomFiltre = filtreNom.trim().toLowerCase();
+        var resultatsFiltres = nomFiltre
+          ? resultats.filter(r => (r.nom || '').toLowerCase().includes(nomFiltre))
+          : resultats;
+        return rechercheLancee && (
         <section style={{ padding: '20px 5% 80px' }}>
           <div style={{ maxWidth: 1100, margin: '0 auto' }}>
             {/* Sous 900px, la colonne fixe de 380px pour la carte ecrasait
@@ -506,8 +516,29 @@ export default function Home() {
 
               {/* Liste */}
               <div>
+                {!chargement && resultats.length > 0 && (
+                  <div style={{ position: 'relative', marginBottom: 14 }}>
+                    <input
+                      value={filtreNom}
+                      onChange={e => setFiltreNom(e.target.value)}
+                      placeholder={`Filtrer parmi les ${resultats.length} résultats par nom…`}
+                      style={{ ...inputStyle, paddingLeft: 36 }}
+                    />
+                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, color: V.dim, pointerEvents: 'none' }}>🔎</span>
+                    {filtreNom && (
+                      <button onClick={() => setFiltreNom('')} aria-label="Effacer le filtre"
+                        style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: V.dim, cursor: 'pointer', fontSize: 16, padding: 4 }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div style={{ fontSize: 13, color: V.muted, marginBottom: 14 }}>
-                  {chargement ? 'Recherche en cours…' : `${resultats.length} résultat${resultats.length > 1 ? 's' : ''}`}
+                  {chargement
+                    ? 'Recherche en cours…'
+                    : filtreNom
+                      ? `${resultatsFiltres.length} résultat${resultatsFiltres.length > 1 ? 's' : ''} sur ${resultats.length}`
+                      : `${resultats.length} résultat${resultats.length > 1 ? 's' : ''}`}
                 </div>
                 {chargement ? (
                   <div style={{ textAlign: 'center', padding: 48, color: V.dim }}>⏳ Chargement…</div>
@@ -517,9 +548,15 @@ export default function Home() {
                     <div style={{ fontSize: 14, fontWeight: 600, color: V.muted, marginBottom: 4 }}>Aucun résultat</div>
                     <div style={{ fontSize: 12 }}>Essayez une autre ville, ou élargissez le rayon de recherche.</div>
                   </div>
+                ) : resultatsFiltres.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 48, background: V.card, border: `1px solid ${V.border}`, borderRadius: 16, color: V.dim }}>
+                    <div style={{ fontSize: 34, marginBottom: 10 }}>🔎</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: V.muted, marginBottom: 4 }}>Aucun établissement ne correspond à « {filtreNom} »</div>
+                    <div style={{ fontSize: 12 }}>Vérifiez l'orthographe, ou effacez le filtre pour revoir les {resultats.length} résultats.</div>
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {resultats.map(r => (
+                    {resultatsFiltres.map(r => (
                       <div key={r.type + r.id} style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 14, padding: 16, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -549,12 +586,13 @@ export default function Home() {
 
               {/* Carte */}
               <div className="rdv-carte-wrap" style={{ position: 'sticky', top: 80, height: 420, background: V.card, border: `1px solid ${V.border}`, borderRadius: 16, overflow: 'hidden' }}>
-                <Carte resultats={resultats} position={position} />
+                <Carte resultats={resultatsFiltres} position={position} />
               </div>
             </div>
           </div>
         </section>
-      )}
+        );
+      })()}
 
       {/* FOOTER minimal */}
       <footer style={{ background: V.footerBg, borderTop: `1px solid ${V.footerBorder}`, padding: '32px 5%', textAlign: 'center' }}>
