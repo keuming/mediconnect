@@ -1403,9 +1403,19 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
     // sous-requete juste pour satisfaire Postgres sur cet alias.
     if (hasGeo) {
       if (rayonNum) {
-        rows = rows.filter(row => row.distance_km !== null && row.distance_km <= rayonNum);
+        // AVANT : row.distance_km !== null && ... excluait TOUT
+        // etablissement sans coordonnees GPS -- or la quasi-totalite des
+        // 277+ etablissements importes en masse n'ont jamais eu de GPS
+        // saisi (seules les nouvelles inscriptions cliniques le
+        // capturent). Resultat : "Pres de moi" retournait 0 resultat
+        // presque systematiquement, meme avec un grand rayon. On ne peut
+        // pas savoir si un etablissement sans coordonnees est dans le
+        // rayon ou non -- on choisit de ne PAS le cacher plutot que de
+        // masquer la quasi-totalite de la base par prudence excessive.
+        rows = rows.filter(row => row.distance_km === null || row.distance_km <= rayonNum);
       }
       rows = rows.slice().sort((a, b) => {
+        if (a.distance_km === null && b.distance_km === null) return 0;
         if (a.distance_km === null) return 1;
         if (b.distance_km === null) return -1;
         return a.distance_km - b.distance_km;
