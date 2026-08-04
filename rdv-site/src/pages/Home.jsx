@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { V } from '../theme';
+import useThemeStore from '../context/themeStore';
 import ThemeToggle from '../components/ThemeToggle';
 
 const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-backend-v2.vercel.app').replace(/\/+$/, '') + '/api';
@@ -143,6 +144,18 @@ const btn = (extra = {}) => ({ display: 'inline-flex', alignItems: 'center', jus
 const inputStyle = { width: '100%', background: V.input, border: `1.5px solid ${V.border}`, borderRadius: 10, padding: '12px 14px', color: V.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' };
 const labelStyle = { display: 'block', fontSize: 11, fontWeight: 700, color: V.muted, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 };
 
+// Les numeros en base viennent de saisies heterogenes par les cliniques
+// (tirets mal places, slash, espaces...). On ne reformate pas la donnee
+// en base -- trop risque sur 277+ etablissements deja importes -- mais
+// on normalise l'AFFICHAGE : on ne garde que les chiffres puis on les
+// regroupe par 2, format standard ouest-africain (XX XX XX XX XX...).
+function formatTelephone(tel) {
+  if (!tel) return '';
+  const chiffres = String(tel).replace(/\D/g, '');
+  if (chiffres.length < 8) return tel; // pas assez de chiffres exploitables, on affiche tel quel plutot que de casser une donnee valide inconnue
+  return chiffres.match(/.{1,2}/g).join(' ');
+}
+
 // ── Menu deroulant avec recherche (meme mecanisme que la selection de
 //    clinique existante a l'inscription) : on tape, une liste filtree
 //    apparait en dessous, on clique pour choisir. ──────────────────────
@@ -218,10 +231,23 @@ function chargerGoogleMaps() {
   return mapsPromise;
 }
 
+// Style Google Maps sombre applique uniquement en mode sombre -- en
+// mode clair (par defaut) on garde les tuiles standard de Google
+// (styles: []) qui sont deja claires et lisibles nativement.
+const STYLE_CARTE_SOMBRE = [
+  { elementType: 'geometry', stylers: [{ color: '#0E1620' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8BA0B5' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#060C12' }] },
+];
+
 function Carte({ resultats, position }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const mode = useThemeStore(s => s.mode);
+  // Avant, un echec silencieux (.catch(() => {})) laissait un rectangle
+  // vide sans aucune indication -- desormais on affiche un etat clair.
+  const [statut, setStatut] = useState('chargement'); // 'chargement' | 'prete' | 'erreur'
 
   useEffect(() => {
     let annule = false;
@@ -230,9 +256,7 @@ function Carte({ resultats, position }) {
       const centre = position || { lat: 5.3364, lng: -4.0267 };
       mapRef.current = new window.google.maps.Map(ref.current, {
         center: centre, zoom: position ? 13 : 11,
-        styles: [{ elementType: 'geometry', stylers: [{ color: '#0E1620' }] },
-                 { elementType: 'labels.text.fill', stylers: [{ color: '#8BA0B5' }] },
-                 { elementType: 'labels.text.stroke', stylers: [{ color: '#060C12' }] }],
+        styles: mode === 'dark' ? STYLE_CARTE_SOMBRE : [],
       });
       if (position) {
         new window.google.maps.Marker({
@@ -240,9 +264,18 @@ function Carte({ resultats, position }) {
           icon: { path: window.google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#2563EB', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
         });
       }
-    }).catch(() => {});
+      setStatut('prete');
+    }).catch(() => { if (!annule) setStatut('erreur'); });
     return () => { annule = true; };
   }, [position]);
+
+  // Si l'utilisateur bascule le theme apres coup, on reapplique juste
+  // le style des tuiles -- pas besoin de recreer toute la carte (on
+  // perdrait les marqueurs, geres par l'effet suivant).
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.setOptions({ styles: mode === 'dark' ? STYLE_CARTE_SOMBRE : [] });
+  }, [mode]);
 
   useEffect(() => {
     if (!mapRef.current || !window.google?.maps) return;
@@ -262,7 +295,19 @@ function Carte({ resultats, position }) {
     if (auMoinsUn) mapRef.current.fitBounds(bornes);
   }, [resultats, position]);
 
-  return <div ref={ref} style={{ width: '100%', height: '100%', minHeight: 320, borderRadius: 16, overflow: 'hidden' }} />;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 320 }}>
+      <div ref={ref} style={{ width: '100%', height: '100%', minHeight: 320, borderRadius: 16, overflow: 'hidden' }} />
+      {statut !== 'prete' && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: V.card, borderRadius: 16 }}>
+          <div style={{ fontSize: 26 }}>{statut === 'erreur' ? '🗺️' : '📍'}</div>
+          <div style={{ fontSize: 12, color: V.muted, fontWeight: 600, textAlign: 'center', maxWidth: 200 }}>
+            {statut === 'erreur' ? 'Carte indisponible pour le moment' : 'Chargement de la carte…'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -382,7 +427,7 @@ export default function Home() {
             {[
               { v: 'clinique', label: '🏥 Cliniques', couleur: V.green },
               { v: 'laboratoire', label: '🧪 Laboratoires', couleur: V.teal },
-              { v: 'imagerie', label: '🩻 Imagerie', couleur: V.purple },
+              { v: 'imagerie', label: '📷 Imagerie', couleur: V.purple },
             ].map(t => (
               <button key={t.v} onClick={() => { setType(t.v); lancerRecherche({ type: t.v }); }}
                 style={{
@@ -475,7 +520,7 @@ export default function Home() {
                             )}
                           </div>
                           <div style={{ fontSize: 12, color: V.muted }}>{r.ville}{r.adresse ? ` — ${r.adresse}` : ''}</div>
-                          {r.telephone && <div style={{ fontSize: 12, color: V.dim, marginTop: 2 }}>{r.telephone}</div>}
+                          {r.telephone && <div style={{ fontSize: 12, color: V.dim, marginTop: 2 }}>{formatTelephone(r.telephone)}</div>}
                           {(r.specialites?.length > 0 || r.analyses?.length > 0 || r.equipements?.length > 0) && (
                             <div style={{ fontSize: 11, color: V.dim, marginTop: 6 }}>
                               {(r.specialites || r.analyses || r.equipements || []).slice(0, 4).join(' · ')}
