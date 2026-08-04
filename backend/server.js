@@ -995,6 +995,50 @@ app.get('/api/public/cliniques', async (req, res) => {
     res.json({ success:true, data:r.rows, total:r.rows.length });
   } catch(e) { console.error('public/cliniques:', e.message); res.json({ success:true, data:[] }); }
 });
+// ── Details d'une clinique par id (pour le flux public de prise de RDV) ──
+// rdv-site/src/pages/RDV.jsx appelait deja GET /api/public/cliniques/:id
+// pour recuperer l'adresse complete d'un etablissement preselectionne
+// depuis la recherche -- cette route n'a jamais existe cote backend,
+// d'ou un 404 systematique (attrape par un .catch() qui se contentait
+// des infos minimales id/nom/ville deja connues, donc pas bloquant mais
+// incomplet). Meme logique de fusion cliniques + annuaire que la liste
+// ci-dessus, filtree sur un seul id.
+app.get('/api/public/cliniques/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sql = `
+      SELECT * FROM (
+        SELECT
+          c.id, c.nom, c.ville, c.adresse,
+          COALESCE(c.telephone, u.telephone) AS telephone,
+          COALESCE(c.email, u.email) AS email,
+          c.logo, c.slogan, c.horaires, c.site_web,
+          'mediconnect' AS source, true AS est_membre
+        FROM cliniques c
+        LEFT JOIN utilisateurs u ON u.id = c.user_id
+        WHERE (c.is_active IS NOT false OR c.is_active IS NULL)
+        UNION ALL
+        SELECT
+          id, nom, ville, adresse, telephone, NULL AS email,
+          NULL AS logo, NULL AS slogan, NULL AS horaires, NULL AS site_web,
+          'annuaire' AS source, false AS est_membre
+        FROM etablissements_sante
+        WHERE NOT EXISTS (
+          SELECT 1 FROM cliniques c2 WHERE LOWER(c2.nom) = LOWER(etablissements_sante.nom)
+        )
+      ) t
+      WHERE t.id = $1
+      LIMIT 1
+    `;
+    const r = await db(sql, [id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Etablissement introuvable' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch (e) {
+    console.error('public/cliniques/:id:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // ── Medecins d'une clinique (pour le flux public de prise de RDV) ──
 // rdv-site/src/pages/RDV.jsx appelait deja cette route ; elle n'a jamais
 // existe cote backend -> toute clinique reelle (non demo) tombait
