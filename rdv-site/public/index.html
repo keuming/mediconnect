@@ -23,15 +23,32 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
 
     <title>MediConnect — Prise de RDV en ligne</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('mediconnect-rdv-theme');
+          var mode = 'light';
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            mode = (parsed && parsed.state && parsed.state.mode) || 'light';
+          }
+          var bg = mode === 'dark' ? '#060C12' : '#F5F7FA';
+          var text = mode === 'dark' ? '#F0F4F8' : '#101B26';
+          document.documentElement.style.setProperty('--rdv-bg', bg);
+          document.documentElement.style.setProperty('--rdv-text', text);
+        } catch (e) {}
+      })();
+    </script>
 
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230A8F58'/><path d='M16 7v18M7 16h18' stroke='white' stroke-width='3.5' stroke-linecap='round'/></svg>" />
 
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
+      html { background: var(--rdv-bg, #F5F7FA); }
       body {
         font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-        background: #060C12;
-        color: #F0F4F8;
+        background: var(--rdv-bg, #F5F7FA);
+        color: var(--rdv-text, #101B26);
         -webkit-font-smoothing: antialiased;
         overflow-x: hidden;
       }
