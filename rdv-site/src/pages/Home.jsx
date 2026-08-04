@@ -491,7 +491,18 @@ export default function Home() {
       {rechercheLancee && (
         <section style={{ padding: '20px 5% 80px' }}>
           <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 380px', gap: 20 }}>
+            {/* Sous 900px, la colonne fixe de 380px pour la carte ecrasait
+                la liste (quasi toute la largeur prise par la carte sur
+                mobile) -- on empile les deux verticalement en dessous de
+                ce seuil, et on desactive le sticky/la hauteur fixe de la
+                carte qui aggravait le chevauchement. */}
+            <style>{`
+              @media (max-width: 900px) {
+                .rdv-resultats-grid { grid-template-columns: 1fr !important; }
+                .rdv-carte-wrap { position: relative !important; top: 0 !important; height: 280px !important; }
+              }
+            `}</style>
+            <div className="rdv-resultats-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 380px', gap: 20 }}>
 
               {/* Liste */}
               <div>
@@ -537,7 +548,7 @@ export default function Home() {
               </div>
 
               {/* Carte */}
-              <div style={{ position: 'sticky', top: 80, height: 420, background: V.card, border: `1px solid ${V.border}`, borderRadius: 16, overflow: 'hidden' }}>
+              <div className="rdv-carte-wrap" style={{ position: 'sticky', top: 80, height: 420, background: V.card, border: `1px solid ${V.border}`, borderRadius: 16, overflow: 'hidden' }}>
                 <Carte resultats={resultats} position={position} />
               </div>
             </div>
