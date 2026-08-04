@@ -1422,7 +1422,7 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
       });
     }
 
-    res.json({ success: true, data: rows, total: rows.length });
+    res.json({ success: true, data: rows, total: rows.length, _debug_marqueur: 'PATCH_PRES_DE_MOI_V2' });
   } catch(e) {
     console.error('recherche-etablissements:', e.message);
     res.status(500).json({ success: false, message: e.message, data: [] });
