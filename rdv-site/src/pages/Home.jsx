@@ -222,7 +222,14 @@ function chargerGoogleMaps() {
   if (mapsPromise) return mapsPromise;
   mapsPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&loading=async`;
+    // loading=async force le nouveau mode de chargement de l'API Google
+    // Maps, ou google.maps.Map n'est PAS disponible directement -- il
+    // faudrait passer par google.maps.importLibrary('maps'). Tout le code
+    // ici utilise le style classique (new google.maps.Map, .Marker,
+    // .SymbolPath...), incompatible avec ce mode -- d'ou l'erreur
+    // 'window.google.maps.Map is not a constructor'. On retire le
+    // parametre pour revenir au chargement synchrone classique.
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}`;
     script.async = true;
     script.onload = resolve;
     script.onerror = reject;
