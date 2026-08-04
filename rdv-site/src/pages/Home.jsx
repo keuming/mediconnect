@@ -159,7 +159,7 @@ function formatTelephone(tel) {
 // ── Menu deroulant avec recherche (meme mecanisme que la selection de
 //    clinique existante a l'inscription) : on tape, une liste filtree
 //    apparait en dessous, on clique pour choisir. ──────────────────────
-function ComboboxRecherche({ label, valeur, onChoisir, onTexteChange, options, placeholder, disabled }) {
+function ComboboxRecherche({ label, valeur, onChoisir, onTexteChange, options, placeholder, disabled, id, name }) {
   const [texte, setTexte] = useState(valeur || '');
   const [ouvert, setOuvert] = useState(false);
   const ref = useRef(null);
@@ -189,8 +189,10 @@ function ComboboxRecherche({ label, valeur, onChoisir, onTexteChange, options, p
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <label style={labelStyle}>{label}</label>
+      <label style={labelStyle} htmlFor={id}>{label}</label>
       <input
+        id={id}
+        name={name || id}
         value={texte}
         disabled={disabled}
         onChange={e => { setTexte(e.target.value); setOuvert(true); if (onTexteChange) onTexteChange(e.target.value); }}
@@ -460,6 +462,7 @@ export default function Home() {
           <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 14 }}>
               <ComboboxRecherche
+                id="recherche-nom-specialite" name="recherche-nom-specialite"
                 label="Nom, spécialité ou analyse" valeur={q}
                 onTexteChange={setQ}
                 onChoisir={(val, label) => choisirSpecialiteRapide(label)}
@@ -468,11 +471,13 @@ export default function Home() {
               />
 
               <ComboboxRecherche
+                id="recherche-pays" name="recherche-pays"
                 label="Pays" valeur={paysLabel} onChoisir={choisirPays}
                 options={optionsPays} placeholder="Rechercher un pays…"
               />
 
               <ComboboxRecherche
+                id="recherche-ville" name="recherche-ville"
                 label="Ville" valeur={villeLabel} onChoisir={choisirVille}
                 options={optionsVille} placeholder={pays ? 'Rechercher une ville…' : 'Choisissez un pays d\'abord'}
                 disabled={presDeMoi}
@@ -531,6 +536,8 @@ export default function Home() {
                 {!chargement && resultats.length > 0 && (
                   <div style={{ position: 'relative', marginBottom: 14 }}>
                     <input
+                      id="filtre-nom-etablissement" name="filtre-nom-etablissement"
+                      aria-label="Filtrer par nom d'établissement"
                       value={filtreNom}
                       onChange={e => setFiltreNom(e.target.value)}
                       placeholder={`Filtrer parmi les ${resultats.length} résultats par nom…`}
