@@ -378,6 +378,7 @@ export default function RDV() {
       {/* Header */}
       <div style={{ background: hexToRgba(V.card, .97), borderBottom: `1px solid ${hexToRgba(V.text, .06)}`, padding: '0 5%', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
         <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', cursor: 'pointer' }}>
+          <span style={{ fontSize: 15, color: V.muted }}>←</span>
           <div style={{ width: 32, height: 32, background: V.green, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#fff', fontSize: 16 }}>+</div>
           <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 16, color: V.text }}>MediConnect <span style={{ color: V.green }}>RDV</span></span>
         </button>
