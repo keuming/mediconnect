@@ -492,6 +492,9 @@ export default function Home() {
 
       {/* FOOTER minimal */}
       <footer style={{ background: 'rgba(4,8,14,.9)', borderTop: '1px solid rgba(255,255,255,.05)', padding: '32px 5%', textAlign: 'center' }}>
+        <div style={{ fontSize: 13, color: V.muted, marginBottom: 8 }}>
+          Besoin d'aide ? <a href="tel:+2250507108648" style={{ color: V.green, fontWeight: 700, textDecoration: 'none' }}>📞 +225 05 07 10 86 48</a>
+        </div>
         <div style={{ fontSize: 12, color: V.dim }}>© 2026 MediConnect Africa · rdv.mediconnect4africa.cloud</div>
       </footer>
     </div>
