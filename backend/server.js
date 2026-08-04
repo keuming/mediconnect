@@ -1339,7 +1339,18 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
 
     let sql = `SELECT t.*, ${distanceExpr} AS distance_km FROM (${blocs.join(' UNION ALL ')}) t WHERE 1=1`;
 
-    if (q) { params.push('%' + q.toLowerCase() + '%'); sql += ` AND LOWER(t.nom) LIKE $${idx++}`; }
+    if (q) {
+      // Avant : un seul LIKE '%phrase entiere%' -- "polyclinique abidjan
+      // sud" ne matchait jamais "Polyclinique du Sud" car les mots ne se
+      // suivent pas dans cet ordre dans le nom reel. On decoupe en mots
+      // et on exige que CHACUN apparaisse quelque part dans le nom,
+      // independamment de l'ordre -- comportement attendu d'une recherche.
+      const motsQ = q.trim().split(/\s+/).filter(Boolean);
+      motsQ.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND LOWER(t.nom) LIKE $${idx++}`;
+      });
+    }
     if (pays) { params.push(pays); sql += ` AND t.pays_code = $${idx++}`; }
     if (ville) {
       // Les cliniques importees en masse sont enregistrees par COMMUNE
@@ -1359,20 +1370,21 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
       }
     }
     if (specialite) {
-      // Un seul champ de recherche cote frontend : il doit trouver un
-      // etablissement AUSSI BIEN par son NOM ("Polyclinique du Sud") que
-      // par sa specialite/analyse/equipement ("Cardiologie"). Sans le
-      // LOWER(t.nom) LIKE ci-dessous, chercher un etablissement par son
-      // nom propre ne renvoyait jamais rien -- seule la specialite etait
-      // testee.
-      params.push('%' + specialite.toLowerCase() + '%');
-      sql += ` AND (
-        LOWER(t.nom) LIKE $${idx}
-        OR EXISTS (SELECT 1 FROM unnest(t.specialites) s WHERE LOWER(s) LIKE $${idx})
-        OR EXISTS (SELECT 1 FROM unnest(t.analyses) a WHERE LOWER(a) LIKE $${idx})
-        OR EXISTS (SELECT 1 FROM unnest(t.equipements) e WHERE LOWER(e) LIKE $${idx})
-      )`;
-      idx++;
+      // Meme decoupage en mots-cles independants que pour 'q' ci-dessus,
+      // mais chaque mot doit matcher AU MOINS UN des 4 champs (nom OU
+      // specialite OU analyse OU equipement) -- et TOUS les mots doivent
+      // etre satisfaits (AND entre mots, OR entre champs pour un meme mot).
+      const motsSpe = specialite.trim().split(/\s+/).filter(Boolean);
+      motsSpe.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND (
+          LOWER(t.nom) LIKE $${idx}
+          OR EXISTS (SELECT 1 FROM unnest(t.specialites) s WHERE LOWER(s) LIKE $${idx})
+          OR EXISTS (SELECT 1 FROM unnest(t.analyses) a WHERE LOWER(a) LIKE $${idx})
+          OR EXISTS (SELECT 1 FROM unnest(t.equipements) e WHERE LOWER(e) LIKE $${idx})
+        )`;
+        idx++;
+      });
     }
 
     // Tri : par nom en SQL dans tous les cas -- trier par distance_km en
