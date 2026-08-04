@@ -265,7 +265,12 @@ function Carte({ resultats, position }) {
         });
       }
       setStatut('prete');
-    }).catch(() => { if (!annule) setStatut('erreur'); });
+    }).catch((err) => {
+      // Avant, cette erreur etait avalee silencieusement -- impossible de
+      // diagnostiquer le probleme reel sans ce log.
+      console.error('[Carte] echec chargement/initialisation Google Maps:', err);
+      if (!annule) setStatut('erreur');
+    });
     return () => { annule = true; };
   }, [position]);
 
