@@ -676,6 +676,99 @@ app.post('/api/consultations', auth, requireSousRole('medecin'), async (req, res
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// Champs cliniques modifiables apres coup. Volontairement exclus :
+// id, patient_id, clinique_id, medecin_id, created_at, statut (ce dernier
+// change via /annuler, pas via une modification de champ classique) --
+// on ne veut jamais qu'une modification de routine puisse deplacer un
+// dossier vers un autre patient ou effacer discretement son statut.
+const CHAMPS_MODIFIABLES_CONSULTATION = [
+  'motif','ta','fc','spo2','temperature','poids','taille','examen_clinique',
+  'diagnostic','code_cim10','note_finale','pathologie','categorie_maladie',
+  'gravite','traitement','notes','tension_arterielle','hdm_antecedents',
+  'hypotheses_diagnostiques','pouls','imc','pc','fr','tso2','pb','pcui',
+  'biologie_predefinis','biologie_texte','imagerie_texte','autres_examens',
+  'diagnostic_predefini','traitement_predefini','date_controle',
+];
+
+// ── Modifier une consultation existante : jamais silencieux. Chaque
+// champ reellement change est compare a l'ancienne valeur et journalise
+// avec un horodatage a la seconde (TIMESTAMPTZ) dans
+// consultations_historique, avant que la mise a jour ne soit appliquee.
+app.put('/api/consultations/:id', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const ancienne = await db('SELECT * FROM consultations WHERE id=$1', [req.params.id]);
+    if (!ancienne.rows.length) return res.status(404).json({ success:false, message:'Consultation introuvable' });
+    const avant = ancienne.rows[0];
+
+    const champsModifies = {};
+    const setClauses = [];
+    const params = [];
+    let idx = 1;
+    for (const champ of CHAMPS_MODIFIABLES_CONSULTATION) {
+      if (!(champ in req.body)) continue;
+      const nouvelleValeur = req.body[champ];
+      const ancienneValeur = avant[champ];
+      // Comparaison en string pour eviter les faux positifs numeriques
+      // (ex: 70 vs "70") qui journaliseraient un "changement" fictif.
+      if (String(ancienneValeur ?? '') === String(nouvelleValeur ?? '')) continue;
+      champsModifies[champ] = { avant: ancienneValeur, apres: nouvelleValeur };
+      setClauses.push(`${champ}=$${idx++}`);
+      params.push(nouvelleValeur === '' ? null : nouvelleValeur);
+    }
+
+    if (!Object.keys(champsModifies).length) {
+      return res.json({ success:true, data:avant, message:'Aucun changement détecté' });
+    }
+
+    setClauses.push('updated_at=NOW()');
+    params.push(req.params.id);
+    const r = await db(
+      `UPDATE consultations SET ${setClauses.join(',')} WHERE id=$${idx} RETURNING *`,
+      params
+    );
+
+    await db(
+      `INSERT INTO consultations_historique (consultation_id,medecin_id,medecin_nom,type_action,champs_modifies)
+       VALUES ($1,$2,$3,'modification',$4)`,
+      [req.params.id, req.user?.medecin_id||null, req.body.medecin_nom||null, JSON.stringify(champsModifies)]
+    );
+
+    res.json({ success:true, data:r.rows[0], champs_modifies:Object.keys(champsModifies) });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Historique des modifications d'une consultation, le plus recent
+// d'abord. Chaque entree est datee a la seconde.
+app.get('/api/consultations/:id/historique', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const r = await db(
+      `SELECT * FROM consultations_historique WHERE consultation_id=$1 ORDER BY modifie_le DESC`,
+      [req.params.id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// ── Annulation douce : jamais de suppression physique d'un dossier
+// medical. La consultation reste visible dans l'historique, marquee
+// annulee, avec la raison journalisee comme toute autre modification.
+app.post('/api/consultations/:id/annuler', auth, requireSousRole('medecin'), async (req, res) => {
+  const { raison } = req.body;
+  try {
+    const r = await db(
+      `UPDATE consultations SET statut='annulee', updated_at=NOW() WHERE id=$1 RETURNING *`,
+      [req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Consultation introuvable' });
+    await db(
+      `INSERT INTO consultations_historique (consultation_id,medecin_id,medecin_nom,type_action,champs_modifies)
+       VALUES ($1,$2,$3,'annulation',$4)`,
+      [req.params.id, req.user?.medecin_id||null, req.body.medecin_nom||null, JSON.stringify({ raison: raison||null })]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── ORDONNANCES ───────────────────────────────────────────────────
 app.get('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) => {
   try {
