@@ -499,6 +499,13 @@ function PageDossiers() {
   const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
+  // Consultation ciblee par l'ordonnance en cours de creation (null =
+  // ordonnance generique, non liee a une consultation precise).
+  const [consultationPourOrdonnance, setConsultationPourOrdonnance] = useState(null);
+  const [showEditConsult, setShowEditConsult] = useState(false);
+  const [consultationEnEdition, setConsultationEnEdition] = useState(null);
+  const [editForm, setEditForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
+  const fe = k => e => setEditForm(p=>({...p,[k]:e.target.value}));
   const [actesSel, setActesSel] = useState([]);
   const [searchActe, setSearchActe] = useState("");
   const [searchCim, setSearchCim] = useState("");
@@ -565,7 +572,17 @@ function PageDossiers() {
     onSuccess: () => { toast.success("✅ Consultation enregistrée !"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); setRdvConsult(null); },
     onError: e => toast.error("Erreur: "+(e?.message||"Réessayez")),
   });
-  const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); }, onError:()=>toast.error("Erreur") });
+  const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); setConsultationPourOrdonnance(null); }, onError:()=>toast.error("Erreur") });
+  const updConsultMut = useMutation({
+    mutationFn: d => api.put(`/consultations/${consultationEnEdition.id}`, d),
+    onSuccess: (r) => {
+      const nb = (r?.champs_modifies||[]).length;
+      toast.success(nb>0 ? `Consultation mise à jour (${nb} champ${nb>1?'s':''})` : "Aucun changement détecté");
+      qc.invalidateQueries(["cl-consults",selected?.id]);
+      setShowEditConsult(false); setConsultationEnEdition(null);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la mise à jour"),
+  });
 
   const demanderExamen = useMutation({
     mutationFn: d => cAPI.demanderExamen(d),
@@ -935,12 +952,13 @@ function PageDossiers() {
                 {(consults||[]).length===0
                   ? <Empty icon="🩺" title="Aucune consultation" subtitle="Ajoutez la première consultation" />
                   : (consults||[]).map(c=>(
-                    <div key={c.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10 }}>
+                    <div key={c.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10, opacity:c.statut==="annulee"?.5:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
                         <span style={{ fontSize:12, fontWeight:700, color:C.teal }}>{fmtDate(c.created_at)}</span>
                         <span style={{ fontSize:12, color:C.muted }}>{c.medecin_nom||"—"}</span>
                       </div>
-                      <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>Diagnostic : {c.diagnostic||"—"}</div>
+                      {c.statut==="annulee" && <Badge color="red">Annulée</Badge>}
+                      <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4, marginTop:c.statut==="annulee"?6:0 }}>Diagnostic : {c.diagnostic||"—"}</div>
                       {c.traitement && <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>Traitement : {c.traitement}</div>}
                       {c.notes && <div style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>{c.notes}</div>}
                       <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11, color:C.dim }}>
@@ -948,7 +966,18 @@ function PageDossiers() {
                         {c.temperature && <span>T°: {c.temperature}°C</span>}
                         {c.poids && <span>Poids: {c.poids}kg</span>}
                         {c.taille && <span>Taille: {c.taille}cm</span>}
+                        {c.updated_at && c.updated_at!==c.created_at && <span>· modifiée le {fmtDate(c.updated_at)}</span>}
                       </div>
+                      {c.statut!=="annulee" && (
+                        <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                          <button onClick={()=>{
+                            setConsultationEnEdition(c);
+                            setEditForm({ diagnostic:c.diagnostic||"", traitement:c.traitement||"", notes:c.notes||"", tension_arterielle:c.tension_arterielle||"", temperature:c.temperature||"", poids:c.poids||"", taille:c.taille||"" });
+                            setShowEditConsult(true);
+                          }} style={{padding:"4px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:C.blue,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
+                          <button onClick={()=>{ setConsultationPourOrdonnance(c); setShowOrd(true); }} style={{padding:"4px 10px",background:"rgba(10,143,88,.12)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💊 Ordonnance</button>
+                        </div>
+                      )}
                     </div>
                   ))
                 }
@@ -1252,7 +1281,26 @@ function PageDossiers() {
         <Inp label="Notes / Instructions" value={oForm.notes_ord} onChange={fo("notes_ord")} placeholder="À prendre pendant les repas…" />
         <div style={{display:"flex",gap:10,marginTop:4}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowOrd(false)}>Annuler</Btn>
-          <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{ if(!oForm.medicaments){toast.error("Médicaments requis");return;} addOrd.mutate({...oForm,patient_id:selected.id}); }}>Créer l'ordonnance</Btn>
+          <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{ if(!oForm.medicaments){toast.error("Médicaments requis");return;} addOrd.mutate({...oForm,patient_id:selected.id,consultation_id:consultationPourOrdonnance?.id||null}); }}>Créer l'ordonnance</Btn>
+        </div>
+      </Modal>
+
+      <Modal open={showEditConsult} onClose={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }} title="✏️ Modifier la consultation" width={560}>
+        <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.2)",borderRadius:9,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.muted}}>
+          Chaque champ modifié est journalisé avec la date, l'heure et la seconde exactes.
+        </div>
+        <Inp label="Diagnostic" value={editForm.diagnostic} onChange={fe("diagnostic")} />
+        <Inp label="Traitement" value={editForm.traitement} onChange={fe("traitement")} />
+        <Grid cols={2} gap={12}>
+          <Inp label="Tension artérielle" value={editForm.tension_arterielle} onChange={fe("tension_arterielle")} placeholder="120/80" />
+          <Inp label="Température (°C)" value={editForm.temperature} onChange={fe("temperature")} />
+          <Inp label="Poids (kg)" value={editForm.poids} onChange={fe("poids")} />
+          <Inp label="Taille (cm)" value={editForm.taille} onChange={fe("taille")} />
+        </Grid>
+        <Inp label="Notes / évolution" value={editForm.notes} onChange={fe("notes")} placeholder="Nouvelles informations fournies par le patient…" rows={3} />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={updConsultMut.isPending} onClick={()=>updConsultMut.mutate(editForm)}>Enregistrer les modifications</Btn>
         </div>
       </Modal>
 
