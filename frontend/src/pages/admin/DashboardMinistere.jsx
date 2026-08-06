@@ -2,14 +2,23 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../services/api';
+import useThemeStore from '../../context/themeStore';
 
 // ── Palette ───────────────────────────────────────────────────────
-const C = {
+const PALETTE_DARK = {
   bg:'#060C12', card:'#0E1620', card2:'#111D2B', input:'#141E2B', hover:'#1A2535',
   border:'#1E2F42', text:'#F0F4F8', muted:'#8BA0B5', dim:'#4E657A',
   green:'#0A8F58', greenL:'#4ade80', teal:'#0D9488', amber:'#D97706',
   red:'#E11D48', blue:'#2563EB', purple:'#7C3AED',
 };
+const PALETTE_LIGHT = {
+  bg:'#F5F7FA', card:'#FFFFFF', card2:'#F0F3F6', input:'#FFFFFF', hover:'#F0F3F6',
+  border:'#DCE3EA', text:'#0E1720', muted:'#4D5B68', dim:'#75808B',
+  green:'#0A8F58', greenL:'#4ade80', teal:'#0D9488', amber:'#B45309',
+  red:'#DC2626', blue:'#2563EB', purple:'#7C3AED',
+};
+// eslint-disable-next-line prefer-const
+const C = { ...PALETTE_DARK };
 
 // ── Helpers ───────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toLocaleString('fr-CI');
@@ -667,6 +676,8 @@ function PageDemographie({ annee, pays }) {
 // SHELL : MINISTÈRE DE LA SANTÉ — Sans sidebar interne (AppLayout gère la sidebar)
 // ════════════════════════════════════════════════════════════════════
 export default function DashboardMinistere() {
+  const mode = useThemeStore(s => s.mode);
+  Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [pays,  setPays]  = useState('CI');
 

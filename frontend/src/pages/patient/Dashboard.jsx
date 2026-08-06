@@ -5,16 +5,26 @@ import { Routes, Route, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import useAuthStore from "../../context/authStore";
+import useThemeStore from "../../context/themeStore";
 import api from "../../services/api";
 import PageDossierDME from "./PageDossier";
 
-const C = {
+const PALETTE_DARK = {
   green:"#0A8F58",teal:"#0D9488",amber:"#D97706",red:"#E11D48",
   blue:"#2563EB",purple:"#7C3AED",
   bg:"#060C12",card:"#0E1620",input:"#141E2B",
   hover:"#1A2535",border:"#1E2F42",
   text:"#F0F4F8",muted:"#8BA0B5",dim:"#4E657A",
 };
+const PALETTE_LIGHT = {
+  green:"#0A8F58",teal:"#0D9488",amber:"#B45309",red:"#DC2626",
+  blue:"#2563EB",purple:"#7C3AED",
+  bg:"#F5F7FA",card:"#FFFFFF",input:"#FFFFFF",
+  hover:"#F0F3F6",border:"#DCE3EA",
+  text:"#0E1720",muted:"#4D5B68",dim:"#75808B",
+};
+// eslint-disable-next-line prefer-const
+const C = { ...PALETTE_DARK };
 const fmt=(n)=>Number(n||0).toLocaleString("fr-CI");
 const fmtDate=(d)=>d?new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month:"long",year:"numeric"}):"—";
 const today=()=>new Date().toISOString().split("T")[0];
@@ -2313,6 +2323,8 @@ function PageMonRang(){
 }
 
 export default function Dashboard(){
+  const mode = useThemeStore(s => s.mode);
+  Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
   return(
     <Routes>
       <Route index                    element={<PageHome/>}/>

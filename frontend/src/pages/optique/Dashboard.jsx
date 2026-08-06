@@ -2,16 +2,26 @@ import React, { useState, useCallback } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import useAuthStore from '../../context/authStore';
+import useThemeStore from '../../context/themeStore';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-const C = {
+const PALETTE_DARK = {
   bg:'#060C12', card:'#0E1620', card2:'#111D2B', border:'#1E2F42',
   text:'#F0F4F8', muted:'#8BA0B5', dim:'#4E657A',
   green:'#0A8F58', greenL:'#4ade80', teal:'#0D9488',
   amber:'#D97706', amberL:'#FCD34D', blue:'#2563EB', blueL:'#93C5FD',
   red:'#E11D48', purple:'#7C3AED', indigo:'#4F46E5',
 };
+const PALETTE_LIGHT = {
+  bg:'#F5F7FA', card:'#FFFFFF', card2:'#F0F3F6', border:'#DCE3EA',
+  text:'#0E1720', muted:'#4D5B68', dim:'#75808B',
+  green:'#0A8F58', greenL:'#4ade80', teal:'#0D9488',
+  amber:'#B45309', amberL:'#FCD34D', blue:'#2563EB', blueL:'#93C5FD',
+  red:'#DC2626', purple:'#7C3AED', indigo:'#4F46E5',
+};
+// eslint-disable-next-line prefer-const
+const C = { ...PALETTE_DARK };
 const fmt = n => Number(n||0).toLocaleString('fr-CI');
 const s = (obj) => ({ ...obj });
 
@@ -677,6 +687,8 @@ const NAV = [
 
 // ── EXPORT PRINCIPAL ──────────────────────────────────────────────
 export default function DashboardOptique() {
+  const mode = useThemeStore(s => s.mode);
+  Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
   const navigate = useNavigate();
   const location = useLocation();
   const { logout } = useAuthStore();
