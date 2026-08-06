@@ -520,6 +520,10 @@ function PageDossiers() {
   const fe = k => e => setEditForm(p=>({...p,[k]:e.target.value}));
   const [showDossierMedical, setShowDossierMedical] = useState(false);
   const [consultationEnLecture, setConsultationEnLecture] = useState(null);
+  // Bascule entre l'affichage en cartes (existant, inchange) et le
+  // tableau par date/rubrique. Les deux cohabitent : rien n'est retire
+  // si le tableau ne convient pas a l'usage.
+  const [vueHistorique, setVueHistorique] = useState("cartes");
   // Regroupement partage entre la lecture et l'edition, pour que les deux
   // vues restent visuellement coherentes entre elles.
   const RUBRIQUES_CONSULTATION = [
@@ -973,10 +977,50 @@ function PageDossiers() {
             {/* Tab: Consultations */}
             {activeTab==="consultations" && (
               <Panel title="Historique des consultations"
-                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>navigate('/clinique/consultation', { state: { patientPreselectionne: selected } })}>+ Consultation</Btn>}>
-                {(consults||[]).length===0
-                  ? <Empty icon="🩺" title="Aucune consultation" subtitle="Ajoutez la première consultation" />
-                  : (consults||[]).map(c=>(
+                actions={<div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <div style={{display:"flex",gap:2,background:C.input,borderRadius:8,padding:2}}>
+                    {[["cartes","🗂️"],["tableau","📊"]].map(([v,ic])=>(
+                      <button key={v} onClick={()=>setVueHistorique(v)}
+                        style={{padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",background:vueHistorique===v?C.hover:"transparent",color:vueHistorique===v?C.text:C.muted}}>
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
+                  <Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>navigate('/clinique/consultation', { state: { patientPreselectionne: selected } })}>+ Consultation</Btn>
+                </div>}>
+                {(consults||[]).length===0 ? (
+                  <Empty icon="🩺" title="Aucune consultation" subtitle="Ajoutez la première consultation" />
+                ) : vueHistorique==="tableau" ? (
+                  <div style={{overflowX:"auto"}}>
+                    <div style={{display:"grid",gridTemplateColumns:`110px repeat(${RUBRIQUES_CONSULTATION.length},minmax(160px,1fr))`,gap:1,minWidth:900}}>
+                      <div style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:C.dim,textTransform:"uppercase",background:C.input}}>Date</div>
+                      {RUBRIQUES_CONSULTATION.map(rub=>(
+                        <div key={rub.titre} style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:C.dim,textTransform:"uppercase",background:C.input}}>{rub.titre}</div>
+                      ))}
+                      {(consults||[]).map(c=>(
+                        <React.Fragment key={c.id}>
+                          <div style={{padding:"10px",fontSize:12,fontWeight:700,color:c.statut==="annulee"?C.dim:C.teal,background:C.hover,opacity:c.statut==="annulee"?.5:1}}>
+                            {fmtDate(c.created_at)}
+                            {c.statut==="annulee" && <div style={{fontSize:9,color:C.red}}>Annulée</div>}
+                          </div>
+                          {RUBRIQUES_CONSULTATION.map(rub=>{
+                            const rempli = rub.champs.filter(([champ])=>c[champ]);
+                            return (
+                              <div key={rub.titre} style={{padding:"10px",fontSize:11,color:C.text,background:C.hover,opacity:c.statut==="annulee"?.5:1}}>
+                                {rempli.length===0 ? <span style={{color:C.dim}}>—</span> : rempli.map(([champ,label])=>(
+                                  <div key={champ} style={{marginBottom:4}}>
+                                    <span style={{color:C.dim,fontSize:9,textTransform:"uppercase",display:"block"}}>{label}</span>
+                                    {c[champ]}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                ) : (consults||[]).map(c=>(
                     <div key={c.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10, opacity:c.statut==="annulee"?.5:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
                         <span style={{ fontSize:12, fontWeight:700, color:C.teal }}>{fmtDate(c.created_at)}</span>
