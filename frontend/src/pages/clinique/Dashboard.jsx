@@ -2506,7 +2506,7 @@ function PageConsultation() {
                 const medicament = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
                 const posologie = valides.map(l=>l.posologie).filter(Boolean).join(' | ');
                 const duree = valides.map(l=>l.duree).filter(Boolean).join(' | ');
-                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicament,posologie,duree});
+                addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicaments:medicament,posologie,duree});
               }} style={{flex:2,padding:"10px",borderRadius:9,background:"linear-gradient(135deg,#7C3AED,#0D9488)",border:"none",color:"#fff",cursor:addOrd.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addOrd.isPending?.65:1}}>
                 {addOrd.isPending?"⏳…":"💊 Créer l'ordonnance"}
               </button>
