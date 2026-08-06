@@ -6,7 +6,7 @@ import { persist } from 'zustand/middleware';
 const useThemeStore = create(
   persist(
     (set, get) => ({
-      mode: 'dark', // 'dark' | 'light'
+      mode: 'light', // 'dark' | 'light' -- clair par defaut, demande explicite
       toggleTheme: () => set({ mode: get().mode === 'dark' ? 'light' : 'dark' }),
       setTheme: (mode) => set({ mode }),
     }),

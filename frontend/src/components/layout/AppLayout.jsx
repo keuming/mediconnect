@@ -125,6 +125,7 @@ const NAV = {
     { path:'/laboratoire',            icon:'🧪', label:'Tableau de bord' },
     { path:'/laboratoire/bulletins',  icon:'📥', label:'Demandes reçues' },
     { path:'/laboratoire/analyses',   icon:'📤', label:'Envoyer résultats' },
+    { path:'/laboratoire/administration', icon:'👤', label:'Administration' },
   ],
 };
 

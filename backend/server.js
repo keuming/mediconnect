@@ -575,6 +575,64 @@ app.put('/api/clinique/personnel/:id', auth, requireSousRole(), async (req, res)
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  ADMINISTRATION LABORATOIRE (Phase 3) -- meme schema que clinique,
+//  scope sur laboratoire_id (Phase 2) au lieu de clinique_id.
+//  requireSousRole() est generique (ne verifie que sous_role, jamais
+//  l'etablissement) : reutilisable ici sans modification.
+// ══════════════════════════════════════════════════════════════════
+const SOUS_ROLES_VALIDES_LABORATOIRE = ['technicien', 'reception', 'biologiste'];
+
+app.post('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+  const { prenom, nom, email, password, telephone, sous_role } = req.body;
+  const lid = req.user?.laboratoire_id;
+  if (!lid) return res.status(400).json({ success:false, message:'Compte non rattaché à un laboratoire' });
+  if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+  if (!SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES_LABORATOIRE.join(', ')}` });
+  }
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const r = await db(
+      `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,laboratoire_id,sous_role,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,'laboratoire',$5,$6,$7,true) RETURNING id,email,prenom,nom,sous_role,laboratoire_id`,
+      [email, hash, prenom, nom, telephone||null, lid, sous_role]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Cet email est déjà utilisé' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+app.get('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+         FROM utilisateurs WHERE laboratoire_id=$1 AND sous_role IS NOT NULL
+        ORDER BY created_at DESC`,
+      [lid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.put('/api/laboratoire/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const { sous_role, is_active } = req.body;
+  if (sous_role && !SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES_LABORATOIRE.join(', ')}` });
+  }
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+        WHERE id=$3 AND laboratoire_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+      [sous_role||null, is_active===undefined?null:is_active, req.params.id, lid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre laboratoire' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
 app.put('/api/patients/:id', auth, async (req, res) => {
   const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance } = req.body;
   try {
