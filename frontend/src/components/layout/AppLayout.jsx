@@ -56,6 +56,7 @@ const NAV = {
     { path:'/pharmacie/commandes',  icon:'📦', label:'Commandes' },
     { path:'/pharmacie/ordonnances',icon:'📄', label:'Ordonnances' },
     { path:'/pharmacie/livraison',   icon:'🚚', label:'Livraisons', badge:'NEW' },
+    { path:'/pharmacie/administration', icon:'👤', label:'Administration' },
   ],
   livreur: [
     { path:'/livreur/missions',  icon:'🛵', label:'Missions', badge:'NEW' },
@@ -98,6 +99,7 @@ const NAV = {
     { path:'/assureur/tiers-payant', icon:'🏥', label:'Tiers-Payant',     badge:'NEW' },
     { path:'/assureur/souscriptions',icon:'👥', label:'Souscriptions',    badge:'NEW' },
     { path:'/assureur/stats',        icon:'📈', label:'Statistiques' },
+    { path:'/assureur/administration', icon:'👤', label:'Administration' },
   ],
   // ── BUSINESS DEVELOPER — nouveau rôle v3.1.0 ─────────────────
   business_developer: [
@@ -120,6 +122,7 @@ const NAV = {
     { path:'/imagerie',           icon:'🩻', label:'Tableau de bord' },
     { path:'/imagerie/bulletins', icon:'📥', label:'Bulletins reçus' },
     { path:'/imagerie/rapports',  icon:'📤', label:'Envoyer rapport' },
+    { path:'/imagerie/administration', icon:'👤', label:'Administration' },
   ],
   laboratoire: [
     { path:'/laboratoire',            icon:'🧪', label:'Tableau de bord' },

@@ -3,13 +3,21 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import useAuthStore from '../../context/authStore';
+import useThemeStore from '../../context/themeStore';
 import api from '../../services/api';
 
-const C = {
+const PALETTE_DARK = {
   green:'#0A8F58',teal:'#0D9488',amber:'#D97706',red:'#E11D48',blue:'#2563EB',purple:'#7C3AED',
   card:'#0E1620',input:'#141E2B',hover:'#1A2535',border:'#1E2F42',
   text:'#F0F4F8',muted:'#8BA0B5',dim:'#4E657A',
 };
+const PALETTE_LIGHT = {
+  green:'#0A8F58',teal:'#0D9488',amber:'#B45309',red:'#DC2626',blue:'#2563EB',purple:'#7C3AED',
+  card:'#FFFFFF',input:'#FFFFFF',hover:'#F0F3F6',border:'#DCE3EA',
+  text:'#0E1720',muted:'#4D5B68',dim:'#75808B',
+};
+// eslint-disable-next-line prefer-const
+const C = { ...PALETTE_DARK };
 const fmt     = n => Number(n||0).toLocaleString('fr-CI');
 const fmtDate = d => d ? new Date(d).toLocaleDateString('fr-CI',{day:'numeric',month:'short',year:'numeric'}) : '—';
 const pct     = (a,b) => b>0 ? Math.round(a/b*100) : 0;
@@ -35,7 +43,15 @@ const A = {
   soldeParPrest:  ()         => api.get('/assurance/solde-par-prestataire'),
   patients:       ()         => api.get('/assurance/patients'),
   traiterFa:      (id,data)  => api.patch(`/assurance/factures/${id}`, data),
+  personnel:    () => api.get('/assureur/personnel'),
+  addPersonnel: d => api.post('/assureur/personnel', d),
+  updPersonnel: (id,d) => api.put(`/assureur/personnel/${id}`, d),
 };
+const SOUS_ROLES_LOCALES = [
+  { v:'gestionnaire', l:'Gestionnaire', desc:'Traite les dossiers et souscriptions' },
+  { v:'agent',         l:'Agent',        desc:'Relation clients, prise en charge' },
+  { v:'comptable',     l:'Comptable',    desc:'Suivi financier et facturation' },
+];
 
 // ── Composants UI ────────────────────────────────────────────────
 const Badge = ({ children,color='gray' }) => {
@@ -1077,7 +1093,107 @@ function PageFacturationTempsReel() {
 }
 
 
+function PageAdministration() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ prenom:'', nom:'', email:'', password:'', telephone:'', sous_role:'gestionnaire' });
+
+  const { data, isLoading } = useQuery({ queryKey:['assureur-personnel'], queryFn:()=>A.personnel().then(r=>r.data||[]) });
+  const personnel = data || [];
+
+  const addMut = useMutation({
+    mutationFn: d => A.addPersonnel(d),
+    onSuccess: () => {
+      toast.success('Compte créé !');
+      qc.invalidateQueries(['assureur-personnel']);
+      setShowAdd(false);
+      setForm({ prenom:'', nom:'', email:'', password:'', telephone:'', sous_role:'gestionnaire' });
+    },
+    onError: e => toast.error(e?.response?.data?.message || 'Erreur lors de la création'),
+  });
+  const toggleMut = useMutation({
+    mutationFn: ({id,is_active}) => A.updPersonnel(id,{is_active}),
+    onSuccess: () => { toast.success('Statut mis à jour'); qc.invalidateQueries(['assureur-personnel']); },
+    onError: () => toast.error('Erreur'),
+  });
+
+  return (
+    <div style={{ padding:24 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:20, fontWeight:800, color:C.text }}>👤 Administration</div>
+          <div style={{ fontSize:13, color:C.muted }}>Comptes du personnel</div>
+        </div>
+        <button onClick={()=>setShowAdd(true)} style={{ background:`linear-gradient(135deg,${C.teal},${C.green})`, border:'none', borderRadius:10, padding:'10px 18px', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>+ Nouveau compte</button>
+      </div>
+
+      {isLoading ? (
+        <div style={{ color:C.muted, textAlign:'center', padding:40 }}>Chargement…</div>
+      ) : personnel.length === 0 ? (
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:40, textAlign:'center' }}>
+          <div style={{ fontSize:32, marginBottom:10 }}>👤</div>
+          <div style={{ color:C.muted }}>Aucun compte de personnel pour l'instant.</div>
+        </div>
+      ) : (
+        <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:12, overflow:'hidden' }}>
+          {personnel.map(p => (
+            <div key={p.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:16, borderBottom:`1px solid ${C.border}` }}>
+              <div>
+                <div style={{ fontWeight:700, color:C.text, fontSize:14 }}>{p.prenom} {p.nom}</div>
+                <div style={{ fontSize:12, color:C.muted }}>{p.email} · {SOUS_ROLES_LOCALES.find(s=>s.v===p.sous_role)?.l || p.sous_role}</div>
+              </div>
+              <button onClick={()=>toggleMut.mutate({ id:p.id, is_active: !p.is_active })}
+                style={{ background: p.is_active ? 'rgba(10,143,88,.12)' : 'rgba(225,29,72,.12)', border:`1px solid ${p.is_active ? C.green : C.red}`, borderRadius:8, padding:'6px 12px', color: p.is_active ? C.green : C.red, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+                {p.is_active ? 'Actif' : 'Désactivé'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:100 }} onClick={()=>setShowAdd(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:C.card, borderRadius:14, padding:24, width:480, maxWidth:'90vw' }}>
+            <div style={{ fontSize:16, fontWeight:800, color:C.text, marginBottom:16 }}>Nouveau compte</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+              <input placeholder="Prénom *" value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:10, color:C.text, fontSize:13 }} />
+              <input placeholder="Nom *" value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:10, color:C.text, fontSize:13 }} />
+            </div>
+            <input placeholder="Email *" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} style={{ width:'100%', boxSizing:'border-box', background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:10, color:C.text, fontSize:13, marginBottom:10 }} />
+            <input placeholder="Mot de passe *" type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} style={{ width:'100%', boxSizing:'border-box', background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:10, color:C.text, fontSize:13, marginBottom:10 }} />
+            <input placeholder="Téléphone" value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))} style={{ width:'100%', boxSizing:'border-box', background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:10, color:C.text, fontSize:13, marginBottom:14 }} />
+            <div style={{ fontSize:11, fontWeight:700, color:C.dim, textTransform:'uppercase', marginBottom:8 }}>Rôle</div>
+            {SOUS_ROLES_LOCALES.map(s => (
+              <div key={s.v} onClick={()=>setForm(f=>({...f,sous_role:s.v}))}
+                style={{ display:'flex', gap:10, alignItems:'center', padding:10, borderRadius:8, marginBottom:6, cursor:'pointer', background: form.sous_role===s.v ? 'rgba(13,148,136,.1)' : 'transparent', border:`1px solid ${form.sous_role===s.v ? C.teal : C.border}` }}>
+                <div style={{ width:16, height:16, borderRadius:'50%', border:`2px solid ${form.sous_role===s.v?C.teal:C.border}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {form.sous_role===s.v && <div style={{ width:8, height:8, borderRadius:'50%', background:C.teal }} />}
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{s.l}</div>
+                  <div style={{ fontSize:11, color:C.muted }}>{s.desc}</div>
+                </div>
+              </div>
+            ))}
+            <div style={{ display:'flex', gap:10, marginTop:16 }}>
+              <button onClick={()=>setShowAdd(false)} style={{ flex:1, background:'transparent', border:`1px solid ${C.border}`, borderRadius:8, padding:10, color:C.muted, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>Annuler</button>
+              <button disabled={addMut.isPending} onClick={()=>{
+                if (!form.prenom||!form.nom||!form.email||!form.password) { toast.error('Champs obligatoires manquants'); return; }
+                addMut.mutate(form);
+              }} style={{ flex:2, background:`linear-gradient(135deg,${C.teal},${C.green})`, border:'none', borderRadius:8, padding:10, color:'#fff', fontWeight:700, cursor:addMut.isPending?'not-allowed':'pointer', fontFamily:'inherit', opacity:addMut.isPending?.7:1 }}>
+                {addMut.isPending ? 'Création…' : 'Créer le compte'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
+  const mode = useThemeStore(s => s.mode);
+  Object.assign(C, mode === 'light' ? PALETTE_LIGHT : PALETTE_DARK);
   return (
     <Routes>
       <Route index               element={<PageHome/>}/>
@@ -1086,6 +1202,7 @@ export default function Dashboard() {
       <Route path="souscriptions" element={<PageSouscriptions/>}/>
       <Route path="stats"        element={<PageStats/>}/>
       <Route path="facturation"  element={<PageFacturationTempsReel/>}/>
+      <Route path="administration" element={<PageAdministration/>}/>
       <Route path="*"            element={<PageHome/>}/>
     </Routes>
   );

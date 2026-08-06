@@ -633,6 +633,69 @@ app.put('/api/laboratoire/personnel/:id', auth, requireSousRole(), async (req, r
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  ADMINISTRATION IMAGERIE / PHARMACIE / ASSUREUR (Phase 4) -- meme
+//  schema que laboratoire, seuls le champ FK et les sous-roles changent.
+// ══════════════════════════════════════════════════════════════════
+const SOUS_ROLES_VALIDES_IMAGERIE = ['technicien', 'reception', 'radiologue'];
+const SOUS_ROLES_VALIDES_PHARMACIE = ['preparateur', 'caissier', 'pharmacien'];
+const SOUS_ROLES_VALIDES_ASSUREUR = ['gestionnaire', 'agent', 'comptable'];
+
+function routesPersonnel(prefixe, champFk, sousRolesValides) {
+  app.post(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const { prenom, nom, email, password, telephone, sous_role } = req.body;
+    const eid = req.user?.[champFk];
+    if (!eid) return res.status(400).json({ success:false, message:`Compte non rattaché à un(e) ${prefixe}` });
+    if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+    if (!sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    try {
+      const hash = await bcrypt.hash(password, 10);
+      const r = await db(
+        `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,${champFk},sous_role,is_active)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING id,email,prenom,nom,sous_role,${champFk}`,
+        [email, hash, prenom, nom, prefixe, telephone||null, eid, sous_role]
+      );
+      res.status(201).json({ success:true, data:r.rows[0] });
+    } catch(e) {
+      if (e.code === '23505') return res.status(409).json({ success:false, message:'Cet email est déjà utilisé' });
+      res.status(500).json({ success:false, message:e.message });
+    }
+  });
+  app.get(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+           FROM utilisateurs WHERE ${champFk}=$1 AND sous_role IS NOT NULL
+          ORDER BY created_at DESC`,
+        [eid]
+      );
+      res.json({ success:true, data:r.rows });
+    } catch(e) { res.json({ success:true, data:[] }); }
+  });
+  app.put(`/api/${prefixe}/personnel/:id`, auth, requireSousRole(), async (req, res) => {
+    const { sous_role, is_active } = req.body;
+    if (sous_role && !sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+          WHERE id=$3 AND ${champFk}=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+        [sous_role||null, is_active===undefined?null:is_active, req.params.id, eid]
+      );
+      if (!r.rows.length) return res.status(404).json({ success:false, message:`Compte introuvable dans votre ${prefixe}` });
+      res.json({ success:true, data:r.rows[0] });
+    } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+  });
+}
+routesPersonnel('imagerie', 'imagerie_id', SOUS_ROLES_VALIDES_IMAGERIE);
+routesPersonnel('pharmacie', 'pharmacie_id', SOUS_ROLES_VALIDES_PHARMACIE);
+routesPersonnel('assureur', 'assureur_id', SOUS_ROLES_VALIDES_ASSUREUR);
 app.put('/api/patients/:id', auth, async (req, res) => {
   const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance } = req.body;
   try {
