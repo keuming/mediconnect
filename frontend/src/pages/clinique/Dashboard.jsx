@@ -499,6 +499,14 @@ function PageDossiers() {
   const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
+  // Plusieurs medicaments par ordonnance, chacun avec sa propre
+  // posologie/duree -- meme mecanisme que le formulaire d'ordonnance de
+  // PageConsultation (le formulaire a un seul champ etait incomplet pour
+  // une vraie prescription a plusieurs medicaments).
+  const [lignesOrd, setLignesOrd] = useState([{nom:"",qte:"",posologie:"",duree:""}]);
+  const addLigneOrd = ()=>setLignesOrd(l=>[...l,{nom:"",qte:"",posologie:"",duree:""}]);
+  const delLigneOrd = (i)=>setLignesOrd(l=>l.filter((_,j)=>j!==i));
+  const updLigneOrd = (i,k,v)=>setLignesOrd(l=>l.map((row,j)=>j===i?{...row,[k]:v}:row));
   // Consultation ciblee par l'ordonnance en cours de creation (null =
   // ordonnance generique, non liee a une consultation precise).
   const [consultationPourOrdonnance, setConsultationPourOrdonnance] = useState(null);
@@ -1343,17 +1351,34 @@ function PageDossiers() {
         </div>
       )}
 
-      {/* Modal: Ordonnance */}
-      <Modal open={showOrd} onClose={()=>setShowOrd(false)} title={`💊 Ordonnance — ${selected?.prenom} ${selected?.nom}`}>
-        <Inp label="Médicaments *" required value={oForm.medicaments} onChange={fo("medicaments")} placeholder="Amoxicilline 500mg, Paracétamol 1g…" />
-        <Grid cols={2} gap={12}>
-          <Inp label="Posologie" value={oForm.posologie} onChange={fo("posologie")} placeholder="2 cp/jour matin et soir" />
-          <Inp label="Durée du traitement" value={oForm.duree} onChange={fo("duree")} placeholder="7 jours" />
-        </Grid>
+      {/* Modal: Ordonnance — plusieurs medicaments, chacun avec sa propre ligne */}
+      <Modal open={showOrd} onClose={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",posologie:"",duree:""}]); }} title={`💊 Ordonnance — ${selected?.prenom} ${selected?.nom}`} width={520}>
+        <div style={{marginBottom:14}}>
+          {lignesOrd.map((ligne,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
+              <Inp label={i===0?"Médicament *":""} value={ligne.nom} onChange={e=>updLigneOrd(i,"nom",e.target.value)} placeholder="Amoxicilline 500mg" />
+              <Inp label={i===0?"Qté":""} value={ligne.qte} onChange={e=>updLigneOrd(i,"qte",e.target.value)} placeholder="1 bte" />
+              <Inp label={i===0?"Posologie":""} value={ligne.posologie} onChange={e=>updLigneOrd(i,"posologie",e.target.value)} placeholder="2x/jour" />
+              <Inp label={i===0?"Durée":""} value={ligne.duree} onChange={e=>updLigneOrd(i,"duree",e.target.value)} placeholder="7 jours" />
+              <button onClick={()=>delLigneOrd(i)} disabled={lignesOrd.length<=1} style={{padding:"11px 10px",borderRadius:8,background:"transparent",border:`1.5px solid ${C.border}`,color:lignesOrd.length<=1?C.dim:C.red,cursor:lignesOrd.length<=1?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
+                {lignesOrd.length>1?"✕":"—"}
+              </button>
+            </div>
+          ))}
+          <button onClick={addLigneOrd} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
+        </div>
         <Inp label="Notes / Instructions" value={oForm.notes_ord} onChange={fo("notes_ord")} placeholder="À prendre pendant les repas…" />
         <div style={{display:"flex",gap:10,marginTop:4}}>
-          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowOrd(false)}>Annuler</Btn>
-          <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{ if(!oForm.medicaments){toast.error("Médicaments requis");return;} addOrd.mutate({...oForm,patient_id:selected.id,consultation_id:consultationPourOrdonnance?.id||null}); }}>Créer l'ordonnance</Btn>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",posologie:"",duree:""}]); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{
+            const valides = lignesOrd.filter(l=>l.nom.trim());
+            if(!valides.length){toast.error("Au moins un médicament requis");return;}
+            const medicaments = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
+            const posologie = valides.map(l=>l.posologie).filter(Boolean).join(' | ');
+            const duree = valides.map(l=>l.duree).filter(Boolean).join(' | ');
+            addOrd.mutate({ medicaments, posologie, duree, notes_ord:oForm.notes_ord, patient_id:selected.id, consultation_id:consultationPourOrdonnance?.id||null });
+            setLignesOrd([{nom:"",qte:"",posologie:"",duree:""}]);
+          }}>Créer l'ordonnance</Btn>
         </div>
       </Modal>
 
