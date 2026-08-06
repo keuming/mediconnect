@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import useAuthStore from '../../context/authStore';
 import useThemeStore from '../../context/themeStore';
 
+/* TAILLES_POLICE_AUGMENTEES_30_POURCENT */
 const PALETTE_DARK = {
   green:"#0A8F58", teal:"#0D9488", amber:"#D97706", red:"#E11D48",
   blue:"#2563EB", purple:"#7C3AED", bg:"#060C12", card:"#0E1620",
@@ -11,7 +12,8 @@ const PALETTE_DARK = {
 const PALETTE_LIGHT = {
   green:"#0A8F58", teal:"#0D9488", amber:"#B45309", red:"#DC2626",
   blue:"#2563EB", purple:"#7C3AED", bg:"#F5F7FA", card:"#FFFFFF",
-  border:"#DCE3EA", text:"#101B26", muted:"#5B6B7A", dim:"#8A97A3",
+  // Texte assombri de 15%, meme correctif que clinique/Dashboard.jsx.
+  border:"#DCE3EA", text:"#0E1720", muted:"#4D5B68", dim:"#75808B",
 };
 // eslint-disable-next-line prefer-const
 let C = { ...PALETTE_DARK };
@@ -199,18 +201,18 @@ export default function AppLayout({ children }) {
       }}>
         {/* Logo */}
         <div style={{ padding:'20px 16px',borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',gap:10 }}>
-          <div style={{ width:36,height:36,background:`linear-gradient(135deg,${roleColor},${C.teal})`,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,color:'#fff',fontSize:18,flexShrink:0 }}>+</div>
+          <div style={{ width:36,height:36,background:`linear-gradient(135deg,${roleColor},${C.teal})`,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,color:'#fff',fontSize:23,flexShrink:0 }}>+</div>
           {sidebarOpen&&(
             <div>
-              <div style={{ fontFamily:"'DM Serif Display', serif",fontSize:15,color:C.text,fontWeight:400,lineHeight:1.2 }}>Medi<span style={{ color:roleColor }}>Connect</span></div>
-              <div style={{ fontSize:9,color:C.dim,fontWeight:700,textTransform:'uppercase',letterSpacing:'.5px' }}>{ROLE_LABELS[role]}</div>
+              <div style={{ fontFamily:"'DM Serif Display', serif",fontSize:20,color:C.text,fontWeight:400,lineHeight:1.2 }}>Medi<span style={{ color:roleColor }}>Connect</span></div>
+              <div style={{ fontSize:12,color:C.dim,fontWeight:700,textTransform:'uppercase',letterSpacing:'.5px' }}>{ROLE_LABELS[role]}</div>
             </div>
           )}
         </div>
 
         {/* Nav items */}
         <nav style={{ flex:1,padding:'12px 8px',overflowY:'auto' }}>
-          <div style={{ fontSize:9,fontWeight:700,color:C.dim,textTransform:'uppercase',letterSpacing:'.5px',padding:'4px 8px 8px',display:sidebarOpen?'block':'none' }}>
+          <div style={{ fontSize:12,fontWeight:700,color:C.dim,textTransform:'uppercase',letterSpacing:'.5px',padding:'4px 8px 8px',display:sidebarOpen?'block':'none' }}>
             {ROLE_LABELS[role]}
           </div>
           {navItems.map(item => {
@@ -226,11 +228,11 @@ export default function AppLayout({ children }) {
                 }}
                 onMouseOver={e=>{ if(!isActive) e.currentTarget.style.background='rgba(255,255,255,.05)'; }}
                 onMouseOut={e =>{ if(!isActive) e.currentTarget.style.background='transparent'; }}>
-                <span style={{ fontSize:16,flexShrink:0 }}>{item.icon}</span>
+                <span style={{ fontSize:21,flexShrink:0 }}>{item.icon}</span>
                 {sidebarOpen&&(
                   <>
-                    <span style={{ fontSize:13,fontWeight:isActive?700:500,color:isActive?roleColor:C.muted,flex:1 }}>{item.label}</span>
-                    {item.badge&&<span style={{ background:roleColor,color:'#fff',fontSize:9,fontWeight:800,padding:'2px 6px',borderRadius:8 }}>{item.badge}</span>}
+                    <span style={{ fontSize:17,fontWeight:isActive?700:500,color:isActive?roleColor:C.muted,flex:1 }}>{item.label}</span>
+                    {item.badge&&<span style={{ background:roleColor,color:'#fff',fontSize:12,fontWeight:800,padding:'2px 6px',borderRadius:8 }}>{item.badge}</span>}
                   </>
                 )}
               </Link>
@@ -241,18 +243,18 @@ export default function AppLayout({ children }) {
         {/* User info + logout */}
         <div style={{ padding:'12px 8px',borderTop:`1px solid ${C.border}` }}>
           <div style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:10,marginBottom:6 }}>
-            <div style={{ width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${roleColor},${C.teal})`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,color:'#fff',fontSize:12,flexShrink:0 }}>
+            <div style={{ width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${roleColor},${C.teal})`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,color:'#fff',fontSize:16,flexShrink:0 }}>
               {user.prenom?.[0]}{user.nom?.[0]}
             </div>
             {sidebarOpen&&(
               <div style={{ minWidth:0 }}>
-                <div style={{ fontSize:12,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{user.prenom} {user.nom}</div>
-                <div style={{ fontSize:10,color:C.dim,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{user.email}</div>
+                <div style={{ fontSize:16,fontWeight:700,color:C.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{user.prenom} {user.nom}</div>
+                <div style={{ fontSize:13,color:C.dim,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{user.email}</div>
               </div>
             )}
           </div>
           <button onClick={handleLogout}
-            style={{ display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',background:'rgba(225,29,72,.08)',border:'1px solid rgba(225,29,72,.2)',borderRadius:10,color:'#E11D48',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+            style={{ display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',background:'rgba(225,29,72,.08)',border:'1px solid rgba(225,29,72,.2)',borderRadius:10,color:'#E11D48',fontSize:16,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
             <span>←</span>
             {sidebarOpen&&'Se déconnecter'}
           </button>
@@ -266,33 +268,33 @@ export default function AppLayout({ children }) {
         <header style={{ background:C.card,borderBottom:`1px solid ${C.border}`,padding:'0 24px',height:60,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:40 }}>
           <div style={{ display:'flex',alignItems:'center',gap:16 }}>
             <button onClick={()=>setSidebarOpen(o=>!o)}
-              style={{ background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'6px 10px',cursor:'pointer',fontSize:14,color:C.muted }}>
+              style={{ background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'6px 10px',cursor:'pointer',fontSize:18,color:C.muted }}>
               {sidebarOpen?'←':'→'}
             </button>
-            <div style={{ fontSize:12,color:C.dim }}>
+            <div style={{ fontSize:16,color:C.dim }}>
               {new Date().toLocaleDateString('fr-CI',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
             </div>
           </div>
 
           <div style={{ display:'flex',alignItems:'center',gap:12 }}>
             <button onClick={toggleTheme} title={mode==='dark'?'Passer au thème clair':'Passer au thème sombre'}
-              style={{ display:'flex',alignItems:'center',gap:6,background:mode==='light'?'#F0F3F6':'rgba(255,255,255,.06)',border:`1px solid ${C.border}`,borderRadius:20,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:700,color:C.muted,fontFamily:'inherit' }}>
+              style={{ display:'flex',alignItems:'center',gap:6,background:mode==='light'?'#F0F3F6':'rgba(255,255,255,.06)',border:`1px solid ${C.border}`,borderRadius:20,padding:'6px 12px',cursor:'pointer',fontSize:16,fontWeight:700,color:C.muted,fontFamily:'inherit' }}>
               <span>{mode==='dark'?'🌙':'☀️'}</span>
               {mode==='dark'?'Sombre':'Clair'}
             </button>
             {role==='medecin'&&(
-              <div style={{ display:'flex',alignItems:'center',gap:6,background:'rgba(124,58,237,.1)',border:'1px solid rgba(124,58,237,.3)',borderRadius:8,padding:'5px 12px',fontSize:11,color:'#7C3AED',fontWeight:700 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:6,background:'rgba(124,58,237,.1)',border:'1px solid rgba(124,58,237,.3)',borderRadius:8,padding:'5px 12px',fontSize:14,color:'#7C3AED',fontWeight:700 }}>
                 <span style={{ width:6,height:6,background:'#7C3AED',borderRadius:'50%',animation:'pulse 2s infinite' }}/>
                 Planning synchronisé
               </div>
             )}
             {role==='business_developer'&&(
-              <div style={{ display:'flex',alignItems:'center',gap:6,background:'rgba(124,58,237,.1)',border:'1px solid rgba(124,58,237,.3)',borderRadius:8,padding:'5px 12px',fontSize:11,color:'#7C3AED',fontWeight:700 }}>
+              <div style={{ display:'flex',alignItems:'center',gap:6,background:'rgba(124,58,237,.1)',border:'1px solid rgba(124,58,237,.3)',borderRadius:8,padding:'5px 12px',fontSize:14,color:'#7C3AED',fontWeight:700 }}>
                 💼 Business Developer
               </div>
             )}
-            <div style={{ fontSize:13,color:C.muted }}>{user.prenom} {user.nom}</div>
-            <div style={{ width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${roleColor},${C.teal})`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,color:'#fff',fontSize:12 }}>
+            <div style={{ fontSize:17,color:C.muted }}>{user.prenom} {user.nom}</div>
+            <div style={{ width:32,height:32,borderRadius:'50%',background:`linear-gradient(135deg,${roleColor},${C.teal})`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,color:'#fff',fontSize:16 }}>
               {user.prenom?.[0]}{user.nom?.[0]}
             </div>
           </div>
