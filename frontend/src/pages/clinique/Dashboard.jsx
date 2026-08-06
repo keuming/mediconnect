@@ -504,8 +504,33 @@ function PageDossiers() {
   const [consultationPourOrdonnance, setConsultationPourOrdonnance] = useState(null);
   const [showEditConsult, setShowEditConsult] = useState(false);
   const [consultationEnEdition, setConsultationEnEdition] = useState(null);
-  const [editForm, setEditForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
+  // Tous les champs du vrai formulaire de consultation (memes champs qu'a
+  // la creation) -- une modification ne doit jamais etre plus limitee que
+  // la creation initiale, sinon des informations deja saisies seraient
+  // impossibles a corriger.
+  const EDIT_FORM_VIDE = {
+    motif:"", hdm_antecedents:"", examen_clinique:"",
+    tension_arterielle:"", temperature:"", pouls:"", poids:"", taille:"", pc:"", fr:"", tso2:"", pb:"", pcui:"",
+    diagnostic:"", diagnostic_predefini:"", hypotheses_diagnostiques:"", code_cim10:"", pathologie:"", gravite:"",
+    traitement:"", traitement_predefini:"",
+    biologie_predefinis:"", biologie_texte:"", imagerie_texte:"", autres_examens:"",
+    notes:"", note_finale:"", date_controle:"",
+  };
+  const [editForm, setEditForm] = useState(EDIT_FORM_VIDE);
   const fe = k => e => setEditForm(p=>({...p,[k]:e.target.value}));
+  const [showDossierMedical, setShowDossierMedical] = useState(false);
+  const [consultationEnLecture, setConsultationEnLecture] = useState(null);
+  // Regroupement partage entre la lecture et l'edition, pour que les deux
+  // vues restent visuellement coherentes entre elles.
+  const RUBRIQUES_CONSULTATION = [
+    { titre:"Motif & antécédents", champs:[["motif","Motif"],["hdm_antecedents","Antécédents"]] },
+    { titre:"Constantes médicales", champs:[["tension_arterielle","Tension artérielle"],["temperature","Température (°C)"],["pouls","Pouls"],["poids","Poids (kg)"],["taille","Taille (cm)"],["pc","Périmètre crânien"],["fr","Fréquence respiratoire"],["tso2","SpO2"],["pb","Périmètre brachial"],["pcui","PC utile"]] },
+    { titre:"Examen clinique", champs:[["examen_clinique","Examen clinique"]] },
+    { titre:"Diagnostic", champs:[["diagnostic","Diagnostic"],["diagnostic_predefini","Diagnostic (CIM-10)"],["hypotheses_diagnostiques","Hypothèses diagnostiques"],["code_cim10","Code CIM-10"],["pathologie","Pathologie"],["gravite","Gravité"]] },
+    { titre:"Traitement", champs:[["traitement","Traitement"],["traitement_predefini","Traitement type"]] },
+    { titre:"Examens complémentaires", champs:[["biologie_predefinis","Biologie (examens)"],["biologie_texte","Biologie (notes)"],["imagerie_texte","Imagerie"],["autres_examens","Autres examens"]] },
+    { titre:"Suivi", champs:[["notes","Notes / évolution"],["note_finale","Note finale"],["date_controle","Date de contrôle"]] },
+  ];
   const [actesSel, setActesSel] = useState([]);
   const [searchActe, setSearchActe] = useState("");
   const [searchCim, setSearchCim] = useState("");
@@ -968,16 +993,19 @@ function PageDossiers() {
                         {c.taille && <span>Taille: {c.taille}cm</span>}
                         {c.updated_at && c.updated_at!==c.created_at && <span>· modifiée le {fmtDate(c.updated_at)}</span>}
                       </div>
-                      {c.statut!=="annulee" && (
-                        <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                      <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                        <button onClick={()=>{ setConsultationEnLecture(c); setShowDossierMedical(true); }} style={{padding:"4px 10px",background:"rgba(255,255,255,.06)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📄 Afficher</button>
+                        {c.statut!=="annulee" && (<>
                           <button onClick={()=>{
                             setConsultationEnEdition(c);
-                            setEditForm({ diagnostic:c.diagnostic||"", traitement:c.traitement||"", notes:c.notes||"", tension_arterielle:c.tension_arterielle||"", temperature:c.temperature||"", poids:c.poids||"", taille:c.taille||"" });
+                            const rempli = { ...EDIT_FORM_VIDE };
+                            Object.keys(rempli).forEach(k => { rempli[k] = c[k] || ""; });
+                            setEditForm(rempli);
                             setShowEditConsult(true);
                           }} style={{padding:"4px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:C.blue,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
                           <button onClick={()=>{ setConsultationPourOrdonnance(c); setShowOrd(true); }} style={{padding:"4px 10px",background:"rgba(10,143,88,.12)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💊 Ordonnance</button>
-                        </div>
-                      )}
+                        </>)}
+                      </div>
                     </div>
                   ))
                 }
@@ -1285,22 +1313,51 @@ function PageDossiers() {
         </div>
       </Modal>
 
-      <Modal open={showEditConsult} onClose={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }} title="✏️ Modifier la consultation" width={560}>
+      <Modal open={showEditConsult} onClose={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }} title="✏️ Modifier la consultation" width={640}>
         <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.2)",borderRadius:9,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.muted}}>
           Chaque champ modifié est journalisé avec la date, l'heure et la seconde exactes.
         </div>
-        <Inp label="Diagnostic" value={editForm.diagnostic} onChange={fe("diagnostic")} />
-        <Inp label="Traitement" value={editForm.traitement} onChange={fe("traitement")} />
-        <Grid cols={2} gap={12}>
-          <Inp label="Tension artérielle" value={editForm.tension_arterielle} onChange={fe("tension_arterielle")} placeholder="120/80" />
-          <Inp label="Température (°C)" value={editForm.temperature} onChange={fe("temperature")} />
-          <Inp label="Poids (kg)" value={editForm.poids} onChange={fe("poids")} />
-          <Inp label="Taille (cm)" value={editForm.taille} onChange={fe("taille")} />
-        </Grid>
-        <Inp label="Notes / évolution" value={editForm.notes} onChange={fe("notes")} placeholder="Nouvelles informations fournies par le patient…" rows={3} />
+        <div style={{maxHeight:"60vh",overflowY:"auto",paddingRight:4}}>
+          {RUBRIQUES_CONSULTATION.map(rub => (
+            <div key={rub.titre} style={{marginBottom:18}}>
+              <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>{rub.titre}</div>
+              <Grid cols={2} gap={12}>
+                {rub.champs.map(([champ,label]) => (
+                  <Inp key={champ} label={label} value={editForm[champ]} onChange={fe(champ)} />
+                ))}
+              </Grid>
+            </div>
+          ))}
+        </div>
         <div style={{display:"flex",gap:10,marginTop:14}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }}>Annuler</Btn>
           <Btn style={{flex:2}} loading={updConsultMut.isPending} onClick={()=>updConsultMut.mutate(editForm)}>Enregistrer les modifications</Btn>
+        </div>
+      </Modal>
+
+      <Modal open={showDossierMedical} onClose={()=>{ setShowDossierMedical(false); setConsultationEnLecture(null); }} title={`📄 Consultation du ${consultationEnLecture?fmtDate(consultationEnLecture.created_at):""}`} width={640}>
+        {consultationEnLecture && (
+          <div style={{maxHeight:"65vh",overflowY:"auto",paddingRight:4}}>
+            <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Médecin : {consultationEnLecture.medecin_nom||"—"}</div>
+            {RUBRIQUES_CONSULTATION.map(rub => {
+              const rempli = rub.champs.filter(([champ]) => consultationEnLecture[champ]);
+              if (!rempli.length) return null;
+              return (
+                <div key={rub.titre} style={{marginBottom:18}}>
+                  <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>{rub.titre}</div>
+                  {rempli.map(([champ,label]) => (
+                    <div key={champ} style={{marginBottom:8,background:C.hover,borderRadius:8,padding:"8px 12px"}}>
+                      <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{label}</div>
+                      <div style={{fontSize:13,color:C.text}}>{consultationEnLecture[champ]}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowDossierMedical(false); setConsultationEnLecture(null); }}>Fermer</Btn>
         </div>
       </Modal>
 
