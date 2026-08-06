@@ -477,6 +477,7 @@ function PagePlanning() {
 // ════════════════════════════════════════════════════════════════════
 function PageDossiers() {
   const { token, user } = useAuthStore();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
@@ -930,7 +931,7 @@ function PageDossiers() {
             {/* Tab: Consultations */}
             {activeTab==="consultations" && (
               <Panel title="Historique des consultations"
-                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>setShowConsult(true)}>+ Consultation</Btn>}>
+                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>navigate('/clinique/consultation', { state: { patientPreselectionne: selected } })}>+ Consultation</Btn>}>
                 {(consults||[]).length===0
                   ? <Empty icon="🩺" title="Aucune consultation" subtitle="Ajoutez la première consultation" />
                   : (consults||[]).map(c=>(
@@ -2185,9 +2186,14 @@ function PageStats() {
 function PageConsultation() {
   const qc = useQueryClient();
   const { token } = useAuthStore();
+  const location = useLocation();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [patient, setPatient] = useState(null);
+  // Patient deja choisi depuis "Dossiers patients" : on saute directement
+  // la recherche par code, unifiant les deux formulaires de consultation
+  // qui existaient jusqu'ici separement (l'un complet ici, l'autre
+  // tronque dans Dossiers) en un seul et meme formulaire reel.
+  const [patient, setPatient] = useState(() => location.state?.patientPreselectionne || null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     motif:"", diagnostic:"", traitement:"", ta:"", temperature:"", poids:"", taille:"", notes:"",
