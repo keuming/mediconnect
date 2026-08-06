@@ -8,6 +8,7 @@ import useThemeStore from "../../context/themeStore";
 import api from "../../services/api";
 
 // ── Palette & helpers ─────────────────────────────────────────────
+/* TAILLES_POLICE_AUGMENTEES_30_POURCENT */
 const PALETTE_DARK = {
   green:"#0A8F58", teal:"#0D9488", amber:"#D97706", red:"#E11D48",
   blue:"#2563EB", purple:"#7C3AED", bg:"#060C12", card:"#0E1620",
@@ -18,7 +19,11 @@ const PALETTE_LIGHT = {
   green:"#0A8F58", teal:"#0D9488", amber:"#B45309", red:"#DC2626",
   blue:"#2563EB", purple:"#7C3AED", bg:"#F5F7FA", card:"#FFFFFF",
   input:"#FFFFFF", hover:"#F0F3F6", border:"#DCE3EA",
-  text:"#101B26", muted:"#5B6B7A", dim:"#8A97A3",
+  // Texte assombri de 15% (demande du medecin : "la couleur est faible").
+  // Uniquement le theme clair -- en sombre le texte est deja quasi-blanc
+  // sur fond quasi-noir, l'assombrir reduirait le contraste au lieu de
+  // l'ameliorer. Valeurs d'origine : text #101B26, muted #5B6B7A, dim #8A97A3.
+  text:"#0E1720", muted:"#4D5B68", dim:"#75808B",
 };
 // Objet mutable partagé par tous les composants "Page*" de ce fichier.
 // AppLayout force le remontage complet (key={mode}) quand le thème change,
@@ -81,11 +86,11 @@ const Card = ({ label, value, icon, color=C.green, sub, onClick }) => (
   <div onClick={onClick} style={{ background:C.input, border:`1.5px solid ${C.border}`, borderRadius:14, padding:"18px 16px", cursor:onClick?"pointer":"default", transition:"border-color .15s" }}
     onMouseOver={e=>onClick&&(e.currentTarget.style.borderColor=color)} onMouseOut={e=>onClick&&(e.currentTarget.style.borderColor=C.border)}>
     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-      {icon && <span style={{ fontSize:18 }}>{icon}</span>}
-      <span style={{ fontSize:11, textTransform:"uppercase", letterSpacing:".5px", color:C.dim, fontWeight:700 }}>{label}</span>
+      {icon && <span style={{ fontSize:23 }}>{icon}</span>}
+      <span style={{ fontSize:14, textTransform:"uppercase", letterSpacing:".5px", color:C.dim, fontWeight:700 }}>{label}</span>
     </div>
-    <div style={{ fontSize:26, fontWeight:900, color, marginBottom:sub?3:0 }}>{value}</div>
-    {sub && <div style={{ fontSize:12, color:C.muted }}>{sub}</div>}
+    <div style={{ fontSize:34, fontWeight:900, color, marginBottom:sub?3:0 }}>{value}</div>
+    {sub && <div style={{ fontSize:16, color:C.muted }}>{sub}</div>}
   </div>
 );
 
@@ -93,7 +98,7 @@ const Panel = ({ title, children, actions, accent, style:s={} }) => (
   <div style={{ background:C.input, border:`1.5px solid ${accent||C.border}`, borderRadius:14, padding:20, ...s }}>
     {(title||actions) && (
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-        {title && <h3 style={{ fontSize:14, fontWeight:700, color:C.text, margin:0 }}>{title}</h3>}
+        {title && <h3 style={{ fontSize:18, fontWeight:700, color:C.text, margin:0 }}>{title}</h3>}
         {actions && <div style={{ display:"flex", gap:8 }}>{actions}</div>}
       </div>
     )}
@@ -107,7 +112,7 @@ const Badge = ({ children, color="gray" }) => {
     blue:[C.blue,"rgba(37,99,235,.15)"], purple:[C.purple,"rgba(124,58,237,.15)"],
     gray:[C.muted,"rgba(255,255,255,.08)"] };
   const [text,bg] = m[color]||m.gray;
-  return <span style={{ background:bg, color:text, fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20 }}>{children}</span>;
+  return <span style={{ background:bg, color:text, fontSize:14, fontWeight:700, padding:"3px 10px", borderRadius:20 }}>{children}</span>;
 };
 
 const Btn = ({ children, onClick, variant="primary", loading, style:s={}, type="button" }) => {
@@ -121,7 +126,7 @@ const Btn = ({ children, onClick, variant="primary", loading, style:s={}, type="
   };
   return (
     <button type={type} onClick={onClick} disabled={loading}
-      style={{ borderRadius:9, padding:"9px 18px", fontSize:13, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?.65:1, fontFamily:"inherit", transition:"opacity .15s", ...v[variant]||v.primary, ...s }}>
+      style={{ borderRadius:9, padding:"9px 18px", fontSize:17, fontWeight:700, cursor:loading?"not-allowed":"pointer", opacity:loading?.65:1, fontFamily:"inherit", transition:"opacity .15s", ...v[variant]||v.primary, ...s }}>
       {loading ? "⏳…" : children}
     </button>
   );
@@ -129,18 +134,18 @@ const Btn = ({ children, onClick, variant="primary", loading, style:s={}, type="
 
 const Inp = ({ label, value, onChange, type="text", placeholder, required, style:s={} }) => (
   <div style={{ marginBottom:14, ...s }}>
-    <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
+    <label style={{ display:"block", fontSize:14, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
     <input type={type} value={value||""} onChange={onChange} placeholder={placeholder} required={required}
-      style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:14, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}
+      style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:18, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}
       onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
   </div>
 );
 
 const Sel = ({ label, value, onChange, options=[], required, style:s={} }) => (
   <div style={{ marginBottom:14, ...s }}>
-    <label style={{ display:"block", fontSize:11, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
+    <label style={{ display:"block", fontSize:14, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
     <select value={value||""} onChange={onChange} required={required}
-      style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:14, outline:"none", fontFamily:"inherit" }}>
+      style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:18, outline:"none", fontFamily:"inherit" }}>
       {options.map(o => typeof o==="string" ? <option key={o}>{o}</option> : <option key={o.v} value={o.v}>{o.l}</option>)}
     </select>
   </div>
@@ -152,8 +157,8 @@ const Modal = ({ open, onClose, title, children, width=520 }) => {
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
       <div onClick={e=>e.stopPropagation()} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:28, width, maxWidth:"95vw", maxHeight:"90vh", overflowY:"auto" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <h2 style={{ fontSize:17, fontWeight:700, color:C.text, margin:0 }}>{title}</h2>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:20, lineHeight:1 }}>✕</button>
+          <h2 style={{ fontSize:22, fontWeight:700, color:C.text, margin:0 }}>{title}</h2>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:C.muted, cursor:"pointer", fontSize:26, lineHeight:1 }}>✕</button>
         </div>
         {children}
       </div>
@@ -164,9 +169,9 @@ const Modal = ({ open, onClose, title, children, width=520 }) => {
 const Loader = () => <div style={{ textAlign:"center", padding:48, color:C.dim }}>⏳ Chargement…</div>;
 const Empty = ({ icon, title, subtitle }) => (
   <div style={{ textAlign:"center", padding:"40px 20px", color:C.dim }}>
-    <div style={{ fontSize:36, marginBottom:10 }}>{icon}</div>
-    {title && <div style={{ fontSize:15, fontWeight:700, color:C.muted, marginBottom:4 }}>{title}</div>}
-    {subtitle && <div style={{ fontSize:13 }}>{subtitle}</div>}
+    <div style={{ fontSize:47, marginBottom:10 }}>{icon}</div>
+    {title && <div style={{ fontSize:20, fontWeight:700, color:C.muted, marginBottom:4 }}>{title}</div>}
+    {subtitle && <div style={{ fontSize:17 }}>{subtitle}</div>}
   </div>
 );
 const Grid = ({ cols=2, gap=16, children, style:s={} }) => (
@@ -181,8 +186,8 @@ const ProgressBar = ({ value, max=100, color=C.green }) => (
 const PageHeader = ({ title, subtitle, actions }) => (
   <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:24 }}>
     <div>
-      <h1 style={{ fontSize:22, fontWeight:800, color:C.text, margin:"0 0 4px" }}>{title}</h1>
-      {subtitle && <p style={{ fontSize:13, color:C.muted, margin:0 }}>{subtitle}</p>}
+      <h1 style={{ fontSize:29, fontWeight:800, color:C.text, margin:"0 0 4px" }}>{title}</h1>
+      {subtitle && <p style={{ fontSize:17, color:C.muted, margin:0 }}>{subtitle}</p>}
     </div>
     {actions && <div style={{ display:"flex", gap:10 }}>{actions}</div>}
   </div>
@@ -190,10 +195,10 @@ const PageHeader = ({ title, subtitle, actions }) => (
 
 const Table = ({ columns, rows, emptyMsg="Aucune donnée" }) => (
   <div style={{ overflowX:"auto" }}>
-    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:17 }}>
       <thead>
         <tr style={{ borderBottom:`1px solid ${C.border}` }}>
-          {columns.map(c=><th key={c.key+c.label} style={{ textAlign:"left", padding:"8px 12px", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".5px", color:C.dim, whiteSpace:"nowrap" }}>{c.label}</th>)}
+          {columns.map(c=><th key={c.key+c.label} style={{ textAlign:"left", padding:"8px 12px", fontSize:13, fontWeight:700, textTransform:"uppercase", letterSpacing:".5px", color:C.dim, whiteSpace:"nowrap" }}>{c.label}</th>)}
         </tr>
       </thead>
       <tbody>
@@ -276,26 +281,26 @@ function PageHome() {
             style={{ background:C.input, border:`1.5px solid ${C.border}`, borderRadius:14, padding:20, cursor:"pointer", textAlign:"left", fontFamily:"inherit", transition:"all .15s" }}
             onMouseOver={e=>{e.currentTarget.style.borderColor=m.color;e.currentTarget.style.transform="translateY(-2px)";}}
             onMouseOut={e=>{e.currentTarget.style.borderColor=C.border;e.currentTarget.style.transform="none";}}>
-            <div style={{ fontSize:28, marginBottom:10 }}>{m.icon}</div>
-            <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>{m.label}</div>
-            <div style={{ fontSize:11, color:C.dim }}>{m.stat}</div>
+            <div style={{ fontSize:36, marginBottom:10 }}>{m.icon}</div>
+            <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:4 }}>{m.label}</div>
+            <div style={{ fontSize:14, color:C.dim }}>{m.stat}</div>
           </button>
         ))}
       </div>
 
       {/* RDV du jour + Alertes */}
       <Grid cols={2} gap={20}>
-        <Panel title="📅 RDV du jour" actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>nav("planning")}>Tout voir →</Btn>}>
+        <Panel title="📅 RDV du jour" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>nav("planning")}>Tout voir →</Btn>}>
           {rdvs.length===0
             ? <Empty icon="📅" title="Aucun RDV aujourd'hui" />
             : rdvs.slice(0,5).map(r=>(
               <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ textAlign:"center", minWidth:48, background:C.hover, borderRadius:8, padding:"4px 8px" }}>
-                  <div style={{ fontSize:14, fontWeight:800, color:C.text }}>{r.heure_rdv?.slice(0,5)||"—"}</div>
+                  <div style={{ fontSize:18, fontWeight:800, color:C.text }}>{r.heure_rdv?.slice(0,5)||"—"}</div>
                 </div>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{r.patient_nom||"Patient"}</div>
-                  <div style={{ fontSize:11, color:C.muted }}>{r.medecin_nom||"—"} · {r.motif||"Consultation"}</div>
+                  <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{r.patient_nom||"Patient"}</div>
+                  <div style={{ fontSize:14, color:C.muted }}>{r.medecin_nom||"—"} · {r.motif||"Consultation"}</div>
                 </div>
                 <Badge color={{ confirme:"green", en_attente:"amber", annule:"red" }[r.statut]||"gray"}>{r.statut||"—"}</Badge>
               </div>
@@ -303,15 +308,15 @@ function PageHome() {
           }
         </Panel>
 
-        <Panel title="⚠️ Alertes stock" actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>nav("stock")}>Gérer →</Btn>}>
+        <Panel title="⚠️ Alertes stock" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>nav("stock")}>Gérer →</Btn>}>
           {alertesStock.length===0
             ? <Empty icon="✅" title="Stock OK" subtitle="Aucune alerte en cours" />
             : alertesStock.slice(0,5).map(s=>(
               <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
-                <span style={{ fontSize:22 }}>💊</span>
+                <span style={{ fontSize:29 }}>💊</span>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{s.nom}</div>
-                  <div style={{ fontSize:11, color:C.muted }}>Stock : {s.quantite} / Seuil : {s.seuil_alerte}</div>
+                  <div style={{ fontSize:17, fontWeight:700, color:C.text }}>{s.nom}</div>
+                  <div style={{ fontSize:14, color:C.muted }}>Stock : {s.quantite} / Seuil : {s.seuil_alerte}</div>
                   <ProgressBar value={s.quantite} max={s.seuil_alerte*2} color={s.quantite===0?C.red:C.amber} />
                 </div>
                 <Badge color={s.quantite===0?"red":"amber"}>{s.quantite===0?"Rupture":"Alerte"}</Badge>
@@ -358,14 +363,14 @@ function PagePlanning() {
 
       {/* Sélecteur de date */}
       <div style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
-        <label style={{ fontSize:12, fontWeight:700, color:C.muted, textTransform:"uppercase" }}>Date</label>
+        <label style={{ fontSize:16, fontWeight:700, color:C.muted, textTransform:"uppercase" }}>Date</label>
         <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
-          style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontSize:14, outline:"none", fontFamily:"inherit" }} />
+          style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontSize:18, outline:"none", fontFamily:"inherit" }} />
         <div style={{ display:"flex", gap:8 }}>
           {["Hier","Aujourd'hui","Demain"].map((l,i)=>{
             const d = new Date(); d.setDate(d.getDate()+(i-1));
             const ds = d.toISOString().split("T")[0];
-            return <Btn key={l} variant={selectedDate===ds?"primary":"outline"} style={{padding:"7px 14px",fontSize:12}} onClick={()=>setSelectedDate(ds)}>{l}</Btn>;
+            return <Btn key={l} variant={selectedDate===ds?"primary":"outline"} style={{padding:"7px 14px",fontSize:16}} onClick={()=>setSelectedDate(ds)}>{l}</Btn>;
           })}
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
@@ -379,17 +384,17 @@ function PagePlanning() {
             ? <Empty icon="📅" title="Aucun RDV ce jour" subtitle="Cliquez sur + Nouveau RDV pour en ajouter" />
             : <Table columns={[
                 { key:"heure_rdv", label:"Heure", render:v=><span style={{fontFamily:"monospace",fontWeight:700,color:C.teal}}>{v?.slice(0,5)||"—"}</span> },
-                { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||"—"}</div><div style={{fontSize:11,color:C.muted}}>{r.assurance||"Sans assurance"}</div></> },
+                { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||"—"}</div><div style={{fontSize:14,color:C.muted}}>{r.assurance||"Sans assurance"}</div></> },
                 { key:"medecin_nom", label:"Médecin", render:v=>v||"—" },
-                { key:"motif", label:"Motif", render:v=><span style={{color:C.muted,fontSize:12}}>{v?.slice(0,40)||"—"}</span> },
+                { key:"motif", label:"Motif", render:v=><span style={{color:C.muted,fontSize:16}}>{v?.slice(0,40)||"—"}</span> },
                 { key:"statut", label:"Statut", render:v=><Badge color={statutColor[v]||"gray"}>{v||"—"}</Badge> },
                 { key:"id", label:"Actions", render:(id,row)=>(
                   <div style={{display:"flex",gap:6}}>
-                    {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>confirmerMut.mutate(id)}>Confirmer</Btn>}
-                    {row.statut==="confirme" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_cours"})}>Démarrer</Btn>}
-                    {row.statut==="en_cours" && <Btn style={{padding:"4px 10px",fontSize:11}} onClick={()=>{ setWorkflowRdv(row); setShowWorkflow(true); }}>🩺 Consulter</Btn>}
-                    {row.statut==="en_cours" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.muted}} onClick={()=>updMut.mutate({id,statut:"termine"})}>Terminer</Btn>}
-                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.red}} onClick={()=>window.confirm("Supprimer ce RDV ?")&&delMut.mutate(id)}>✕</Btn>
+                    {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.green}} onClick={()=>confirmerMut.mutate(id)}>Confirmer</Btn>}
+                    {row.statut==="confirme" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_cours"})}>Démarrer</Btn>}
+                    {row.statut==="en_cours" && <Btn style={{padding:"4px 10px",fontSize:14}} onClick={()=>{ setWorkflowRdv(row); setShowWorkflow(true); }}>🩺 Consulter</Btn>}
+                    {row.statut==="en_cours" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.muted}} onClick={()=>updMut.mutate({id,statut:"termine"})}>Terminer</Btn>}
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.red}} onClick={()=>window.confirm("Supprimer ce RDV ?")&&delMut.mutate(id)}>✕</Btn>
                   </div>
                 )},
               ]} rows={rdvs} />
@@ -429,39 +434,39 @@ function PagePlanning() {
         <div onClick={()=>setRdvConsult(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
           <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:'1px solid #1E2F42',borderRadius:16,padding:28,width:540,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <h2 style={{fontSize:17,fontWeight:700,color:'#F0F4F8',margin:0}}>🩺 {rdvConsult.patient_nom}</h2>
-              <button onClick={()=>setRdvConsult(null)} style={{background:'none',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:20}}>✕</button>
+              <h2 style={{fontSize:22,fontWeight:700,color:'#F0F4F8',margin:0}}>🩺 {rdvConsult.patient_nom}</h2>
+              <button onClick={()=>setRdvConsult(null)} style={{background:'none',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:26}}>✕</button>
             </div>
-            <div style={{background:'rgba(10,143,88,.08)',border:'1px solid rgba(10,143,88,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#8BA0B5'}}>
+            <div style={{background:'rgba(10,143,88,.08)',border:'1px solid rgba(10,143,88,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:16,color:'#8BA0B5'}}>
               {new Date(rdvConsult.date_rdv).toLocaleDateString('fr-CI',{day:'numeric',month:'long'})} · {rdvConsult.heure_rdv?.slice(0,5)} · {rdvConsult.motif||'—'}
             </div>
             {[['Diagnostic *','diagnostic','Hypertension artérielle…'],['Traitement','traitement','Amlodipine 5mg…']].map(([label,key,ph])=>(
               <div key={key} style={{marginBottom:12}}>
-                <label style={{display:'block',fontSize:11,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
+                <label style={{display:'block',fontSize:14,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
                 <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
-                  style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                  style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:18,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
               </div>
             ))}
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:12}}>
               {[['T.A.','tension_arterielle','120/80'],['Temp °C','temperature','37'],['Poids','poids','70'],['Taille','taille','175']].map(([label,key,ph])=>(
                 <div key={key}>
-                  <label style={{display:'block',fontSize:10,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
+                  <label style={{display:'block',fontSize:13,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
                   <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
-                    style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'8px 10px',color:'#F0F4F8',fontSize:12,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                    style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'8px 10px',color:'#F0F4F8',fontSize:16,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
                 </div>
               ))}
             </div>
             <div style={{marginBottom:16}}>
-              <label style={{display:'block',fontSize:11,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>Notes</label>
+              <label style={{display:'block',fontSize:14,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>Notes</label>
               <textarea value={rdvCForm.notes||''} onChange={e=>setRdvCForm(f=>({...f,notes:e.target.value}))} rows={3} placeholder="Observations…"
-                style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:14,resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:18,resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
             </div>
             <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setRdvConsult(null)} style={{flex:1,padding:'10px',borderRadius:9,background:'transparent',border:'1.5px solid #1E2F42',color:'#8BA0B5',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'inherit'}}>Annuler</button>
+              <button onClick={()=>setRdvConsult(null)} style={{flex:1,padding:'10px',borderRadius:9,background:'transparent',border:'1.5px solid #1E2F42',color:'#8BA0B5',cursor:'pointer',fontSize:17,fontWeight:700,fontFamily:'inherit'}}>Annuler</button>
               <button disabled={addConsRdv.isPending} onClick={()=>{
                 if(!rdvCForm.diagnostic){toast.error('Diagnostic requis');return;}
                 addConsRdv.mutate({rdv_id:rdvConsult.id,patient_id:rdvConsult.patient_id,motif:rdvConsult.motif||rdvCForm.diagnostic,...rdvCForm});
-              }} style={{flex:2,padding:'10px',borderRadius:9,background:'linear-gradient(135deg,#0A8F58,#0D9488)',border:'none',color:'#fff',cursor:addConsRdv.isPending?'not-allowed':'pointer',fontSize:13,fontWeight:700,fontFamily:'inherit',opacity:addConsRdv.isPending?.65:1}}>
+              }} style={{flex:2,padding:'10px',borderRadius:9,background:'linear-gradient(135deg,#0A8F58,#0D9488)',border:'none',color:'#fff',cursor:addConsRdv.isPending?'not-allowed':'pointer',fontSize:17,fontWeight:700,fontFamily:'inherit',opacity:addConsRdv.isPending?.65:1}}>
                 {addConsRdv.isPending?'⏳…':'✅ Enregistrer'}
               </button>
             </div>
@@ -898,7 +903,7 @@ function PageDossiers() {
       <div style={{ width:280, flexShrink:0, display:"flex", flexDirection:"column", gap:12 }}>
         <div style={{ display:"flex", gap:10 }}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher un patient…"
-            style={{ flex:1, background:C.input, border:`1px solid ${C.border}`, borderRadius:9, padding:"9px 12px", color:C.text, fontSize:13, outline:"none", fontFamily:"inherit" }} />
+            style={{ flex:1, background:C.input, border:`1px solid ${C.border}`, borderRadius:9, padding:"9px 12px", color:C.text, fontSize:17, outline:"none", fontFamily:"inherit" }} />
           <Btn style={{flexShrink:0,padding:"9px 12px"}} onClick={()=>setShowAdd(true)}>+</Btn>
         </div>
         <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", gap:6 }}>
@@ -908,14 +913,14 @@ function PageDossiers() {
               <button key={p.id} onClick={()=>setSelected(p)}
                 style={{ background:selected?.id===p.id?C.input:C.card, border:`1.5px solid ${selected?.id===p.id?C.green:C.border}`, borderRadius:12, padding:"12px 14px", cursor:"pointer", textAlign:"left", fontFamily:"inherit", transition:"all .15s" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <div style={{ width:36, height:36, background:`linear-gradient(135deg,${C.green},${C.teal})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:14, flexShrink:0 }}>
+                  <div style={{ width:36, height:36, background:`linear-gradient(135deg,${C.green},${C.teal})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:18, flexShrink:0 }}>
                     {p.prenom?.[0]}{p.nom?.[0]}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.prenom} {p.nom}</div>
-                    <div style={{ fontSize:11, color:C.muted }}>{p.telephone||p.email||p.code_secret||"—"}</div>
+                    <div style={{ fontSize:17, fontWeight:700, color:C.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.prenom} {p.nom}</div>
+                    <div style={{ fontSize:14, color:C.muted }}>{p.telephone||p.email||p.code_secret||"—"}</div>
                   </div>
-                  {p.groupe_sanguin && <span style={{ fontSize:10, fontWeight:700, color:C.red, background:"rgba(225,29,72,.1)", padding:"2px 6px", borderRadius:6 }}>{p.groupe_sanguin}</span>}
+                  {p.groupe_sanguin && <span style={{ fontSize:13, fontWeight:700, color:C.red, background:"rgba(225,29,72,.1)", padding:"2px 6px", borderRadius:6 }}>{p.groupe_sanguin}</span>}
                 </div>
               </button>
             ))
@@ -931,12 +936,12 @@ function PageDossiers() {
             {/* En-tête patient */}
             <Panel>
               <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:16 }}>
-                <div style={{ width:56, height:56, background:`linear-gradient(135deg,${C.green},${C.teal})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#fff", fontSize:20 }}>
+                <div style={{ width:56, height:56, background:`linear-gradient(135deg,${C.green},${C.teal})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:"#fff", fontSize:26 }}>
                   {selected.prenom?.[0]}{selected.nom?.[0]}
                 </div>
                 <div style={{ flex:1 }}>
-                  <h2 style={{ margin:0, fontSize:18, fontWeight:800, color:C.text }}>{selected.prenom} {selected.nom}</h2>
-                  <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>
+                  <h2 style={{ margin:0, fontSize:23, fontWeight:800, color:C.text }}>{selected.prenom} {selected.nom}</h2>
+                  <div style={{ fontSize:17, color:C.muted, marginTop:2 }}>
                     {selected.date_naissance && `Né(e) le ${fmtDate(selected.date_naissance)} · `}
                     {selected.telephone||""} {selected.email&&`· ${selected.email}`}
                   </div>
@@ -947,12 +952,12 @@ function PageDossiers() {
                 </div>
               </div>
               {selected.allergies && (
-                <div style={{ background:"rgba(225,29,72,.08)", border:"1px solid rgba(225,29,72,.2)", borderRadius:8, padding:"8px 14px", fontSize:12, color:C.red, marginBottom:12 }}>
+                <div style={{ background:"rgba(225,29,72,.08)", border:"1px solid rgba(225,29,72,.2)", borderRadius:8, padding:"8px 14px", fontSize:16, color:C.red, marginBottom:12 }}>
                   ⚠️ <strong>Allergies :</strong> {selected.allergies}
                 </div>
               )}
               {selected.antecedents && (
-                <div style={{ background:"rgba(37,99,235,.08)", border:"1px solid rgba(37,99,235,.2)", borderRadius:8, padding:"8px 14px", fontSize:12, color:C.blue }}>
+                <div style={{ background:"rgba(37,99,235,.08)", border:"1px solid rgba(37,99,235,.2)", borderRadius:8, padding:"8px 14px", fontSize:16, color:C.blue }}>
                   📋 <strong>Antécédents :</strong> {selected.antecedents}
                 </div>
               )}
@@ -962,7 +967,7 @@ function PageDossiers() {
             <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4 }}>
               {TABS.map(t=>(
                 <button key={t.key} onClick={()=>setActiveTab(t.key)}
-                  style={{ flex:1, background:activeTab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"8px 4px", cursor:"pointer", fontFamily:"inherit", color:activeTab===t.key?C.text:C.muted, fontSize:12, fontWeight:activeTab===t.key?700:400, transition:"all .15s" }}>
+                  style={{ flex:1, background:activeTab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"8px 4px", cursor:"pointer", fontFamily:"inherit", color:activeTab===t.key?C.text:C.muted, fontSize:16, fontWeight:activeTab===t.key?700:400, transition:"all .15s" }}>
                   {t.icon} {t.label}
                 </button>
               ))}
@@ -974,8 +979,8 @@ function PageDossiers() {
                 <Grid cols={2} gap={12}>
                   {[["Prénom",selected.prenom],["Nom",selected.nom],["Téléphone",selected.telephone],["Email",selected.email],["Date de naissance",fmtDate(selected.date_naissance)],["Groupe sanguin",selected.groupe_sanguin],["Code secret",selected.code_secret]].map(([k,v])=>(
                     <div key={k} style={{ background:C.hover, borderRadius:8, padding:"10px 14px" }}>
-                      <div style={{ fontSize:10, color:C.dim, fontWeight:700, textTransform:"uppercase", marginBottom:2 }}>{k}</div>
-                      <div style={{ fontSize:14, color:C.text, fontWeight:600 }}>{v||"—"}</div>
+                      <div style={{ fontSize:13, color:C.dim, fontWeight:700, textTransform:"uppercase", marginBottom:2 }}>{k}</div>
+                      <div style={{ fontSize:18, color:C.text, fontWeight:600 }}>{v||"—"}</div>
                     </div>
                   ))}
                 </Grid>
@@ -989,35 +994,35 @@ function PageDossiers() {
                   <div style={{display:"flex",gap:2,background:C.input,borderRadius:8,padding:2}}>
                     {[["cartes","🗂️"],["tableau","📊"]].map(([v,ic])=>(
                       <button key={v} onClick={()=>setVueHistorique(v)}
-                        style={{padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",background:vueHistorique===v?C.hover:"transparent",color:vueHistorique===v?C.text:C.muted}}>
+                        style={{padding:"5px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:16,fontFamily:"inherit",background:vueHistorique===v?C.hover:"transparent",color:vueHistorique===v?C.text:C.muted}}>
                         {ic}
                       </button>
                     ))}
                   </div>
-                  <Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>navigate('/clinique/consultation', { state: { patientPreselectionne: selected } })}>+ Consultation</Btn>
+                  <Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>navigate('/clinique/consultation', { state: { patientPreselectionne: selected } })}>+ Consultation</Btn>
                 </div>}>
                 {(consults||[]).length===0 ? (
                   <Empty icon="🩺" title="Aucune consultation" subtitle="Ajoutez la première consultation" />
                 ) : vueHistorique==="tableau" ? (
                   <div style={{overflowX:"auto"}}>
                     <div style={{display:"grid",gridTemplateColumns:`110px repeat(${RUBRIQUES_CONSULTATION.length},minmax(160px,1fr))`,gap:1,minWidth:900}}>
-                      <div style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:C.dim,textTransform:"uppercase",background:C.input}}>Date</div>
+                      <div style={{padding:"8px 10px",fontSize:13,fontWeight:800,color:C.dim,textTransform:"uppercase",background:C.input}}>Date</div>
                       {RUBRIQUES_CONSULTATION.map(rub=>(
-                        <div key={rub.titre} style={{padding:"8px 10px",fontSize:10,fontWeight:800,color:C.dim,textTransform:"uppercase",background:C.input}}>{rub.titre}</div>
+                        <div key={rub.titre} style={{padding:"8px 10px",fontSize:13,fontWeight:800,color:C.dim,textTransform:"uppercase",background:C.input}}>{rub.titre}</div>
                       ))}
                       {(consults||[]).map(c=>(
                         <React.Fragment key={c.id}>
-                          <div style={{padding:"10px",fontSize:12,fontWeight:700,color:c.statut==="annulee"?C.dim:C.teal,background:C.hover,opacity:c.statut==="annulee"?.5:1}}>
+                          <div style={{padding:"10px",fontSize:16,fontWeight:700,color:c.statut==="annulee"?C.dim:C.teal,background:C.hover,opacity:c.statut==="annulee"?.5:1}}>
                             {fmtDate(c.created_at)}
-                            {c.statut==="annulee" && <div style={{fontSize:9,color:C.red}}>Annulée</div>}
+                            {c.statut==="annulee" && <div style={{fontSize:12,color:C.red}}>Annulée</div>}
                           </div>
                           {RUBRIQUES_CONSULTATION.map(rub=>{
                             const rempli = rub.champs.filter(([champ])=>c[champ]);
                             return (
-                              <div key={rub.titre} style={{padding:"10px",fontSize:11,color:C.text,background:C.hover,opacity:c.statut==="annulee"?.5:1}}>
+                              <div key={rub.titre} style={{padding:"10px",fontSize:14,color:C.text,background:C.hover,opacity:c.statut==="annulee"?.5:1}}>
                                 {rempli.length===0 ? <span style={{color:C.dim}}>—</span> : rempli.map(([champ,label])=>(
                                   <div key={champ} style={{marginBottom:4}}>
-                                    <span style={{color:C.dim,fontSize:9,textTransform:"uppercase",display:"block"}}>{label}</span>
+                                    <span style={{color:C.dim,fontSize:12,textTransform:"uppercase",display:"block"}}>{label}</span>
                                     {c[champ]}
                                   </div>
                                 ))}
@@ -1031,14 +1036,14 @@ function PageDossiers() {
                 ) : (consults||[]).map(c=>(
                     <div key={c.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10, opacity:c.statut==="annulee"?.5:1 }}>
                       <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
-                        <span style={{ fontSize:12, fontWeight:700, color:C.teal }}>{fmtDate(c.created_at)}</span>
-                        <span style={{ fontSize:12, color:C.muted }}>{c.medecin_nom||"—"}</span>
+                        <span style={{ fontSize:16, fontWeight:700, color:C.teal }}>{fmtDate(c.created_at)}</span>
+                        <span style={{ fontSize:16, color:C.muted }}>{c.medecin_nom||"—"}</span>
                       </div>
                       {c.statut==="annulee" && <Badge color="red">Annulée</Badge>}
-                      <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4, marginTop:c.statut==="annulee"?6:0 }}>Diagnostic : {c.diagnostic||"—"}</div>
-                      {c.traitement && <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>Traitement : {c.traitement}</div>}
-                      {c.notes && <div style={{ fontSize:12, color:C.muted, fontStyle:"italic" }}>{c.notes}</div>}
-                      <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11, color:C.dim }}>
+                      <div style={{ fontSize:17, fontWeight:700, color:C.text, marginBottom:4, marginTop:c.statut==="annulee"?6:0 }}>Diagnostic : {c.diagnostic||"—"}</div>
+                      {c.traitement && <div style={{ fontSize:16, color:C.muted, marginBottom:4 }}>Traitement : {c.traitement}</div>}
+                      {c.notes && <div style={{ fontSize:16, color:C.muted, fontStyle:"italic" }}>{c.notes}</div>}
+                      <div style={{ display:"flex", gap:12, marginTop:8, fontSize:14, color:C.dim }}>
                         {c.tension_arterielle && <span>TA: {c.tension_arterielle}</span>}
                         {c.temperature && <span>T°: {c.temperature}°C</span>}
                         {c.poids && <span>Poids: {c.poids}kg</span>}
@@ -1046,7 +1051,7 @@ function PageDossiers() {
                         {c.updated_at && c.updated_at!==c.created_at && <span>· modifiée le {fmtDate(c.updated_at)}</span>}
                       </div>
                       <div style={{ display:"flex", gap:8, marginTop:10 }}>
-                        <button onClick={()=>{ setConsultationEnLecture(c); setShowDossierMedical(true); }} style={{padding:"4px 10px",background:"rgba(255,255,255,.06)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📄 Afficher</button>
+                        <button onClick={()=>{ setConsultationEnLecture(c); setShowDossierMedical(true); }} style={{padding:"4px 10px",background:"rgba(255,255,255,.06)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📄 Afficher</button>
                         {c.statut!=="annulee" && (<>
                           <button onClick={()=>{
                             setConsultationEnEdition(c);
@@ -1054,8 +1059,8 @@ function PageDossiers() {
                             Object.keys(rempli).forEach(k => { rempli[k] = c[k] || ""; });
                             setEditForm(rempli);
                             setShowEditConsult(true);
-                          }} style={{padding:"4px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:C.blue,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
-                          <button onClick={()=>{ setConsultationPourOrdonnance(c); setShowOrd(true); }} style={{padding:"4px 10px",background:"rgba(10,143,88,.12)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💊 Ordonnance</button>
+                          }} style={{padding:"4px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:C.blue,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
+                          <button onClick={()=>{ setConsultationPourOrdonnance(c); setShowOrd(true); }} style={{padding:"4px 10px",background:"rgba(10,143,88,.12)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💊 Ordonnance</button>
                         </>)}
                       </div>
                     </div>
@@ -1067,7 +1072,7 @@ function PageDossiers() {
             {/* Tab: Ordonnances */}
             {activeTab==="ordonnances" && (
               <Panel title="Ordonnances et prescriptions"
-                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>setShowOrd(true)}>+ Ordonnance</Btn>}>
+                actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowOrd(true)}>+ Ordonnance</Btn>}>
                 {(ords||[]).length===0
                   ? <Empty icon="💊" title="Aucune ordonnance" />
                   : (ords||[]).map(o=>(
@@ -1075,16 +1080,16 @@ function PageDossiers() {
                       <div style={{ width:3, background:C.green, borderRadius:2, flexShrink:0 }} />
                       <div style={{ flex:1 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                          <span style={{ fontSize:12, fontWeight:700, color:C.green }}>Ordonnance du {fmtDate(o.created_at)}</span>
+                          <span style={{ fontSize:16, fontWeight:700, color:C.green }}>Ordonnance du {fmtDate(o.created_at)}</span>
                           <div style={{display:"flex",gap:8,alignItems:"center"}}>
                             <Badge color="green">Active</Badge>
-                            <button onClick={()=>imprimerOrdonnance(o)} style={{padding:"3px 10px",background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ Imprimer</button>
+                            <button onClick={()=>imprimerOrdonnance(o)} style={{padding:"3px 10px",background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ Imprimer</button>
                           </div>
                         </div>
-                        <div style={{ fontSize:13, color:C.text, marginBottom:4, fontWeight:600 }}>{o.medicaments||"—"}</div>
-                        {o.posologie && <div style={{ fontSize:12, color:C.muted }}>Posologie : {o.posologie}</div>}
-                        {o.duree && <div style={{ fontSize:12, color:C.muted }}>Durée : {o.duree}</div>}
-                        {o.notes_ord && <div style={{ fontSize:12, color:C.dim, marginTop:4, fontStyle:"italic" }}>{o.notes_ord}</div>}
+                        <div style={{ fontSize:17, color:C.text, marginBottom:4, fontWeight:600 }}>{o.medicaments||"—"}</div>
+                        {o.posologie && <div style={{ fontSize:16, color:C.muted }}>Posologie : {o.posologie}</div>}
+                        {o.duree && <div style={{ fontSize:16, color:C.muted }}>Durée : {o.duree}</div>}
+                        {o.notes_ord && <div style={{ fontSize:16, color:C.dim, marginTop:4, fontStyle:"italic" }}>{o.notes_ord}</div>}
                       </div>
                     </div>
                   ))
@@ -1095,7 +1100,7 @@ function PageDossiers() {
             {/* Tab: Examens */}
             {activeTab==="examens" && (
               <Panel title="Résultats d'examens et imagerie"
-                actions={<Btn style={{padding:"6px 14px",fontSize:12}} onClick={()=>{ setShowExamen(true); setPatientCible(selected||null); if(selected) setCodeRecherche(selected.code_secret||""); }}>🔬 Demander un examen</Btn>}>
+                actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>{ setShowExamen(true); setPatientCible(selected||null); if(selected) setCodeRecherche(selected.code_secret||""); }}>🔬 Demander un examen</Btn>}>
                 {(examens||[]).length===0
                   ? <Empty icon="🔬" title="Aucun résultat" subtitle="Les résultats labo et imagerie apparaîtront ici dès leur saisie"/>
                   : (examens||[]).map(e=>(
@@ -1103,16 +1108,16 @@ function PageDossiers() {
                       <div style={{width:3,background:e.type_source==="labo"?C.purple:C.blue,borderRadius:2,flexShrink:0}}/>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                          <span style={{fontSize:12,fontWeight:700,color:e.type_source==="labo"?C.purple:C.blue}}>
+                          <span style={{fontSize:16,fontWeight:700,color:e.type_source==="labo"?C.purple:C.blue}}>
                             {e.type_source==="labo"?"🔬 Labo":"🩻 Imagerie"} · {e.type_analyse||e.type_examen||"—"}
                           </span>
                           <Badge color={e.statut==="valide"?"green":e.statut==="en_attente"?"amber":"gray"}>{e.statut||"—"}</Badge>
                         </div>
-                        {e.interpretation && <div style={{fontSize:13,color:C.text,fontWeight:600,marginBottom:4}}>{e.interpretation}</div>}
-                        {e.resultat && <div style={{fontSize:13,color:C.text,marginBottom:4}}>{e.resultat}</div>}
-                        {e.observations && <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>{e.observations}</div>}
-                        {e.valeurs && <div style={{fontSize:12,color:C.muted}}>Valeurs : {typeof e.valeurs==="object"?Object.entries(e.valeurs).map(([k,v])=>`${k}:${v}`).join(", "):e.valeurs}</div>}
-                        <div style={{fontSize:11,color:C.dim,marginTop:4}}>{fmtDate(e.created_at)}</div>
+                        {e.interpretation && <div style={{fontSize:17,color:C.text,fontWeight:600,marginBottom:4}}>{e.interpretation}</div>}
+                        {e.resultat && <div style={{fontSize:17,color:C.text,marginBottom:4}}>{e.resultat}</div>}
+                        {e.observations && <div style={{fontSize:16,color:C.muted,fontStyle:"italic"}}>{e.observations}</div>}
+                        {e.valeurs && <div style={{fontSize:16,color:C.muted}}>Valeurs : {typeof e.valeurs==="object"?Object.entries(e.valeurs).map(([k,v])=>`${k}:${v}`).join(", "):e.valeurs}</div>}
+                        <div style={{fontSize:14,color:C.dim,marginTop:4}}>{fmtDate(e.created_at)}</div>
                       </div>
                     </div>
                   ))
@@ -1123,27 +1128,27 @@ function PageDossiers() {
             {/* Tab: Factures */}
             {activeTab==="factures" && (
               <Panel title="Facturation des actes"
-                actions={(pec?.data||[]).length>0?<Btn style={{padding:"6px 14px",fontSize:12}} onClick={imprimerFacture}>🖨️ Imprimer la facture</Btn>:null}>
+                actions={(pec?.data||[]).length>0?<Btn style={{padding:"6px 14px",fontSize:16}} onClick={imprimerFacture}>🖨️ Imprimer la facture</Btn>:null}>
                 {(pec?.data||[]).length===0
                   ? <Empty icon="📄" title="Aucun acte facturable" subtitle="Les actes saisis lors de la prise en charge apparaîtront ici"/>
                   : <>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:14}}>
                         {[["Total actes",pec.totaux.total,C.text],["Part assurance",pec.totaux.part_assurance,C.teal],["Net patient",pec.totaux.part_patient,C.green]].map(([l,v,col])=>(
                           <div key={l} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px"}}>
-                            <div style={{fontSize:11,color:C.dim,marginBottom:4}}>{l}</div>
-                            <div style={{fontSize:19,fontWeight:800,color:col}}>{fmtF(v)} F</div>
+                            <div style={{fontSize:14,color:C.dim,marginBottom:4}}>{l}</div>
+                            <div style={{fontSize:25,fontWeight:800,color:col}}>{fmtF(v)} F</div>
                           </div>
                         ))}
                       </div>
                       {(pec.data||[]).map(l=>(
                         <div key={l.id} style={{background:C.hover,borderRadius:9,padding:"11px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
                           <div style={{flex:1}}>
-                            <div style={{fontSize:13,fontWeight:600,color:C.text}}>{l.libelle_acte}</div>
-                            <div style={{fontSize:11,color:C.dim}}>{l.code_acte} · {l.quantite} × {fmtF(l.prix_unitaire)} F · PEC {l.taux_assurance}%</div>
+                            <div style={{fontSize:17,fontWeight:600,color:C.text}}>{l.libelle_acte}</div>
+                            <div style={{fontSize:14,color:C.dim}}>{l.code_acte} · {l.quantite} × {fmtF(l.prix_unitaire)} F · PEC {l.taux_assurance}%</div>
                           </div>
                           <div style={{textAlign:"right"}}>
-                            <div style={{fontSize:14,fontWeight:800,color:C.green}}>{fmtF(l.part_patient)} F</div>
-                            {Number(l.part_assurance)>0&&<div style={{fontSize:10,color:C.teal}}>assurance {fmtF(l.part_assurance)} F</div>}
+                            <div style={{fontSize:18,fontWeight:800,color:C.green}}>{fmtF(l.part_patient)} F</div>
+                            {Number(l.part_assurance)>0&&<div style={{fontSize:13,color:C.teal}}>assurance {fmtF(l.part_assurance)} F</div>}
                           </div>
                         </div>
                       ))}
@@ -1170,11 +1175,11 @@ function PageDossiers() {
 
         {/* Couverture assurance */}
         <div style={{marginTop:8}}>
-          <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:8}}>Couverture Assurance</label>
+          <label style={{fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:8}}>Couverture Assurance</label>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
             {[{val:false,label:"🚫 Non assuré"},{val:true,label:"🛡️ Assuré"}].map(opt=>(
               <button key={String(opt.val)} onClick={()=>setPForm(p=>({...p,est_assure:opt.val,assurance:opt.val?p.assurance:"",numero_police:opt.val?p.numero_police:""}))}
-                style={{flex:1,padding:"10px",borderRadius:9,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",
+                style={{flex:1,padding:"10px",borderRadius:9,fontWeight:700,fontSize:17,cursor:"pointer",fontFamily:"inherit",
                   background:pForm.est_assure===opt.val?(opt.val?"rgba(10,143,88,.15)":"rgba(239,68,68,.1)"):"transparent",
                   border:`1.5px solid ${pForm.est_assure===opt.val?(opt.val?C.green:"#EF4444"):C.border}`,
                   color:pForm.est_assure===opt.val?(opt.val?C.green:"#EF4444"):C.muted}}>
@@ -1185,9 +1190,9 @@ function PageDossiers() {
           {pForm.est_assure&&(
             <Grid cols={2} gap={10}>
               <div>
-                <label style={{fontSize:11,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>COMPAGNIE D'ASSURANCE</label>
+                <label style={{fontSize:14,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>COMPAGNIE D'ASSURANCE</label>
                 <select value={pForm.assurance} onChange={e=>setPForm(p=>({...p,assurance:e.target.value}))}
-                  style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:pForm.assurance?C.text:C.muted,fontSize:13,outline:"none"}}>
+                  style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:pForm.assurance?C.text:C.muted,fontSize:17,outline:"none"}}>
                   <option value="">-- Sélectionner --</option>
                   {["NSIA Vie CI","NSIA IARDT","Allianz CI","AXA CI","Saham Assurance CI","Sunu Assurances","CNAM (CMU)","Mutuelles CGRAE","Mutuelles MUGEFCI","AMI Assurances","Colina","Prima Assurance","Gras Savoye","SIA (Société Ivoirienne d'Assurance)","Autre"].map(a=>(
                     <option key={a} value={a}>{a}</option>
@@ -1201,21 +1206,21 @@ function PageDossiers() {
 
         {/* Actes de la prise en charge */}
         <div style={{marginTop:14}}>
-          <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:8}}>Actes / Motif de venue</label>
+          <label style={{fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:8}}>Actes / Motif de venue</label>
           <input value={searchActe} onChange={e=>setSearchActe(e.target.value)} placeholder="Rechercher un acte (consultation, radio, NFS...)"
-            style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:17,outline:"none",marginBottom:8,boxSizing:"border-box"}}/>
           <div style={{maxHeight:150,overflowY:"auto",marginBottom:10}}>
             {(catalogue||[]).filter(a=>!searchActe||`${a.code} ${a.libelle} ${a.categorie||""}`.toLowerCase().includes(searchActe.toLowerCase())).map(a=>{
               const sel = actesSel.some(x=>x.code===a.code);
               return (
                 <div key={a.id} onClick={()=>toggleActe(a)} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",borderRadius:7,cursor:"pointer",marginBottom:4,
                   background:sel?"rgba(10,143,88,.12)":"transparent",border:`1px solid ${sel?C.green:"transparent"}`}}>
-                  <span style={{fontSize:15,color:sel?C.green:C.dim}}>{sel?"☑":"☐"}</span>
+                  <span style={{fontSize:20,color:sel?C.green:C.dim}}>{sel?"☑":"☐"}</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:600,color:C.text}}>{a.libelle}</div>
-                    <div style={{fontSize:10,color:C.dim}}>{a.code} · {a.categorie} · prise en charge {a.taux_assurance}%</div>
+                    <div style={{fontSize:16,fontWeight:600,color:C.text}}>{a.libelle}</div>
+                    <div style={{fontSize:13,color:C.dim}}>{a.code} · {a.categorie} · prise en charge {a.taux_assurance}%</div>
                   </div>
-                  <span style={{fontSize:12,fontWeight:800,color:C.green}}>{fmtF(a.tarif_base)} F</span>
+                  <span style={{fontSize:16,fontWeight:800,color:C.green}}>{fmtF(a.tarif_base)} F</span>
                 </div>
               );
             })}
@@ -1224,16 +1229,16 @@ function PageDossiers() {
             <div style={{background:"rgba(10,143,88,.06)",border:"1px solid rgba(10,143,88,.2)",borderRadius:9,padding:12}}>
               {actesSel.map(a=>(
                 <div key={a.code} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                  <span style={{flex:1,fontSize:12,color:C.text}}>{a.libelle}</span>
+                  <span style={{flex:1,fontSize:16,color:C.text}}>{a.libelle}</span>
                   <input type="number" min={1} value={a.quantite} onChange={e=>setActesSel(p=>p.map(x=>x.code===a.code?{...x,quantite:Math.max(1,parseInt(e.target.value)||1)}:x))}
-                    style={{width:48,padding:"3px 6px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:5,color:C.text,fontSize:12,textAlign:"center"}}/>
-                  <span style={{fontSize:12,fontWeight:700,color:C.green,minWidth:70,textAlign:"right"}}>{fmtF(a.prix_unitaire*a.quantite)} F</span>
+                    style={{width:48,padding:"3px 6px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:5,color:C.text,fontSize:16,textAlign:"center"}}/>
+                  <span style={{fontSize:16,fontWeight:700,color:C.green,minWidth:70,textAlign:"right"}}>{fmtF(a.prix_unitaire*a.quantite)} F</span>
                 </div>
               ))}
-              <div style={{borderTop:`1px solid ${C.border}`,marginTop:8,paddingTop:8,fontSize:12}}>
+              <div style={{borderTop:`1px solid ${C.border}`,marginTop:8,paddingTop:8,fontSize:16}}>
                 <div style={{display:"flex",justifyContent:"space-between",color:C.muted}}><span>Total actes</span><strong style={{color:C.text}}>{fmtF(totalActes)} F</strong></div>
                 {pForm.est_assure&&<div style={{display:"flex",justifyContent:"space-between",color:C.muted,marginTop:3}}><span>Part assurance ({tauxDefaut}%)</span><strong style={{color:C.teal}}>{fmtF(partAss)} F</strong></div>}
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:14}}><strong style={{color:C.text}}>À payer par le patient</strong><strong style={{color:C.green,fontSize:16}}>{fmtF(totalActes-partAss)} F</strong></div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:5,fontSize:18}}><strong style={{color:C.text}}>À payer par le patient</strong><strong style={{color:C.green,fontSize:21}}>{fmtF(totalActes-partAss)} F</strong></div>
               </div>
             </div>
           )}
@@ -1249,23 +1254,23 @@ function PageDossiers() {
       {newPatient&&(
         <div onClick={()=>setNewPatient(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#0E1620",border:"1px solid #1E2F42",borderRadius:18,padding:32,width:420,maxWidth:"95vw",textAlign:"center"}}>
-            <div style={{width:64,height:64,background:"linear-gradient(135deg,#0A8F58,#0D9488)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,margin:"0 auto 16px"}}>✅</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#F0F4F8",marginBottom:4}}>
+            <div style={{width:64,height:64,background:"linear-gradient(135deg,#0A8F58,#0D9488)",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,margin:"0 auto 16px"}}>✅</div>
+            <div style={{fontSize:23,fontWeight:800,color:"#F0F4F8",marginBottom:4}}>
               {newPatient.prenom||"—"} {newPatient.nom||"—"}
             </div>
-            <div style={{fontSize:13,color:"#8BA0B5",marginBottom:20}}>Dossier médical créé avec succès</div>
+            <div style={{fontSize:17,color:"#8BA0B5",marginBottom:20}}>Dossier médical créé avec succès</div>
             <div style={{background:"#141E2B",border:"1px solid #1E2F42",borderRadius:12,padding:20,marginBottom:20}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Code secret patient</div>
-              <div style={{fontSize:36,fontWeight:900,color:"#0A8F58",letterSpacing:6,fontFamily:"monospace"}}>
+              <div style={{fontSize:14,fontWeight:700,color:"#8BA0B5",textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Code secret patient</div>
+              <div style={{fontSize:47,fontWeight:900,color:"#0A8F58",letterSpacing:6,fontFamily:"monospace"}}>
                 {newPatient.code_secret||"—"}
               </div>
-              <div style={{fontSize:11,color:"#4E657A",marginTop:8}}>Remettez ce code au patient — il lui permettra d'accéder à ses soins</div>
+              <div style={{fontSize:14,color:"#4E657A",marginTop:8}}>Remettez ce code au patient — il lui permettra d'accéder à ses soins</div>
             </div>
             <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setNewPatient(null)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:"1.5px solid #1E2F42",color:"#8BA0B5",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Fermer</button>
+              <button onClick={()=>setNewPatient(null)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:"1.5px solid #1E2F42",color:"#8BA0B5",cursor:"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>Fermer</button>
               <button onClick={()=>{
                 if(navigator.clipboard) navigator.clipboard.writeText(newPatient.code_secret||"").then(()=>toast.success("Code copié !"));
-              }} style={{flex:1,padding:"10px",borderRadius:9,background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",color:"#0A8F58",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>📋 Copier</button>
+              }} style={{flex:1,padding:"10px",borderRadius:9,background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",color:"#0A8F58",cursor:"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>📋 Copier</button>
             </div>
           </div>
         </div>
@@ -1274,21 +1279,21 @@ function PageDossiers() {
       {/* Modal: Nouvelle consultation */}
       <Modal open={showConsult} onClose={()=>setShowConsult(false)} title={`🩺 Consultation — ${selected?.prenom} ${selected?.nom}`} width={560}>
         <div style={{marginBottom:12}}>
-          <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:5}}>Affection (CIM-10)</label>
+          <label style={{fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",display:"block",marginBottom:5}}>Affection (CIM-10)</label>
           <input value={searchCim} onChange={e=>setSearchCim(e.target.value)} placeholder="Rechercher : paludisme, HTA, diabète..."
-            style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${codeCim?C.green:C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${codeCim?C.green:C.border}`,borderRadius:8,color:C.text,fontSize:17,outline:"none",boxSizing:"border-box"}}/>
           {searchCim&&!codeCim&&(
             <div style={{maxHeight:130,overflowY:"auto",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8}}>
               {(affections||[]).filter(a=>`${a.code} ${a.libelle}`.toLowerCase().includes(searchCim.toLowerCase())).slice(0,20).map(a=>(
                 <div key={a.code} onClick={()=>{setCodeCim(a.code);setSearchCim(`${a.code} — ${a.libelle}`);setCForm(p=>({...p,diagnostic:p.diagnostic||a.libelle}));}}
-                  style={{padding:"7px 10px",cursor:"pointer",fontSize:12,color:C.text,borderBottom:`1px solid ${C.border}`}}>
+                  style={{padding:"7px 10px",cursor:"pointer",fontSize:16,color:C.text,borderBottom:`1px solid ${C.border}`}}>
                   <strong style={{color:C.green}}>{a.code}</strong> — {a.libelle}
-                  <div style={{fontSize:10,color:C.dim}}>{a.chapitre}</div>
+                  <div style={{fontSize:13,color:C.dim}}>{a.chapitre}</div>
                 </div>
               ))}
             </div>
           )}
-          {codeCim&&<button onClick={()=>{setCodeCim("");setSearchCim("");}} style={{marginTop:5,background:"none",border:"none",color:C.teal,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>× Changer d'affection</button>}
+          {codeCim&&<button onClick={()=>{setCodeCim("");setSearchCim("");}} style={{marginTop:5,background:"none",border:"none",color:C.teal,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>× Changer d'affection</button>}
         </div>
         <Inp label="Diagnostic *" required value={cForm.diagnostic} onChange={fc("diagnostic")} placeholder="Ex: Hypertension artérielle" />
         <Inp label="Traitement prescrit" value={cForm.traitement} onChange={fc("traitement")} placeholder="Ex: Amlodipine 5mg" />
@@ -1299,9 +1304,9 @@ function PageDossiers() {
           <Inp label="Taille (cm)" value={cForm.taille} onChange={fc("taille")} placeholder="175" type="number" />
         </Grid>
         <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Notes cliniques</label>
+          <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Notes cliniques</label>
           <textarea value={cForm.notes} onChange={fc("notes")} rows={3} placeholder="Observations, recommandations…"
-            style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}
+            style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:18,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}
             onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
         </div>
         <div style={{display:"flex",gap:10}}>
@@ -1315,35 +1320,35 @@ function PageDossiers() {
         <div onClick={()=>setRdvConsult(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
           <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:'1px solid #1E2F42',borderRadius:16,padding:28,width:540,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <h2 style={{fontSize:17,fontWeight:700,color:'#F0F4F8',margin:0}}>🩺 Consultation — {rdvConsult.patient_nom}</h2>
-              <button onClick={()=>setRdvConsult(null)} style={{background:'none',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:20}}>✕</button>
+              <h2 style={{fontSize:22,fontWeight:700,color:'#F0F4F8',margin:0}}>🩺 Consultation — {rdvConsult.patient_nom}</h2>
+              <button onClick={()=>setRdvConsult(null)} style={{background:'none',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:26}}>✕</button>
             </div>
-            <div style={{background:'rgba(10,143,88,.08)',border:'1px solid rgba(10,143,88,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#8BA0B5'}}>
+            <div style={{background:'rgba(10,143,88,.08)',border:'1px solid rgba(10,143,88,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:16,color:'#8BA0B5'}}>
               RDV du {new Date(rdvConsult.date_rdv).toLocaleDateString('fr-CI',{day:'numeric',month:'long'})} · {rdvConsult.heure_rdv?.slice(0,5)} · {rdvConsult.motif||'—'}
             </div>
             {[['Diagnostic *','diagnostic','Ex: Hypertension artérielle'],['Traitement prescrit','traitement','Ex: Amlodipine 5mg'],['Notes cliniques','notes','Observations…']].map(([label,key,ph])=>(
               <div key={key} style={{marginBottom:12}}>
-                <label style={{display:'block',fontSize:11,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
+                <label style={{display:'block',fontSize:14,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
                 {key==='notes'
-                  ? <textarea value={rdvCForm[key]} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} rows={3} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:14,resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
-                  : <input value={rdvCForm[key]} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                  ? <textarea value={rdvCForm[key]} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} rows={3} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:18,resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                  : <input value={rdvCForm[key]} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:18,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
                 }
               </div>
             ))}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:10,marginBottom:16}}>
               {[['T.A.','tension_arterielle','120/80'],['Temp °C','temperature','37'],['Poids kg','poids','70'],['Taille cm','taille','175']].map(([label,key,ph])=>(
                 <div key={key}>
-                  <label style={{display:'block',fontSize:10,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
-                  <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'8px 10px',color:'#F0F4F8',fontSize:13,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                  <label style={{display:'block',fontSize:13,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
+                  <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'8px 10px',color:'#F0F4F8',fontSize:17,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
                 </div>
               ))}
             </div>
             <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setRdvConsult(null)} style={{flex:1,padding:'10px',borderRadius:9,background:'transparent',border:'1.5px solid #1E2F42',color:'#8BA0B5',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'inherit'}}>Annuler</button>
+              <button onClick={()=>setRdvConsult(null)} style={{flex:1,padding:'10px',borderRadius:9,background:'transparent',border:'1.5px solid #1E2F42',color:'#8BA0B5',cursor:'pointer',fontSize:17,fontWeight:700,fontFamily:'inherit'}}>Annuler</button>
               <button disabled={addConsRdv.isPending} onClick={()=>{
                 if(!rdvCForm.diagnostic){toast.error('Diagnostic requis');return;}
                 addConsRdv.mutate({rdv_id:rdvConsult.id,patient_id:rdvConsult.patient_id,motif:rdvConsult.motif||rdvCForm.diagnostic,...rdvCForm});
-              }} style={{flex:2,padding:'10px',borderRadius:9,background:'linear-gradient(135deg,#0A8F58,#0D9488)',border:'none',color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700,fontFamily:'inherit',opacity:addConsRdv.isPending?.65:1}}>
+              }} style={{flex:2,padding:'10px',borderRadius:9,background:'linear-gradient(135deg,#0A8F58,#0D9488)',border:'none',color:'#fff',cursor:'pointer',fontSize:17,fontWeight:700,fontFamily:'inherit',opacity:addConsRdv.isPending?.65:1}}>
                 {addConsRdv.isPending?'⏳…':'✅ Enregistrer consultation'}
               </button>
             </div>
@@ -1360,12 +1365,12 @@ function PageDossiers() {
               <Inp label={i===0?"Qté":""} value={ligne.qte} onChange={e=>updLigneOrd(i,"qte",e.target.value)} placeholder="1 bte" />
               <Inp label={i===0?"Posologie":""} value={ligne.posologie} onChange={e=>updLigneOrd(i,"posologie",e.target.value)} placeholder="2x/jour" />
               <Inp label={i===0?"Durée":""} value={ligne.duree} onChange={e=>updLigneOrd(i,"duree",e.target.value)} placeholder="7 jours" />
-              <button onClick={()=>delLigneOrd(i)} disabled={lignesOrd.length<=1} style={{padding:"11px 10px",borderRadius:8,background:"transparent",border:`1.5px solid ${C.border}`,color:lignesOrd.length<=1?C.dim:C.red,cursor:lignesOrd.length<=1?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
+              <button onClick={()=>delLigneOrd(i)} disabled={lignesOrd.length<=1} style={{padding:"11px 10px",borderRadius:8,background:"transparent",border:`1.5px solid ${C.border}`,color:lignesOrd.length<=1?C.dim:C.red,cursor:lignesOrd.length<=1?"not-allowed":"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>
                 {lignesOrd.length>1?"✕":"—"}
               </button>
             </div>
           ))}
-          <button onClick={addLigneOrd} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
+          <button onClick={addLigneOrd} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
         </div>
         <Inp label="Notes / Instructions" value={oForm.notes_ord} onChange={fo("notes_ord")} placeholder="À prendre pendant les repas…" />
         <div style={{display:"flex",gap:10,marginTop:4}}>
@@ -1383,13 +1388,13 @@ function PageDossiers() {
       </Modal>
 
       <Modal open={showEditConsult} onClose={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }} title="✏️ Modifier la consultation" width={640}>
-        <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.2)",borderRadius:9,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.muted}}>
+        <div style={{background:"rgba(37,99,235,.07)",border:"1px solid rgba(37,99,235,.2)",borderRadius:9,padding:"10px 14px",marginBottom:16,fontSize:16,color:C.muted}}>
           Chaque champ modifié est journalisé avec la date, l'heure et la seconde exactes.
         </div>
         <div style={{maxHeight:"60vh",overflowY:"auto",paddingRight:4}}>
           {RUBRIQUES_CONSULTATION.map(rub => (
             <div key={rub.titre} style={{marginBottom:18}}>
-              <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>{rub.titre}</div>
+              <div style={{fontSize:14,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>{rub.titre}</div>
               <Grid cols={2} gap={12}>
                 {rub.champs.map(([champ,label]) => (
                   <Inp key={champ} label={label} value={editForm[champ]} onChange={fe(champ)} />
@@ -1407,17 +1412,17 @@ function PageDossiers() {
       <Modal open={showDossierMedical} onClose={()=>{ setShowDossierMedical(false); setConsultationEnLecture(null); }} title={`📄 Consultation du ${consultationEnLecture?fmtDate(consultationEnLecture.created_at):""}`} width={640}>
         {consultationEnLecture && (
           <div style={{maxHeight:"65vh",overflowY:"auto",paddingRight:4}}>
-            <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Médecin : {consultationEnLecture.medecin_nom||"—"}</div>
+            <div style={{fontSize:16,color:C.muted,marginBottom:16}}>Médecin : {consultationEnLecture.medecin_nom||"—"}</div>
             {RUBRIQUES_CONSULTATION.map(rub => {
               const rempli = rub.champs.filter(([champ]) => consultationEnLecture[champ]);
               if (!rempli.length) return null;
               return (
                 <div key={rub.titre} style={{marginBottom:18}}>
-                  <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>{rub.titre}</div>
+                  <div style={{fontSize:14,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>{rub.titre}</div>
                   {rempli.map(([champ,label]) => (
                     <div key={champ} style={{marginBottom:8,background:C.hover,borderRadius:8,padding:"8px 12px"}}>
-                      <div style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{label}</div>
-                      <div style={{fontSize:13,color:C.text}}>{consultationEnLecture[champ]}</div>
+                      <div style={{fontSize:13,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:2}}>{label}</div>
+                      <div style={{fontSize:17,color:C.text}}>{consultationEnLecture[champ]}</div>
                     </div>
                   ))}
                 </div>
@@ -1436,7 +1441,7 @@ function PageDossiers() {
             <Inp label="Code dossier du patient *" value={codeRecherche}
               onChange={e=>{ setCodeRecherche(e.target.value); setErreurRecherche(""); }}
               placeholder="MC-XX-0000" />
-            {erreurRecherche && <div style={{fontSize:12,color:C.red,marginBottom:10}}>{erreurRecherche}</div>}
+            {erreurRecherche && <div style={{fontSize:16,color:C.red,marginBottom:10}}>{erreurRecherche}</div>}
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <Btn variant="outline" style={{flex:1}} onClick={()=>setShowExamen(false)}>Annuler</Btn>
               <Btn style={{flex:2}} loading={rechercheEnCours} onClick={rechercherParCode}>🔎 Rechercher</Btn>
@@ -1446,12 +1451,12 @@ function PageDossiers() {
           <div>
             <div style={{background:"rgba(10,143,88,.1)",border:"1px solid rgba(10,143,88,.3)",borderRadius:9,padding:"10px 14px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
-                <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientCible.prenom} {patientCible.nom}</div>
-                <div style={{fontSize:11,color:C.muted}}>Dossier : {patientCible.code_secret||"—"}</div>
+                <div style={{fontSize:17,fontWeight:700,color:C.text}}>✓ {patientCible.prenom} {patientCible.nom}</div>
+                <div style={{fontSize:14,color:C.muted}}>Dossier : {patientCible.code_secret||"—"}</div>
               </div>
               {patientCible.id!==selected?.id && (
                 <button type="button" onClick={()=>{ setPatientCible(null); setCodeRecherche(""); }}
-                  style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:13}}>✕</button>
+                  style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:17}}>✕</button>
               )}
             </div>
             <Sel label="Catégorie" value={examenForm.categorie}
@@ -1463,10 +1468,10 @@ function PageDossiers() {
               onChange={e=>setExamenForm(p=>({...p,notes:e.target.value}))}
               placeholder="Contexte clinique, urgence, elements a rechercher…" rows={3} />
             <div style={{marginBottom:14}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Prescription (optionnel)</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:5}}>Prescription (optionnel)</label>
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={e=>setFichierPrescription(e.target.files?.[0]||null)}
-                style={{fontSize:12,color:C.muted}} />
-              {fichierPrescription && <div style={{fontSize:11,color:C.green,marginTop:4}}>📎 {fichierPrescription.name}</div>}
+                style={{fontSize:16,color:C.muted}} />
+              {fichierPrescription && <div style={{fontSize:14,color:C.green,marginTop:4}}>📎 {fichierPrescription.name}</div>}
             </div>
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowExamen(false); setPatientCible(null); setFichierPrescription(null); }}>Annuler</Btn>
@@ -1577,7 +1582,7 @@ function PageMedecins() {
       <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
         {RH_TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:16, fontWeight:tab===t.key?700:400 }}>
             {t.label}
           </button>
         ))}
@@ -1598,28 +1603,28 @@ function PageMedecins() {
               {medecins.map(m=>(
                 <Panel key={m.id}>
                   <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14 }}>
-                    <div style={{ width:48, height:48, background:`linear-gradient(135deg,#7C3AED,#0D9488)`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:16 }}>
+                    <div style={{ width:48, height:48, background:`linear-gradient(135deg,#7C3AED,#0D9488)`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, color:"#fff", fontSize:21 }}>
                       {m.prenom?.[0]}{m.nom?.[0]}
                     </div>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:14, fontWeight:700, color:C.text }}>Dr. {m.prenom} {m.nom}</div>
-                      <div style={{ fontSize:12, color:C.muted }}>{m.specialite||"—"}</div>
+                      <div style={{ fontSize:18, fontWeight:700, color:C.text }}>Dr. {m.prenom} {m.nom}</div>
+                      <div style={{ fontSize:16, color:C.muted }}>{m.specialite||"—"}</div>
                     </div>
                     <Badge color={{ Disponible:"green", "En consultation":"teal", Absent:"red" }[m.statut]||"gray"}>{m.statut}</Badge>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:16 }}>
                     {[["💰 Tarif",`${fmt(m.tarif)} F`],["⏱️ Expérience",`${m.experience_ans||"—"} ans`],["📞 Tel",m.telephone||"—"],["🕐 Horaires",`${m.horaires_debut||"—"}–${m.horaires_fin||"—"}`]].map(([k,v])=>(
                       <div key={k} style={{ background:C.hover, borderRadius:7, padding:"7px 10px" }}>
-                        <div style={{ fontSize:10, color:C.dim, marginBottom:2 }}>{k}</div>
+                        <div style={{ fontSize:13, color:C.dim, marginBottom:2 }}>{k}</div>
                         <div style={{ color:C.text, fontWeight:600 }}>{v}</div>
                       </div>
                     ))}
                   </div>
-                  {m.jours_travail && <div style={{ fontSize:11, color:C.muted, marginBottom:12 }}>Jours : {m.jours_travail}</div>}
+                  {m.jours_travail && <div style={{ fontSize:14, color:C.muted, marginBottom:12 }}>Jours : {m.jours_travail}</div>}
                   <div style={{ display:"flex", gap:8 }}>
-                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.green}} onClick={()=>updMut.mutate({id:m.id,statut:"Disponible"})}>✓ Disponible</Btn>
-                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.amber}} onClick={()=>updMut.mutate({id:m.id,statut:"En consultation"})}>🩺 Consult.</Btn>
-                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:11,color:C.red}} onClick={()=>updMut.mutate({id:m.id,statut:"Absent"})}>Absent</Btn>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.green}} onClick={()=>updMut.mutate({id:m.id,statut:"Disponible"})}>✓ Disponible</Btn>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.amber}} onClick={()=>updMut.mutate({id:m.id,statut:"En consultation"})}>🩺 Consult.</Btn>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.red}} onClick={()=>updMut.mutate({id:m.id,statut:"Absent"})}>Absent</Btn>
                   </div>
                 </Panel>
               ))}
@@ -1645,7 +1650,7 @@ function PageMedecins() {
                 { key:"sous_role", label:"Rôle", render:v=><Badge color={COULEUR_SOUS_ROLE[v]||"gray"}>{LABEL_SOUS_ROLE[v]||v}</Badge> },
                 { key:"is_active", label:"Statut", render:v=><Badge color={v?"green":"red"}>{v?"Actif":"Désactivé"}</Badge> },
                 { key:"id", label:"Actions", render:(v,row)=>(
-                  <Btn variant="outline" style={{padding:"4px 10px",fontSize:11}}
+                  <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}}
                     onClick={()=>toggleCompteMut.mutate({id:row.id, is_active:!row.is_active})}>
                     {row.is_active?"Désactiver":"Activer"}
                   </Btn>
@@ -1657,7 +1662,7 @@ function PageMedecins() {
 
       {/* Tab: Congés */}
       {tab==="conges" && (
-        <Panel title="Demandes de congé" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Demande</Btn>}>
+        <Panel title="Demandes de congé" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Demande</Btn>}>
           <Table columns={[
             { key:"employe", label:"Employé", render:v=><span style={{fontWeight:700}}>{v}</span> },
             { key:"type", label:"Type de congé" },
@@ -1667,8 +1672,8 @@ function PageMedecins() {
             { key:"statut", label:"Statut", render:v=><Badge color={{ approuve:"green", en_attente:"amber", refuse:"red" }[v]||"gray"}>{v}</Badge> },
             { key:"id", label:"Actions", render:()=>(
               <div style={{display:"flex",gap:6}}>
-                <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.green}} onClick={()=>toast.success("Approuvé !")}>✓</Btn>
-                <Btn variant="outline" style={{padding:"4px 10px",fontSize:11,color:C.red}} onClick={()=>toast.error("Refusé")}>✕</Btn>
+                <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.green}} onClick={()=>toast.success("Approuvé !")}>✓</Btn>
+                <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.red}} onClick={()=>toast.error("Refusé")}>✕</Btn>
               </div>
             )},
           ]} rows={CONGES_DEMO} />
@@ -1792,7 +1797,7 @@ function PageStock() {
       <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
         {STOCK_TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:16, fontWeight:tab===t.key?700:400 }}>
             {t.label}
           </button>
         ))}
@@ -1804,17 +1809,17 @@ function PageStock() {
             {stock.length===0
               ? <Empty icon="💊" title="Stock vide" subtitle="Ajoutez votre premier produit" />
               : <Table columns={[
-                  { key:"nom", label:"Produit", render:(v,r)=><><div style={{fontWeight:700}}>{v}</div><div style={{fontSize:11,color:C.muted}}>{r.categorie}</div></> },
+                  { key:"nom", label:"Produit", render:(v,r)=><><div style={{fontWeight:700}}>{v}</div><div style={{fontSize:14,color:C.muted}}>{r.categorie}</div></> },
                   { key:"quantite", label:"Qté", render:(v,r)=>(
                     <div>
-                      <span style={{ fontWeight:700, color:v===0?C.red:v<=r.seuil_alerte?C.amber:C.green, fontSize:15 }}>{v}</span>
-                      <span style={{ fontSize:11, color:C.dim }}> {r.unite}</span>
+                      <span style={{ fontWeight:700, color:v===0?C.red:v<=r.seuil_alerte?C.amber:C.green, fontSize:20 }}>{v}</span>
+                      <span style={{ fontSize:14, color:C.dim }}> {r.unite}</span>
                     </div>
                   )},
                   { key:"seuil_alerte", label:"Seuil", render:v=><span style={{color:C.muted}}>{v||"—"}</span> },
                   { key:"prix_unitaire", label:"Prix unit.", render:v=>v?`${fmt(v)} F`:"—" },
                   { key:"date_expiration", label:"Expiration", render:v=>v?<span style={{color:new Date(v)<new Date()?C.red:C.muted}}>{fmtDate(v)}</span>:"—" },
-                  { key:"fournisseur", label:"Fournisseur", render:v=><span style={{fontSize:12,color:C.muted}}>{v||"—"}</span> },
+                  { key:"fournisseur", label:"Fournisseur", render:v=><span style={{fontSize:16,color:C.muted}}>{v||"—"}</span> },
                   { key:"quantite", label:"Statut", render:(v,r)=>(
                     <Badge color={v===0?"red":v<=r.seuil_alerte?"amber":"green"}>
                       {v===0?"Rupture":v<=r.seuil_alerte?"Alerte":"OK"}
@@ -1832,13 +1837,13 @@ function PageStock() {
             ? <Empty icon="✅" title="Aucune alerte" subtitle="Tous les stocks sont au-dessus du seuil" />
             : alertes.map(s=>(
               <div key={s.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"12px 0", borderBottom:`1px solid ${C.border}` }}>
-                <span style={{ fontSize:22 }}>💊</span>
+                <span style={{ fontSize:29 }}>💊</span>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{s.nom}</div>
-                  <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Stock : <strong style={{color:s.quantite===0?C.red:C.amber}}>{s.quantite}</strong> / Seuil : {s.seuil_alerte} {s.unite}</div>
+                  <div style={{ fontSize:18, fontWeight:700, color:C.text }}>{s.nom}</div>
+                  <div style={{ fontSize:16, color:C.muted, marginBottom:6 }}>Stock : <strong style={{color:s.quantite===0?C.red:C.amber}}>{s.quantite}</strong> / Seuil : {s.seuil_alerte} {s.unite}</div>
                   <ProgressBar value={s.quantite} max={s.seuil_alerte*2} color={s.quantite===0?C.red:C.amber} />
                 </div>
-                <Btn variant="amber" style={{padding:"7px 14px",fontSize:12}} onClick={()=>toast.success("Commande créée !")}>Commander</Btn>
+                <Btn variant="amber" style={{padding:"7px 14px",fontSize:16}} onClick={()=>toast.success("Commande créée !")}>Commander</Btn>
               </div>
             ))
           }
@@ -1846,14 +1851,14 @@ function PageStock() {
       )}
 
       {tab==="fournisseurs" && (
-        <Panel title="Fournisseurs et contacts" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Fournisseur</Btn>}>
+        <Panel title="Fournisseurs et contacts" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Fournisseur</Btn>}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:14 }}>
             {FOURNISSEURS.map(f=>(
               <div key={f.id} style={{ background:C.hover, borderRadius:12, padding:16 }}>
-                <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:6 }}>{f.nom}</div>
-                <div style={{ fontSize:12, color:C.muted, marginBottom:4 }}>📞 {f.contact}</div>
-                <div style={{ fontSize:12, color:C.muted, marginBottom:12 }}>📦 {f.produits}</div>
-                <Btn variant="outline" style={{width:"100%",padding:"7px",fontSize:12}} onClick={()=>toast.success("Commande envoyée !")}>Passer commande</Btn>
+                <div style={{ fontSize:18, fontWeight:700, color:C.text, marginBottom:6 }}>{f.nom}</div>
+                <div style={{ fontSize:16, color:C.muted, marginBottom:4 }}>📞 {f.contact}</div>
+                <div style={{ fontSize:16, color:C.muted, marginBottom:12 }}>📦 {f.produits}</div>
+                <Btn variant="outline" style={{width:"100%",padding:"7px",fontSize:16}} onClick={()=>toast.success("Commande envoyée !")}>Passer commande</Btn>
               </div>
             ))}
           </div>
@@ -1923,7 +1928,7 @@ function PageFacturation() {
       <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
         {FINANCE_TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:16, fontWeight:tab===t.key?700:400 }}>
             {t.label}
           </button>
         ))}
@@ -1941,7 +1946,7 @@ function PageFacturation() {
             <Panel title="📊 Budget vs Réalisé — Ce mois">
               {BUDGET_ITEMS.map(b=>(
                 <div key={b.categorie} style={{marginBottom:16}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:17}}>
                     <span style={{color:C.muted}}>{b.categorie}</span>
                     <span style={{color:b.realise>b.budget?C.red:C.green,fontWeight:700}}>{fmt(b.realise)} / {fmt(b.budget)} F</span>
                   </div>
@@ -1959,8 +1964,8 @@ function PageFacturation() {
                 : factures.slice(0,6).map(f=>(
                   <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:700,color:C.text}}>{f.patient_nom||"Patient"}</div>
-                      <div style={{fontSize:11,color:C.muted}}>{fmtDate(f.created_at)}</div>
+                      <div style={{fontSize:17,fontWeight:700,color:C.text}}>{f.patient_nom||"Patient"}</div>
+                      <div style={{fontSize:14,color:C.muted}}>{fmtDate(f.created_at)}</div>
                     </div>
                     <span style={{fontWeight:800,color:C.text}}>{fmt(f.montant)} F</span>
                     <Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[f.statut]||"gray"}>{f.statut}</Badge>
@@ -1973,16 +1978,16 @@ function PageFacturation() {
       )}
 
       {tab==="factures" && (
-        <Panel title="Toutes les factures" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Facture</Btn>}>
+        <Panel title="Toutes les factures" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Facture</Btn>}>
           {factures.length===0
             ? <Empty icon="📄" title="Aucune facture" subtitle="Les factures générées depuis la caisse apparaîtront ici" />
             : <Table columns={[
-                { key:"reference", label:"Référence", render:v=><span style={{fontFamily:"monospace",fontSize:12,color:C.teal}}>{v||"—"}</span> },
+                { key:"reference", label:"Référence", render:v=><span style={{fontFamily:"monospace",fontSize:16,color:C.teal}}>{v||"—"}</span> },
                 { key:"patient_nom", label:"Patient", render:v=><span style={{fontWeight:700}}>{v||"—"}</span> },
                 { key:"montant", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
                 { key:"statut", label:"Statut", render:v=><Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[v]||"gray"}>{v}</Badge> },
                 { key:"created_at", label:"Date", render:v=>fmtDate(v) },
-                { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:11}} onClick={()=>toast.success("Facture téléchargée !")}>PDF</Btn> },
+                { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>toast.success("Facture téléchargée !")}>PDF</Btn> },
               ]} rows={factures} />
           }
         </Panel>
@@ -1992,15 +1997,15 @@ function PageFacturation() {
         <Panel title="Budget mensuel et annuel">
           <div style={{ background:"rgba(10,143,88,.06)", border:"1px solid rgba(10,143,88,.2)", borderRadius:12, padding:16, marginBottom:20 }}>
             <Grid cols={3} gap={14}>
-              <div style={{textAlign:"center"}}><div style={{fontSize:12,color:C.dim,marginBottom:4}}>Budget mensuel</div><div style={{fontSize:22,fontWeight:900,color:C.text}}>{fmt(totalBudget)} F</div></div>
-              <div style={{textAlign:"center"}}><div style={{fontSize:12,color:C.dim,marginBottom:4}}>Réalisé</div><div style={{fontSize:22,fontWeight:900,color:totalRealise>totalBudget?C.red:C.green}}>{fmt(totalRealise)} F</div></div>
-              <div style={{textAlign:"center"}}><div style={{fontSize:12,color:C.dim,marginBottom:4}}>Solde</div><div style={{fontSize:22,fontWeight:900,color:totalBudget-totalRealise>=0?C.green:C.red}}>{fmt(Math.abs(totalBudget-totalRealise))} F</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:16,color:C.dim,marginBottom:4}}>Budget mensuel</div><div style={{fontSize:29,fontWeight:900,color:C.text}}>{fmt(totalBudget)} F</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:16,color:C.dim,marginBottom:4}}>Réalisé</div><div style={{fontSize:29,fontWeight:900,color:totalRealise>totalBudget?C.red:C.green}}>{fmt(totalRealise)} F</div></div>
+              <div style={{textAlign:"center"}}><div style={{fontSize:16,color:C.dim,marginBottom:4}}>Solde</div><div style={{fontSize:29,fontWeight:900,color:totalBudget-totalRealise>=0?C.green:C.red}}>{fmt(Math.abs(totalBudget-totalRealise))} F</div></div>
             </Grid>
           </div>
           {BUDGET_ITEMS.map(b=>(
             <div key={b.categorie} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10 }}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <span style={{fontSize:14,fontWeight:700,color:C.text}}>{b.categorie}</span>
+                <span style={{fontSize:18,fontWeight:700,color:C.text}}>{b.categorie}</span>
                 <div style={{display:"flex",gap:8}}>
                   <Badge color="gray">Budget: {fmt(b.budget)} F</Badge>
                   <Badge color={b.realise>b.budget?"red":"green"}>Réel: {fmt(b.realise)} F</Badge>
@@ -2025,9 +2030,9 @@ function PageFacturation() {
               <button key={titre} onClick={()=>toast.success(`Rapport "${titre}" en cours de génération…`)}
                 style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:12, padding:18, cursor:"pointer", textAlign:"left", fontFamily:"inherit", transition:"border-color .15s" }}
                 onMouseOver={e=>e.currentTarget.style.borderColor=C.green} onMouseOut={e=>e.currentTarget.style.borderColor=C.border}>
-                <div style={{fontSize:28,marginBottom:10}}>{icon}</div>
-                <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:4}}>{titre}</div>
-                <div style={{fontSize:11,color:C.dim}}>{desc}</div>
+                <div style={{fontSize:36,marginBottom:10}}>{icon}</div>
+                <div style={{fontSize:17,fontWeight:700,color:C.text,marginBottom:4}}>{titre}</div>
+                <div style={{fontSize:14,color:C.dim}}>{desc}</div>
               </button>
             ))}
           </div>
@@ -2081,7 +2086,7 @@ function PageQualite() {
       <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
         {QUAL_TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:12, fontWeight:tab===t.key?700:400 }}>
+            style={{ flex:1, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:16, fontWeight:tab===t.key?700:400 }}>
             {t.label}
           </button>
         ))}
@@ -2099,7 +2104,7 @@ function PageQualite() {
             <Panel title="📊 Indicateurs de performance">
               {[{l:"Taux de satisfaction patients",v:91,c:C.green},{l:"Taux de ponctualité RDV",v:78,c:C.teal},{l:"Conformité hygiène",v:95,c:C.green},{l:"Respect protocoles",v:88,c:C.blue}].map(k=>(
                 <div key={k.l} style={{marginBottom:16}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:17}}>
                     <span style={{color:C.muted}}>{k.l}</span>
                     <span style={{fontWeight:700,color:k.c}}>{k.v}%</span>
                   </div>
@@ -2107,11 +2112,11 @@ function PageQualite() {
                 </div>
               ))}
             </Panel>
-            <Panel title="🔄 Amélioration continue" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Action</Btn>}>
+            <Panel title="🔄 Amélioration continue" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Action</Btn>}>
               {[{icon:"✅",l:"Réduction temps d'attente",s:"En cours",c:C.amber},{icon:"✅",l:"Formation hygiène mains",s:"Complété",c:C.green},{icon:"🔄",l:"Audit qualité Q2 2026",s:"Planifié",c:C.blue},{icon:"📋",l:"Révision protocoles urgence",s:"En cours",c:C.amber}].map((a,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-                  <span style={{fontSize:18}}>{a.icon}</span>
-                  <div style={{flex:1,fontSize:13,color:C.text}}>{a.l}</div>
+                  <span style={{fontSize:23}}>{a.icon}</span>
+                  <div style={{flex:1,fontSize:17,color:C.text}}>{a.l}</div>
                   <Badge color={{Complété:"green","En cours":"amber",Planifié:"blue"}[a.s]||"gray"}>{a.s}</Badge>
                 </div>
               ))}
@@ -2121,30 +2126,30 @@ function PageQualite() {
       )}
 
       {tab==="incidents" && (
-        <Panel title="Rapports d'incidents" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Incident</Btn>}>
+        <Panel title="Rapports d'incidents" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Incident</Btn>}>
           <Table columns={[
             { key:"type", label:"Type d'incident", render:v=><span style={{fontWeight:700}}>{v}</span> },
             { key:"date", label:"Date", render:v=>fmtDate(v) },
             { key:"gravite", label:"Gravité", render:v=><Badge color={{Grave:"red",Modérée:"amber",Mineure:"gray"}[v]||"gray"}>{v}</Badge> },
             { key:"responsable", label:"Responsable" },
             { key:"statut", label:"Statut", render:v=><Badge color={{résolu:"green",en_cours:"amber"}[v]||"gray"}>{v}</Badge> },
-            { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:11}}>Voir</Btn> },
+            { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}}>Voir</Btn> },
           ]} rows={INCIDENTS_DEMO} />
         </Panel>
       )}
 
       {tab==="politiques" && (
-        <Panel title="Politiques et procédures" actions={<Btn style={{padding:"6px 14px",fontSize:12}}>+ Document</Btn>}>
+        <Panel title="Politiques et procédures" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Document</Btn>}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))", gap:14 }}>
             {POLITIQUES_DEMO.map(p=>(
               <div key={p.id} style={{ background:C.hover, borderRadius:12, padding:16, cursor:"pointer", transition:"border-color .15s" }}
                 onClick={()=>toast.success(`Ouverture : ${p.titre}`)}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
                   <Badge color="blue">{p.categorie}</Badge>
-                  <span style={{fontSize:11,color:C.dim}}>{p.version}</span>
+                  <span style={{fontSize:14,color:C.dim}}>{p.version}</span>
                 </div>
-                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{p.titre}</div>
-                <div style={{fontSize:11,color:C.dim}}>Mis à jour : {fmtDate(p.date)}</div>
+                <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:4}}>{p.titre}</div>
+                <div style={{fontSize:14,color:C.dim}}>Mis à jour : {fmtDate(p.date)}</div>
               </div>
             ))}
           </div>
@@ -2154,12 +2159,12 @@ function PageQualite() {
       {tab==="urgences" && (
         <Panel title="Procédures d'urgence et contacts">
           <div style={{ background:"rgba(225,29,72,.08)", border:"1px solid rgba(225,29,72,.2)", borderRadius:12, padding:16, marginBottom:20 }}>
-            <div style={{fontSize:14,fontWeight:700,color:C.red,marginBottom:12}}>🚨 Contacts d'urgence</div>
+            <div style={{fontSize:18,fontWeight:700,color:C.red,marginBottom:12}}>🚨 Contacts d'urgence</div>
             <Grid cols={2} gap={12}>
               {[["SAMU","15"],["Pompiers","18"],["Police","17"],["Croix-Rouge","+225 27 00 00 00"],["Hôpital CHU","+225 27 11 22 33"],["Directeur médical","+225 07 00 00 00"]].map(([k,v])=>(
                 <div key={k} style={{background:C.input,borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontSize:13,color:C.text}}>{k}</span>
-                  <span style={{fontSize:14,fontWeight:800,color:C.red}}>{v}</span>
+                  <span style={{fontSize:17,color:C.text}}>{k}</span>
+                  <span style={{fontSize:18,fontWeight:800,color:C.red}}>{v}</span>
                 </div>
               ))}
             </Grid>
@@ -2167,9 +2172,9 @@ function PageQualite() {
           <Grid cols={2} gap={14}>
             {[["🏃","Plan d'évacuation","Voies de sortie et points de rassemblement"],["💊","Urgence médicale","Protocole RCP et défibrillateur"],["🔥","Incendie","Extincteurs et procédures d'évacuation"],["⚡","Panne électrique","Groupe électrogène et procédures"]].map(([icon,titre,desc])=>(
               <div key={titre} style={{background:C.hover,borderRadius:12,padding:16,cursor:"pointer"}} onClick={()=>toast.success(`Procédure : ${titre}`)}>
-                <div style={{fontSize:28,marginBottom:8}}>{icon}</div>
-                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>{titre}</div>
-                <div style={{fontSize:12,color:C.dim}}>{desc}</div>
+                <div style={{fontSize:36,marginBottom:8}}>{icon}</div>
+                <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:4}}>{titre}</div>
+                <div style={{fontSize:16,color:C.dim}}>{desc}</div>
               </div>
             ))}
           </Grid>
@@ -2186,10 +2191,10 @@ function PageQualite() {
           <Panel title="Satisfaction par critère">
             {SATISFACTION_DEMO.map(s=>(
               <div key={s.critere} style={{marginBottom:16}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:13}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,fontSize:17}}>
                   <span style={{color:C.text,fontWeight:500}}>{s.critere}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:11,color:C.dim}}>{s.reponses} rép.</span>
+                    <span style={{fontSize:14,color:C.dim}}>{s.reponses} rép.</span>
                     <span style={{fontWeight:800,color:s.note>=4.5?C.green:s.note>=4?C.teal:s.note>=3?C.amber:C.red}}>{s.note}/5</span>
                   </div>
                 </div>
@@ -2234,7 +2239,7 @@ function PageAssurance() {
       {isLoading ? <Loader /> : (
         <Panel>
           <Table emptyMsg="Aucun dossier assurance" columns={[
-            { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||r.patient_id||"—"}</div><div style={{fontSize:11,color:C.muted}}>{r.numero_police}</div></> },
+            { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||r.patient_id||"—"}</div><div style={{fontSize:14,color:C.muted}}>{r.numero_police}</div></> },
             { key:"compagnie", label:"Compagnie" },
             { key:"montant_total", label:"Total", render:v=>fmt_money(v) },
             { key:"montant_assur", label:"Part ass.", render:v=>fmt_money(v) },
@@ -2242,9 +2247,9 @@ function PageAssurance() {
             { key:"statut", label:"Statut", render:v=><Badge color={scol[v]||"gray"}>{v}</Badge> },
             { key:"id", label:"Actions", render:(id,row)=>(
               <div style={{display:"flex",gap:5}}>
-                {row.statut==="soumis"&&<Btn variant="outline" style={{padding:"4px 9px",fontSize:11,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_attente"})}>→</Btn>}
-                {row.statut==="en_attente"&&<Btn variant="outline" style={{padding:"4px 9px",fontSize:11,color:C.green}} onClick={()=>updMut.mutate({id,statut:"valide"})}>✓</Btn>}
-                <Btn variant="outline" style={{padding:"4px 9px",fontSize:11,color:C.red}} onClick={()=>window.confirm("Supprimer ?")&&delMut.mutate(id)}>✕</Btn>
+                {row.statut==="soumis"&&<Btn variant="outline" style={{padding:"4px 9px",fontSize:14,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_attente"})}>→</Btn>}
+                {row.statut==="en_attente"&&<Btn variant="outline" style={{padding:"4px 9px",fontSize:14,color:C.green}} onClick={()=>updMut.mutate({id,statut:"valide"})}>✓</Btn>}
+                <Btn variant="outline" style={{padding:"4px 9px",fontSize:14,color:C.red}} onClick={()=>window.confirm("Supprimer ?")&&delMut.mutate(id)}>✕</Btn>
               </div>
             )},
           ]} rows={dossiers} />
@@ -2258,7 +2263,7 @@ function PageAssurance() {
           <Inp label="Taux couverture (%)" type="number" min="0" max="100" value={form.taux_couverture} onChange={f("taux_couverture")} />
           <Inp label="Montant actes (FCFA)" type="number" required value={form.montant_plafond} onChange={f("montant_plafond")} />
         </Grid>
-        <div style={{background:"rgba(10,143,88,.07)",border:"1px solid rgba(10,143,88,.2)",borderRadius:8,padding:12,marginBottom:14,fontSize:13}}>
+        <div style={{background:"rgba(10,143,88,.07)",border:"1px solid rgba(10,143,88,.2)",borderRadius:8,padding:12,marginBottom:14,fontSize:17}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
             <span style={{color:C.muted}}>Part assureur ({form.taux_couverture}%)</span>
             <span style={{color:C.green,fontWeight:700}}>{fmt(Math.round(form.montant_plafond*form.taux_couverture/100))} FCFA</span>
@@ -2305,9 +2310,9 @@ function PageStats() {
               const h = Math.round((PATIENTS[i]/MAX_P)*100);
               return (
                 <div key={m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                  <div style={{fontSize:9,color:C.green,fontWeight:700}}>{PATIENTS[i]}</div>
+                  <div style={{fontSize:12,color:C.green,fontWeight:700}}>{PATIENTS[i]}</div>
                   <div style={{width:"100%",height:`${h}%`,background:i===4?`linear-gradient(to top,${C.green},${C.teal})`:`rgba(10,143,88,.3)`,borderRadius:"3px 3px 0 0"}} />
-                  <div style={{fontSize:8,color:C.dim}}>{m}</div>
+                  <div style={{fontSize:10,color:C.dim}}>{m}</div>
                 </div>
               );
             })}
@@ -2319,9 +2324,9 @@ function PageStats() {
               const h = Math.round((REVENUS[i]/MAX_R)*100);
               return (
                 <div key={m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                  <div style={{fontSize:9,color:C.amber,fontWeight:700}}>{Math.round(REVENUS[i]/1000)}</div>
+                  <div style={{fontSize:12,color:C.amber,fontWeight:700}}>{Math.round(REVENUS[i]/1000)}</div>
                   <div style={{width:"100%",height:`${h}%`,background:i===4?`linear-gradient(to top,${C.amber},${C.green})`:`rgba(217,119,6,.3)`,borderRadius:"3px 3px 0 0"}} />
-                  <div style={{fontSize:8,color:C.dim}}>{m}</div>
+                  <div style={{fontSize:10,color:C.dim}}>{m}</div>
                 </div>
               );
             })}
@@ -2330,7 +2335,7 @@ function PageStats() {
         <Panel title="🩺 Répartition par spécialité">
           {[{l:"Médecine générale",v:42,c:C.green},{l:"Pédiatrie",v:18,c:C.blue},{l:"Gynécologie",v:15,c:C.purple},{l:"Cardiologie",v:12,c:C.red},{l:"Autres",v:13,c:C.muted}].map(k=>(
             <div key={k.l} style={{marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:13}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:17}}>
                 <span style={{color:C.muted}}>{k.l}</span>
                 <span style={{fontWeight:700,color:k.c}}>{k.v}%</span>
               </div>
@@ -2341,7 +2346,7 @@ function PageStats() {
         <Panel title="📊 Indicateurs clés">
           {[{l:"Taux occupation médecins",v:78,c:C.teal},{l:"RDV annulés",v:6,c:C.red},{l:"Patients fidélisés",v:67,c:C.green},{l:"Nouveaux patients",v:33,c:C.blue},{l:"Paiement assurance",v:42,c:C.purple}].map(k=>(
             <div key={k.l} style={{marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:13}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:17}}>
                 <span style={{color:C.muted}}>{k.l}</span>
                 <span style={{fontWeight:700,color:k.c}}>{k.v}%</span>
               </div>
@@ -2438,26 +2443,26 @@ function PageConsultation() {
       <PageHeader title="🩺 Consultation" subtitle="Accès par code patient" />
       <Panel style={{maxWidth:540,margin:"0 auto 20px"}}>
         <div style={{marginBottom:18}}>
-          <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Code secret patient</label>
+          <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Code secret patient</label>
           <div style={{display:"flex",gap:10}}>
             <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&chercher()} placeholder="MC-KJ-0001"
-              style={{flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"11px 14px",color:C.text,fontSize:16,outline:"none",fontFamily:"monospace",letterSpacing:2}}
+              style={{flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"11px 14px",color:C.text,fontSize:21,outline:"none",fontFamily:"monospace",letterSpacing:2}}
               onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border}/>
             <Btn loading={loading} onClick={chercher}>Rechercher</Btn>
           </div>
-          <div style={{fontSize:11,color:C.dim,marginTop:6}}>Code visible sur la carte MediConnect du patient (ex: MC-KJ-0001)</div>
+          <div style={{fontSize:14,color:C.dim,marginTop:6}}>Code visible sur la carte MediConnect du patient (ex: MC-KJ-0001)</div>
         </div>
         {patient&&(
           <div style={{background:"rgba(10,143,88,.08)",border:"1px solid rgba(10,143,88,.2)",borderRadius:12,padding:16}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-              <div style={{width:44,height:44,background:`linear-gradient(135deg,${C.green},${C.teal})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:18}}>{patient.prenom?.[0]||"P"}</div>
+              <div style={{width:44,height:44,background:`linear-gradient(135deg,${C.green},${C.teal})`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:"#fff",fontSize:23}}>{patient.prenom?.[0]||"P"}</div>
               <div>
-                <div style={{fontSize:15,fontWeight:800,color:C.text}}>{patient.prenom||"—"} {patient.nom||"—"}</div>
-                <div style={{fontSize:12,color:C.muted}}>Code: {patient.code_secret} · {patient.groupe_sanguin||"—"} · {patient.telephone||"—"}</div>
+                <div style={{fontSize:20,fontWeight:800,color:C.text}}>{patient.prenom||"—"} {patient.nom||"—"}</div>
+                <div style={{fontSize:16,color:C.muted}}>Code: {patient.code_secret} · {patient.groupe_sanguin||"—"} · {patient.telephone||"—"}</div>
               </div>
             </div>
-            {patient.allergies&&<div style={{fontSize:12,color:C.amber,marginBottom:8}}>⚠️ Allergies: {patient.allergies}</div>}
-            {patient.antecedents&&<div style={{fontSize:12,color:C.muted,marginBottom:8}}>📋 Antécédents: {patient.antecedents}</div>}
+            {patient.allergies&&<div style={{fontSize:16,color:C.amber,marginBottom:8}}>⚠️ Allergies: {patient.allergies}</div>}
+            {patient.antecedents&&<div style={{fontSize:16,color:C.muted,marginBottom:8}}>📋 Antécédents: {patient.antecedents}</div>}
             <Btn style={{width:"100%",marginTop:4}} onClick={()=>setShowForm(true)}>🩺 Démarrer la consultation</Btn>
           </div>
         )}
@@ -2467,72 +2472,72 @@ function PageConsultation() {
         <div onClick={()=>setShowForm(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:900,maxWidth:"96vw",maxHeight:"92vh",overflowY:"auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <h2 style={{fontSize:17,fontWeight:700,color:C.text,margin:0}}>🩺 {patient.prenom} {patient.nom}</h2>
-              <button onClick={()=>setShowForm(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
+              <h2 style={{fontSize:22,fontWeight:700,color:C.text,margin:0}}>🩺 {patient.prenom} {patient.nom}</h2>
+              <button onClick={()=>setShowForm(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:26}}>✕</button>
             </div>
 
             {/* ── Constantes médicales ─────────────────────────── */}
-            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Constantes médicales</div>
+            <div style={{fontSize:14,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Constantes médicales</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:6}}>
               {[["T° (°C)","temperature","37"],["TA (mmHg)","ta","120/80"],["Pouls (bpm)","pouls","72"],["Poids (kg)","poids","70"]].map(([label,key,ph])=>(
                 <div key={key}>
-                  <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                  <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                   <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph}
-                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:16,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
               ))}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
               <div>
-                <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Taille (cm)</label>
+                <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Taille (cm)</label>
                 <input value={form.taille||""} onChange={e=>setForm(f=>({...f,taille:e.target.value}))} placeholder="175"
-                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:16,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               </div>
               <div>
-                <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>IMC (calculé)</label>
+                <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>IMC (calculé)</label>
                 <input value={imcAuto} readOnly placeholder="—"
-                  style={{width:"100%",background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.dim,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  style={{width:"100%",background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.dim,fontSize:16,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               </div>
               {[["PC (cm)","pc"],["FR (cycles/min)","fr"]].map(([label,key])=>(
                 <div key={key}>
-                  <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                  <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                   <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
-                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:16,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
               ))}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:20}}>
               {[["TSO2 (%)","tso2"],["PB (cm)","pb"],["PCui (cm)","pcui"]].map(([label,key])=>(
                 <div key={key}>
-                  <label style={{display:"block",fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                  <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                   <input value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
-                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                    style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"8px 10px",color:C.text,fontSize:16,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
               ))}
             </div>
 
             {/* ── Examen clinique & diagnostic ─────────────────── */}
-            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Examen clinique</div>
+            <div style={{fontSize:14,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Examen clinique</div>
             {[["Motif de la consultation *","motif","Raison de la consultation…",5],["H.D.M / Antécédents","hdm_antecedents","Histoire de la maladie, antécédents…",4],["Examen clinique","examen_clinique","Constatations à l'examen…",5],["Hypothèses diagnostiques","hypotheses_diagnostiques","Hypothèses envisagées…",4]].map(([label,key,ph,rows])=>(
               <div key={key} style={{marginBottom:12}}>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
+                <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>{label}</label>
                 <textarea value={form[key]||""} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} rows={rows} placeholder={ph}
-                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:17,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               </div>
             ))}
 
             {/* ── Examens para-cliniques ────────────────────────── */}
-            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",margin:"16px 0 8px"}}>Examens para-cliniques</div>
+            <div style={{fontSize:14,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",margin:"16px 0 8px"}}>Examens para-cliniques</div>
             <div style={{marginBottom:12}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:6}}>1 — Biologie</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:6}}>1 — Biologie</label>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
                 {actesBio.length===0
-                  ? <span style={{fontSize:11,color:C.dim}}>Aucun examen de biologie dans le catalogue</span>
+                  ? <span style={{fontSize:14,color:C.dim}}>Aucun examen de biologie dans le catalogue</span>
                   : actesBio.map(a=>{
                     const sel = bioSel.some(x=>x.code===a.code);
                     return (
                       <button key={a.code} type="button" onClick={()=>toggleBio(a)}
-                        style={{padding:"5px 10px",borderRadius:20,border:`1.5px solid ${sel?C.teal:C.border}`,background:sel?"rgba(13,148,136,.15)":"transparent",color:sel?C.teal:C.muted,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        style={{padding:"5px 10px",borderRadius:20,border:`1.5px solid ${sel?C.teal:C.border}`,background:sel?"rgba(13,148,136,.15)":"transparent",color:sel?C.teal:C.muted,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         {sel?"✓ ":""}{a.libelle}
                       </button>
                     );
@@ -2540,32 +2545,32 @@ function PageConsultation() {
                 }
               </div>
               <textarea value={form.biologie_texte} onChange={e=>setForm(f=>({...f,biologie_texte:e.target.value}))} rows={3} placeholder="Précisions complémentaires (biologie)…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:17,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             <div style={{marginBottom:12}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>2 — Imagerie médicale</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>2 — Imagerie médicale</label>
               <textarea value={form.imagerie_texte} onChange={e=>setForm(f=>({...f,imagerie_texte:e.target.value}))} rows={3} placeholder="Radiographie, échographie…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:17,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             <div style={{marginBottom:16}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>3 — Autres</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>3 — Autres</label>
               <textarea value={form.autres_examens} onChange={e=>setForm(f=>({...f,autres_examens:e.target.value}))} rows={3} placeholder="Autres examens…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:17,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
 
             {/* ── Diagnostic retenu & traitement ───────────────────── */}
-            <div style={{fontSize:11,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",margin:"16px 0 8px"}}>Diagnostic retenu & traitement</div>
+            <div style={{fontSize:14,fontWeight:800,color:C.teal,textTransform:"uppercase",letterSpacing:".5px",margin:"16px 0 8px"}}>Diagnostic retenu & traitement</div>
             <div style={{marginBottom:6,position:"relative"}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher (CIM-10)</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher (CIM-10)</label>
               <input value={searchDiag} onChange={e=>setSearchDiag(e.target.value)} placeholder="paludisme, HTA, diabète…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"12px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"12px 14px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               {searchDiag.length>1 && diagResults.length>0 && (
                 <div style={{position:"absolute",zIndex:10,left:0,right:0,background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,marginTop:4,maxHeight:160,overflowY:"auto"}}>
                   {diagResults.map(a=>(
                     <div key={a.code} onClick={()=>{
                       setForm(f=>({...f,diagnostic_predefini:`${a.code} - ${a.libelle}`,diagnostic:f.diagnostic?f.diagnostic:a.libelle}));
                       setSearchDiag("");
-                    }} style={{padding:"8px 12px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                    }} style={{padding:"8px 12px",fontSize:16,color:C.text,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
                       <span style={{color:C.teal,fontFamily:"monospace",marginRight:6}}>{a.code}</span>{a.libelle}
                     </div>
                   ))}
@@ -2573,7 +2578,7 @@ function PageConsultation() {
               )}
               {form.diagnostic_predefini && (
                 <div style={{marginTop:6}}>
-                  <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:"rgba(13,148,136,.15)",color:C.teal,fontSize:11,fontWeight:700}}>
+                  <span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:"rgba(13,148,136,.15)",color:C.teal,fontSize:14,fontWeight:700}}>
                     {form.diagnostic_predefini}
                     <span onClick={()=>setForm(f=>({...f,diagnostic_predefini:""}))} style={{cursor:"pointer"}}>✕</span>
                   </span>
@@ -2581,22 +2586,22 @@ function PageConsultation() {
               )}
             </div>
             <div style={{marginBottom:16}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Diagnostic retenu *</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Diagnostic retenu *</label>
               <textarea value={form.diagnostic} onChange={e=>setForm(f=>({...f,diagnostic:e.target.value}))} rows={3} placeholder="Hypertension artérielle…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:18,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
 
             <div style={{marginBottom:6,position:"relative"}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher un traitement</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Rechercher un traitement</label>
               <input value={searchTrait} onChange={e=>setSearchTrait(e.target.value)} placeholder="Amlodipine, paracétamol…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"12px 14px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"12px 14px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               {searchTrait.length>1 && (medicaments||[]).length>0 && (
                 <div style={{position:"absolute",zIndex:10,left:0,right:0,background:C.card,border:`1.5px solid ${C.border}`,borderRadius:9,marginTop:4,maxHeight:160,overflowY:"auto"}}>
                   {(medicaments||[]).slice(0,15).map(m=>(
                     <div key={m.id||m.nom} onClick={()=>{
                       setForm(f=>({...f,traitement_predefini:m.nom,traitement:f.traitement?`${f.traitement}, ${m.nom}`:m.nom}));
                       setSearchTrait("");
-                    }} style={{padding:"8px 12px",fontSize:12,color:C.text,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
+                    }} style={{padding:"8px 12px",fontSize:16,color:C.text,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>
                       {m.nom}{m.dci?<span style={{color:C.muted}}> — {m.dci}</span>:null}
                     </div>
                   ))}
@@ -2604,33 +2609,33 @@ function PageConsultation() {
               )}
             </div>
             <div style={{marginBottom:16}}>
-              <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Traitement (ordonnance)</label>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Traitement (ordonnance)</label>
               <textarea value={form.traitement} onChange={e=>setForm(f=>({...f,traitement:e.target.value}))} rows={3} placeholder="Amlodipine 5mg, 1cp/jour…"
-                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:13,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"10px 14px",color:C.text,fontSize:17,resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
 
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
               <div>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Date de contrôle</label>
+                <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Date de contrôle</label>
                 <input type="date" value={form.date_controle} onChange={e=>setForm(f=>({...f,date_controle:e.target.value}))}
-                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               </div>
               <div>
-                <label style={{display:"block",fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Notes</label>
+                <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",marginBottom:4}}>Notes</label>
                 <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="Observations…"
-                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  style={{width:"100%",background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:"9px 12px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
               </div>
             </div>
 
             <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Annuler</button>
+              <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>Annuler</button>
               <button disabled={addMut.isPending} onClick={()=>{
                 if(!form.motif||!form.diagnostic){toast.error("Motif et diagnostic requis");return;}
                 addMut.mutate({
                   patient_id:patient.id, ...form, tension_arterielle:form.ta,
                   biologie_predefinis: bioSel.map(a=>a.libelle).join(", ")||null,
                 });
-              }} style={{flex:2,padding:"10px",borderRadius:9,background:`linear-gradient(135deg,${C.green},${C.teal})`,border:"none",color:"#fff",cursor:addMut.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addMut.isPending?.65:1}}>
+              }} style={{flex:2,padding:"10px",borderRadius:9,background:`linear-gradient(135deg,${C.green},${C.teal})`,border:"none",color:"#fff",cursor:addMut.isPending?"not-allowed":"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit",opacity:addMut.isPending?.65:1}}>
                 {addMut.isPending?"⏳…":"✅ Enregistrer"}
               </button>
             </div>
@@ -2641,39 +2646,39 @@ function PageConsultation() {
         <div onClick={()=>setShowOrd(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div onClick={e=>e.stopPropagation()} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28,width:640,maxWidth:"96vw",maxHeight:"90vh",overflowY:"auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h2 style={{fontSize:16,fontWeight:700,color:C.text,margin:0}}>💊 Ordonnance — {patient.prenom} {patient.nom}</h2>
-              <button onClick={()=>setShowOrd(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:20}}>✕</button>
+              <h2 style={{fontSize:21,fontWeight:700,color:C.text,margin:0}}>💊 Ordonnance — {patient.prenom} {patient.nom}</h2>
+              <button onClick={()=>setShowOrd(false)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:26}}>✕</button>
             </div>
-            <div style={{background:"rgba(124,58,237,.08)",border:"1px solid rgba(124,58,237,.2)",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:C.muted}}>
+            <div style={{background:"rgba(124,58,237,.08)",border:"1px solid rgba(124,58,237,.2)",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:16,color:C.muted}}>
               Consultation enregistrée ✅ — Voulez-vous ajouter une ordonnance ?
             </div>
             <div style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <label style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase"}}>Médicaments *</label>
-                <button onClick={addLigne} style={{background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",borderRadius:6,padding:"5px 12px",color:"#7C3AED",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter une ligne</button>
+                <label style={{fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase"}}>Médicaments *</label>
+                <button onClick={addLigne} style={{background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",borderRadius:6,padding:"5px 12px",color:"#7C3AED",cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter une ligne</button>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr 1fr auto",gap:6,marginBottom:6,padding:"0 2px"}}>
-                {["Nom du médicament","Dosage","Posologie","Durée",""].map((h,i)=><div key={i} style={{fontSize:10,color:C.dim,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+                {["Nom du médicament","Dosage","Posologie","Durée",""].map((h,i)=><div key={i} style={{fontSize:13,color:C.dim,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
               </div>
               {lignes.map((l,i)=>(
                 <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr 1fr auto",gap:6,marginBottom:8,alignItems:"center"}}>
                   <input value={l.nom} onChange={e=>updLigne(i,"nom",e.target.value)} placeholder={i===0?"Paracétamol":"Médicament..."}
-                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.qte} onChange={e=>updLigne(i,"qte",e.target.value)} placeholder="500mg"
-                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.posologie} onChange={e=>updLigne(i,"posologie",e.target.value)} placeholder="1 cp matin/soir"
-                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.duree} onChange={e=>updLigne(i,"duree",e.target.value)} placeholder="7 jours"
-                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
-                  <button onClick={()=>delLigne(i)} style={{background:lignes.length>1?"rgba(225,29,72,.1)":"transparent",border:lignes.length>1?"1px solid rgba(225,29,72,.2)":"none",borderRadius:6,padding:"7px 9px",color:lignes.length>1?"#E11D48":C.dim,cursor:lignes.length>1?"pointer":"default",fontSize:14,fontFamily:"inherit"}}>
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <button onClick={()=>delLigne(i)} style={{background:lignes.length>1?"rgba(225,29,72,.1)":"transparent",border:lignes.length>1?"1px solid rgba(225,29,72,.2)":"none",borderRadius:6,padding:"7px 9px",color:lignes.length>1?"#E11D48":C.dim,cursor:lignes.length>1?"pointer":"default",fontSize:18,fontFamily:"inherit"}}>
                     {lignes.length>1?"✕":"—"}
                   </button>
                 </div>
               ))}
-              <button onClick={addLigne} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
+              <button onClick={addLigne} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
             </div>
             <div style={{display:"flex",gap:10,marginTop:8}}>
-              <button onClick={()=>setShowOrd(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>Passer</button>
+              <button onClick={()=>setShowOrd(false)} style={{flex:1,padding:"10px",borderRadius:9,background:"transparent",border:`1.5px solid ${C.border}`,color:C.muted,cursor:"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>Passer</button>
               <button disabled={addOrd.isPending} onClick={()=>{
                 const valides = lignes.filter(l=>l.nom.trim());
                 if(!valides.length){toast.error("Au moins un médicament requis");return;}
@@ -2681,7 +2686,7 @@ function PageConsultation() {
                 const posologie = valides.map(l=>l.posologie).filter(Boolean).join(' | ');
                 const duree = valides.map(l=>l.duree).filter(Boolean).join(' | ');
                 addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicaments:medicament,posologie,duree});
-              }} style={{flex:2,padding:"10px",borderRadius:9,background:"linear-gradient(135deg,#7C3AED,#0D9488)",border:"none",color:"#fff",cursor:addOrd.isPending?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",opacity:addOrd.isPending?.65:1}}>
+              }} style={{flex:2,padding:"10px",borderRadius:9,background:"linear-gradient(135deg,#7C3AED,#0D9488)",border:"none",color:"#fff",cursor:addOrd.isPending?"not-allowed":"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit",opacity:addOrd.isPending?.65:1}}>
                 {addOrd.isPending?"⏳…":"💊 Créer l'ordonnance"}
               </button>
             </div>
@@ -2778,7 +2783,7 @@ function PageCaisse() {
               {caisses.map(c => (
                 <button key={c.id} onClick={()=>setCaisseId(c.id)}
                   style={{
-                    padding:"9px 16px",borderRadius:24,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    padding:"9px 16px",borderRadius:24,fontSize:17,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
                     border:`1.5px solid ${caisseId===c.id?C.green:C.border}`,
                     background:caisseId===c.id?"rgba(10,143,88,.15)":"transparent",
                     color:caisseId===c.id?C.green:C.muted,
@@ -2791,9 +2796,9 @@ function PageCaisse() {
 
           {!sessionOuverte ? (
             <Panel style={{maxWidth:400,margin:"0 auto",textAlign:"center",padding:48}}>
-              <div style={{fontSize:48,marginBottom:16}}>🔒</div>
-              <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:8}}>{caisseActive?.nom} fermée</div>
-              <div style={{fontSize:13,color:C.muted,marginBottom:24}}>Ouvrez la caisse pour commencer les encaissements du jour</div>
+              <div style={{fontSize:62,marginBottom:16}}>🔒</div>
+              <div style={{fontSize:21,fontWeight:700,color:C.text,marginBottom:8}}>{caisseActive?.nom} fermée</div>
+              <div style={{fontSize:17,color:C.muted,marginBottom:24}}>Ouvrez la caisse pour commencer les encaissements du jour</div>
               <Btn style={{width:"100%"}} loading={ouvrirMut.isPending} onClick={()=>ouvrirMut.mutate()}>Ouvrir la caisse</Btn>
             </Panel>
           ) : (
@@ -2920,12 +2925,12 @@ function PageFileAttente(){
     <div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
         <div>
-          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>🚶 File d'attente</h2>
-          <p style={{fontSize:13,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
+          <h2 style={{fontSize:26,fontWeight:700,color:C.text}}>🚶 File d'attente</h2>
+          <p style={{fontSize:17,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
         </div>
         <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>refetch()} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
-          <button onClick={()=>setShowQR(true)} style={{padding:'8px 16px',background:C.teal,border:'none',borderRadius:8,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📱 QR Code accueil</button>
+          <button onClick={()=>refetch()} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:17,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
+          <button onClick={()=>setShowQR(true)} style={{padding:'8px 16px',background:C.teal,border:'none',borderRadius:8,color:'#fff',fontSize:17,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📱 QR Code accueil</button>
         </div>
       </div>
 
@@ -2939,8 +2944,8 @@ function PageFileAttente(){
           { label:'Total',      val:stats.total||0,      color:C.text },
         ].map(s=>(
           <div key={s.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
-            <div style={{fontSize:24,fontWeight:700,color:s.color}}>{s.val}</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
+            <div style={{fontSize:31,fontWeight:700,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:16,color:C.muted,marginTop:2}}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -2955,7 +2960,7 @@ function PageFileAttente(){
           {key:'tous',label:'Tous'},
         ].map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)} style={{
-            padding:'7px 16px',borderRadius:20,fontSize:13,fontWeight:tab===t.key?700:400,
+            padding:'7px 16px',borderRadius:20,fontSize:17,fontWeight:tab===t.key?700:400,
             border:`1px solid ${tab===t.key?C.teal:C.border}`,
             background:tab===t.key?'rgba(13,148,136,.15)':'transparent',
             color:tab===t.key?C.teal:C.muted,cursor:'pointer',fontFamily:'inherit'
@@ -2966,14 +2971,14 @@ function PageFileAttente(){
       {/* Liste */}
       {isLoading ? <Loader/> : liste.length===0 ? (
         <div style={{textAlign:'center',padding:'3rem',color:C.muted}}>
-          <div style={{fontSize:40,marginBottom:12}}>🚶</div>
-          <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>File d'attente vide</div>
-          <div style={{fontSize:13}}>Les patients apparaîtront ici après avoir scanné le QR Code d'accueil</div>
+          <div style={{fontSize:52,marginBottom:12}}>🚶</div>
+          <div style={{fontSize:20,fontWeight:600,marginBottom:6}}>File d'attente vide</div>
+          <div style={{fontSize:17}}>Les patients apparaîtront ici après avoir scanné le QR Code d'accueil</div>
         </div>
       ) : (
         <div style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:14,overflow:'hidden'}}>
           {/* Header tableau */}
-          <div style={{display:'grid',gridTemplateColumns:'60px 1fr 1fr 1fr 120px 200px',gap:8,padding:'10px 16px',borderBottom:`1px solid ${C.border}`,fontSize:11,fontWeight:700,color:C.dim,textTransform:'uppercase',letterSpacing:'.5px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'60px 1fr 1fr 1fr 120px 200px',gap:8,padding:'10px 16px',borderBottom:`1px solid ${C.border}`,fontSize:14,fontWeight:700,color:C.dim,textTransform:'uppercase',letterSpacing:'.5px'}}>
             <span>Rang</span><span>Patient</span><span>Médecin</span><span>Heure scan</span><span>Statut</span><span>Actions</span>
           </div>
           {liste.map((e,i)=>(
@@ -2984,10 +2989,10 @@ function PageFileAttente(){
               alignItems:'center',
               background:i%2===0?'transparent':'rgba(255,255,255,.01)'
             }}>
-              <div style={{width:36,height:36,borderRadius:8,background:'rgba(13,148,136,.15)',border:`1px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:C.teal}}>{e.rang}</div>
+              <div style={{width:36,height:36,borderRadius:8,background:'rgba(13,148,136,.15)',border:`1px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:21,color:C.teal}}>{e.rang}</div>
               <div>
-                <div style={{fontWeight:600,fontSize:14,color:C.text}}>{e.patient_nom}</div>
-                {e.patient_telephone&&<div style={{fontSize:11,color:C.dim,marginTop:2}}>{e.patient_telephone}</div>}
+                <div style={{fontWeight:600,fontSize:18,color:C.text}}>{e.patient_nom}</div>
+                {e.patient_telephone&&<div style={{fontSize:14,color:C.dim,marginTop:2}}>{e.patient_telephone}</div>}
               </div>
               <div>
                 <select
@@ -2995,7 +3000,7 @@ function PageFileAttente(){
                   onChange={ev=>affecterMedecin(e.id, ev.target.value)}
                   disabled={e.statut==='termine'||e.statut==='annule'}
                   style={{
-                    width:'100%', fontSize:12, padding:'6px 8px', borderRadius:7,
+                    width:'100%', fontSize:16, padding:'6px 8px', borderRadius:7,
                     background:e.medecin_id?'rgba(13,148,136,.08)':'rgba(245,158,11,.08)',
                     border:`1px solid ${e.medecin_id?'rgba(13,148,136,.3)':'rgba(245,158,11,.3)'}`,
                     color:e.medecin_id?C.text:'#F59E0B', fontFamily:'inherit',
@@ -3007,28 +3012,28 @@ function PageFileAttente(){
                   ))}
                 </select>
               </div>
-              <div style={{fontSize:12,color:C.dim}}>
+              <div style={{fontSize:16,color:C.dim}}>
                 {e.heure_scan ? new Date(e.heure_scan).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'}) : '—'}
               </div>
               <div>
-                <span style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:20,
+                <span style={{fontSize:14,fontWeight:700,padding:'3px 8px',borderRadius:20,
                   background:STATUT_COLOR[e.statut]?.bg,color:STATUT_COLOR[e.statut]?.color}}>
                   {STATUT_COLOR[e.statut]?.label||e.statut}
                 </span>
               </div>
               <div style={{display:'flex',gap:6}}>
                 {e.statut==='en_attente'&&(
-                  <button onClick={()=>updateStatut(e.id,'appeler')} style={{flex:1,padding:'6px 0',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:7,color:'#3B82F6',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                  <button onClick={()=>updateStatut(e.id,'appeler')} style={{flex:1,padding:'6px 0',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:7,color:'#3B82F6',fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                     📣 Appeler
                   </button>
                 )}
                 {e.statut==='appele'&&(
-                  <button onClick={()=>updateStatut(e.id,'consultation')} style={{flex:1,padding:'6px 0',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:7,color:C.green,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                  <button onClick={()=>updateStatut(e.id,'consultation')} style={{flex:1,padding:'6px 0',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:7,color:C.green,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                     🩺 Entré
                   </button>
                 )}
                 {e.statut==='en_consultation'&&(
-                  <button onClick={()=>updateStatut(e.id,'terminer')} style={{flex:1,padding:'6px 0',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:7,color:C.muted,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
+                  <button onClick={()=>updateStatut(e.id,'terminer')} style={{flex:1,padding:'6px 0',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:7,color:C.muted,fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                     ✓ Terminé
                   </button>
                 )}
@@ -3042,7 +3047,7 @@ function PageFileAttente(){
       {showQR&&(
         <Modal open={showQR} onClose={()=>setShowQR(false)} title="QR Code d'accueil — À imprimer et afficher">
           <div style={{textAlign:'center',padding:'1rem'}}>
-            <p style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.7}}>
+            <p style={{fontSize:17,color:C.muted,marginBottom:20,lineHeight:1.7}}>
               Imprimez et affichez ce QR Code à l'accueil de votre clinique.<br/>
               Les patients le scannent avec leur application MediConnect pour rejoindre la file d'attente.
             </p>
@@ -3054,10 +3059,10 @@ function PageFileAttente(){
               />
             </div>
             <div style={{background:C.input,borderRadius:8,padding:'10px 14px',marginBottom:16}}>
-              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>URL de scan :</div>
-              <div style={{fontSize:12,color:C.text,fontFamily:'monospace',wordBreak:'break-all'}}>{scanUrl}</div>
+              <div style={{fontSize:14,color:C.muted,marginBottom:4}}>URL de scan :</div>
+              <div style={{fontSize:16,color:C.text,fontFamily:'monospace',wordBreak:'break-all'}}>{scanUrl}</div>
             </div>
-            <button onClick={()=>window.print()} style={{padding:'10px 24px',background:C.green,border:'none',borderRadius:8,color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
+            <button onClick={()=>window.print()} style={{padding:'10px 24px',background:C.green,border:'none',borderRadius:8,color:'#fff',fontWeight:700,fontSize:18,cursor:'pointer',fontFamily:'inherit'}}>
               🖨️ Imprimer le QR Code
             </button>
           </div>
@@ -3108,39 +3113,39 @@ function PageFileAttenteMedecinClinique(){
     <div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
         <div>
-          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>🩺 Mes patients en attente</h2>
-          <p style={{fontSize:13,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
+          <h2 style={{fontSize:26,fontWeight:700,color:C.text}}>🩺 Mes patients en attente</h2>
+          <p style={{fontSize:17,color:C.muted,marginTop:2}}>Mise à jour automatique toutes les 10 secondes</p>
         </div>
-        <button onClick={fetchListe} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
+        <button onClick={fetchListe} style={{padding:'8px 16px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:17,cursor:'pointer',fontFamily:'inherit'}}>↻ Actualiser</button>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:12,marginBottom:20}}>
         {[{label:'En attente',val:stats.en_attente||0,color:'#F59E0B'},{label:'En consultation',val:stats.en_consultation||0,color:C.green},{label:'Terminés',val:stats.termine||0,color:C.muted},{label:'Total jour',val:stats.total||0,color:C.text}].map(s=>(
           <div key={s.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
-            <div style={{fontSize:24,fontWeight:700,color:s.color}}>{s.val}</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
+            <div style={{fontSize:31,fontWeight:700,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:16,color:C.muted,marginTop:2}}>{s.label}</div>
           </div>
         ))}
       </div>
       {loading ? <Loader/> : actifs.length===0 ? (
         <div style={{textAlign:'center',padding:'3rem',background:C.input,border:`1px solid ${C.border}`,borderRadius:14}}>
-          <div style={{fontSize:40,marginBottom:12}}>✅</div>
-          <div style={{fontSize:15,fontWeight:600,color:C.text}}>Aucun patient en attente</div>
+          <div style={{fontSize:52,marginBottom:12}}>✅</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.text}}>Aucun patient en attente</div>
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {actifs.map(e=>(
             <div key={e.id} style={{background:C.input,border:`1.5px solid ${e.statut==='appele'?'#3B82F6':C.border}`,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
-              <div style={{width:44,height:44,borderRadius:10,background:'rgba(13,148,136,.15)',border:`1.5px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:20,color:C.teal,flexShrink:0}}>{e.rang}</div>
+              <div style={{width:44,height:44,borderRadius:10,background:'rgba(13,148,136,.15)',border:`1.5px solid ${C.teal}`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:26,color:C.teal,flexShrink:0}}>{e.rang}</div>
               <div style={{flex:1,minWidth:160}}>
-                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{e.patient_nom}</div>
-                {e.patient_telephone&&<div style={{fontSize:12,color:C.dim,marginTop:2}}>📞 {e.patient_telephone}</div>}
-                {e.motif&&<div style={{fontSize:12,color:C.muted,marginTop:2}}>💬 {e.motif}</div>}
+                <div style={{fontWeight:700,fontSize:18,color:C.text}}>{e.patient_nom}</div>
+                {e.patient_telephone&&<div style={{fontSize:16,color:C.dim,marginTop:2}}>📞 {e.patient_telephone}</div>}
+                {e.motif&&<div style={{fontSize:16,color:C.muted,marginTop:2}}>💬 {e.motif}</div>}
               </div>
               <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-                <span style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:STATUT[e.statut]?.bg,color:STATUT[e.statut]?.color}}>{STATUT[e.statut]?.label}</span>
-                {e.statut==='en_attente'&&<button onClick={()=>updateStatut(e.id,'appeler')} style={{padding:'7px 14px',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:8,color:'#3B82F6',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📣 Appeler</button>}
-                {e.statut==='appele'&&<button onClick={()=>updateStatut(e.id,'consultation')} style={{padding:'7px 14px',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:8,color:C.green,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>🩺 Entrer</button>}
-                {e.statut==='en_consultation'&&<button onClick={()=>updateStatut(e.id,'terminer')} style={{padding:'7px 14px',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:8,color:C.muted,fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>✓ Terminé</button>}
+                <span style={{fontSize:14,fontWeight:700,padding:'3px 10px',borderRadius:20,background:STATUT[e.statut]?.bg,color:STATUT[e.statut]?.color}}>{STATUT[e.statut]?.label}</span>
+                {e.statut==='en_attente'&&<button onClick={()=>updateStatut(e.id,'appeler')} style={{padding:'7px 14px',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:8,color:'#3B82F6',fontSize:16,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>📣 Appeler</button>}
+                {e.statut==='appele'&&<button onClick={()=>updateStatut(e.id,'consultation')} style={{padding:'7px 14px',background:'rgba(10,143,88,.15)',border:`1px solid rgba(10,143,88,.3)`,borderRadius:8,color:C.green,fontSize:16,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>🩺 Entrer</button>}
+                {e.statut==='en_consultation'&&<button onClick={()=>updateStatut(e.id,'terminer')} style={{padding:'7px 14px',background:'rgba(107,114,128,.15)',border:'1px solid rgba(107,114,128,.3)',borderRadius:8,color:C.muted,fontSize:16,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>✓ Terminé</button>}
               </div>
             </div>
           ))}
@@ -3191,14 +3196,14 @@ function PageProprietaire(){
     <div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20,flexWrap:'wrap',gap:12}}>
         <div>
-          <h2 style={{fontSize:20,fontWeight:700,color:C.text}}>👁️ Vue Propriétaire</h2>
-          <p style={{fontSize:13,color:C.muted,marginTop:2}}>{data.clinique?.nom} · Actualisation auto 30s</p>
+          <h2 style={{fontSize:26,fontWeight:700,color:C.text}}>👁️ Vue Propriétaire</h2>
+          <p style={{fontSize:17,color:C.muted,marginTop:2}}>{data.clinique?.nom} · Actualisation auto 30s</p>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <span style={{fontSize:11,padding:'4px 10px',borderRadius:20,background:data.caisse_statut?.statut==='ouverte'?'rgba(10,143,88,.15)':'rgba(239,68,68,.15)',color:data.caisse_statut?.statut==='ouverte'?C.green:C.red,fontWeight:700}}>
+          <span style={{fontSize:14,padding:'4px 10px',borderRadius:20,background:data.caisse_statut?.statut==='ouverte'?'rgba(10,143,88,.15)':'rgba(239,68,68,.15)',color:data.caisse_statut?.statut==='ouverte'?C.green:C.red,fontWeight:700}}>
             {data.caisse_statut?.statut==='ouverte'?'🟢 Caisse ouverte':'🔴 Caisse fermée'}
           </span>
-          <button onClick={fetchDashboard} style={{padding:'7px 14px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↻</button>
+          <button onClick={fetchDashboard} style={{padding:'7px 14px',background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:17,cursor:'pointer',fontFamily:'inherit'}}>↻</button>
         </div>
       </div>
 
@@ -3211,45 +3216,45 @@ function PageProprietaire(){
         ].map(k=>(
           <div key={k.label} style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:'16px 18px'}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-              <span style={{fontSize:18}}>{k.icon}</span>
-              <span style={{fontSize:11,color:C.dim,fontWeight:700,textTransform:'uppercase',letterSpacing:'.5px'}}>{k.label}</span>
+              <span style={{fontSize:23}}>{k.icon}</span>
+              <span style={{fontSize:14,color:C.dim,fontWeight:700,textTransform:'uppercase',letterSpacing:'.5px'}}>{k.label}</span>
             </div>
-            <div style={{fontSize:22,fontWeight:800,color:k.color}}>{k.val}</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:3}}>{k.sub}</div>
+            <div style={{fontSize:29,fontWeight:800,color:k.color}}>{k.val}</div>
+            <div style={{fontSize:14,color:C.muted,marginTop:3}}>{k.sub}</div>
           </div>
         ))}
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
         {[{key:'jour',label:"Aujourd'hui"},{key:'mois',label:'Ce mois'},{key:'evolution',label:'7 jours'},{key:'journal',label:'Journal'},{key:'analyse',label:'Analyse'}].map(t=>(
-          <button key={t.key} onClick={()=>setTab(t.key)} style={{padding:'7px 16px',borderRadius:20,fontSize:13,fontWeight:tab===t.key?700:400,border:`1px solid ${tab===t.key?C.amber:C.border}`,background:tab===t.key?'rgba(217,119,6,.12)':'transparent',color:tab===t.key?C.amber:C.muted,cursor:'pointer',fontFamily:'inherit'}}>{t.label}</button>
+          <button key={t.key} onClick={()=>setTab(t.key)} style={{padding:'7px 16px',borderRadius:20,fontSize:17,fontWeight:tab===t.key?700:400,border:`1px solid ${tab===t.key?C.amber:C.border}`,background:tab===t.key?'rgba(217,119,6,.12)':'transparent',color:tab===t.key?C.amber:C.muted,cursor:'pointer',fontFamily:'inherit'}}>{t.label}</button>
         ))}
       </div>
 
       {tab==='jour'&&<div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
           <div style={{background:'rgba(10,143,88,.06)',border:'1px solid rgba(10,143,88,.2)',borderRadius:12,padding:20}}>
-            <div style={{fontSize:11,color:C.muted,marginBottom:6,fontWeight:700}}>TOTAL ENTRÉES</div>
-            <div style={{fontSize:32,fontWeight:800,color:C.green}}>{fmt(data.jour?.entrees)} F</div>
+            <div style={{fontSize:14,color:C.muted,marginBottom:6,fontWeight:700}}>TOTAL ENTRÉES</div>
+            <div style={{fontSize:42,fontWeight:800,color:C.green}}>{fmt(data.jour?.entrees)} F</div>
           </div>
           <div style={{background:'rgba(239,68,68,.06)',border:'1px solid rgba(239,68,68,.2)',borderRadius:12,padding:20}}>
-            <div style={{fontSize:11,color:C.muted,marginBottom:6,fontWeight:700}}>TOTAL SORTIES</div>
-            <div style={{fontSize:32,fontWeight:800,color:C.red}}>{fmt(data.jour?.sorties)} F</div>
+            <div style={{fontSize:14,color:C.muted,marginBottom:6,fontWeight:700}}>TOTAL SORTIES</div>
+            <div style={{fontSize:42,fontWeight:800,color:C.red}}>{fmt(data.jour?.sorties)} F</div>
           </div>
         </div>
         <div style={{background:solde_jour>=0?'rgba(10,143,88,.08)':'rgba(239,68,68,.08)',border:`1px solid ${solde_jour>=0?'rgba(10,143,88,.25)':'rgba(239,68,68,.25)'}`,borderRadius:12,padding:20,textAlign:'center',marginBottom:14}}>
-          <div style={{fontSize:11,color:C.muted,marginBottom:6,fontWeight:700}}>SOLDE NET DU JOUR</div>
-          <div style={{fontSize:40,fontWeight:900,color:solde_jour>=0?C.green:C.red}}>{solde_jour>=0?'+':''}{fmt(solde_jour)} F</div>
+          <div style={{fontSize:14,color:C.muted,marginBottom:6,fontWeight:700}}>SOLDE NET DU JOUR</div>
+          <div style={{fontSize:52,fontWeight:900,color:solde_jour>=0?C.green:C.red}}>{solde_jour>=0?'+':''}{fmt(solde_jour)} F</div>
         </div>
-        <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:10}}>10 DERNIERS MOUVEMENTS</div>
+        <div style={{fontSize:17,fontWeight:700,color:C.muted,marginBottom:10}}>10 DERNIERS MOUVEMENTS</div>
         {(data.derniers_mouvements||[]).length===0 ? <Empty icon="💰" title="Aucun mouvement" subtitle="Aucune opération aujourd'hui"/> : (data.derniers_mouvements||[]).map(m=>(
           <div key={m.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:`1px solid ${C.border}`}}>
-            <span style={{fontSize:18}}>{m.type==='entree'?'📈':'📉'}</span>
+            <span style={{fontSize:23}}>{m.type==='entree'?'📈':'📉'}</span>
             <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.description||m.categorie}</div>
-              <div style={{fontSize:11,color:C.dim,marginTop:2}}>{new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</div>
+              <div style={{fontSize:17,fontWeight:600,color:C.text}}>{m.description||m.categorie}</div>
+              <div style={{fontSize:14,color:C.dim,marginTop:2}}>{new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</div>
             </div>
-            <div style={{fontWeight:700,color:m.type==='entree'?C.green:C.red,fontSize:14}}>{m.type==='entree'?'+':'-'}{fmt(m.montant)} F</div>
+            <div style={{fontWeight:700,color:m.type==='entree'?C.green:C.red,fontSize:18}}>{m.type==='entree'?'+':'-'}{fmt(m.montant)} F</div>
           </div>
         ))}
       </div>}
@@ -3258,8 +3263,8 @@ function PageProprietaire(){
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12}}>
           {[{label:'Entrées mois',val:fmt(data.mois?.entrees)+' F',color:C.green},{label:'Sorties mois',val:fmt(data.mois?.sorties)+' F',color:C.red},{label:'Solde net',val:fmt(solde_mois)+' F',color:solde_mois>=0?C.green:C.red},{label:'Jours actifs',val:data.mois?.jours_actifs||0,color:C.teal},{label:'Consultations',val:data.consultations?.mois?.nb||0,color:C.teal},{label:'Revenu consul.',val:fmt(data.consultations?.mois?.revenu||0)+' F',color:C.green}].map(k=>(
             <div key={k.label} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:12,padding:'14px 16px'}}>
-              <div style={{fontSize:11,color:C.dim,marginBottom:4}}>{k.label}</div>
-              <div style={{fontSize:20,fontWeight:700,color:k.color}}>{k.val}</div>
+              <div style={{fontSize:14,color:C.dim,marginBottom:4}}>{k.label}</div>
+              <div style={{fontSize:26,fontWeight:700,color:k.color}}>{k.val}</div>
             </div>
           ))}
         </div>
@@ -3270,12 +3275,12 @@ function PageProprietaire(){
           const net=(parseFloat(j.entrees)||0)-(parseFloat(j.sorties)||0);
           return <div key={i} style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 16px',marginBottom:8}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-              <span style={{fontSize:13,fontWeight:600,color:C.text}}>{new Date(j.jour).toLocaleDateString('fr-CI',{weekday:'short',day:'numeric',month:'short'})}</span>
-              <span style={{fontWeight:700,color:net>=0?C.green:C.red,fontSize:13}}>{net>=0?'+':''}{fmt(net)} F</span>
+              <span style={{fontSize:17,fontWeight:600,color:C.text}}>{new Date(j.jour).toLocaleDateString('fr-CI',{weekday:'short',day:'numeric',month:'short'})}</span>
+              <span style={{fontWeight:700,color:net>=0?C.green:C.red,fontSize:17}}>{net>=0?'+':''}{fmt(net)} F</span>
             </div>
             <div style={{display:'flex',gap:16}}>
-              <span style={{fontSize:12,color:C.green}}>📈 {fmt(j.entrees)} F</span>
-              <span style={{fontSize:12,color:C.red}}>📉 {fmt(j.sorties)} F</span>
+              <span style={{fontSize:16,color:C.green}}>📈 {fmt(j.entrees)} F</span>
+              <span style={{fontSize:16,color:C.red}}>📉 {fmt(j.sorties)} F</span>
             </div>
           </div>;
         })}
@@ -3284,18 +3289,18 @@ function PageProprietaire(){
       {tab==='journal'&&<div>
         {journal.length===0 ? <Empty icon="📋" title="Journal vide" subtitle="Aucune opération"/> : (
           <div style={{background:C.input,border:`1px solid ${C.border}`,borderRadius:14,overflow:'hidden'}}>
-            <div style={{display:'grid',gridTemplateColumns:'80px 1fr 100px 120px',gap:8,padding:'10px 16px',borderBottom:`1px solid ${C.border}`,fontSize:11,fontWeight:700,color:C.dim,textTransform:'uppercase'}}>
+            <div style={{display:'grid',gridTemplateColumns:'80px 1fr 100px 120px',gap:8,padding:'10px 16px',borderBottom:`1px solid ${C.border}`,fontSize:14,fontWeight:700,color:C.dim,textTransform:'uppercase'}}>
               <span>Heure</span><span>Description</span><span>Mode</span><span style={{textAlign:'right'}}>Montant</span>
             </div>
             {journal.map((m,i)=>(
               <div key={m.id} style={{display:'grid',gridTemplateColumns:'80px 1fr 100px 120px',gap:8,padding:'10px 16px',borderBottom:i<journal.length-1?`1px solid ${C.border}`:'none',alignItems:'center',background:i%2===0?'transparent':'rgba(255,255,255,.01)'}}>
-                <span style={{fontSize:12,color:C.dim}}>{new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</span>
+                <span style={{fontSize:16,color:C.dim}}>{new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</span>
                 <div>
-                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{m.description||m.categorie}</div>
-                  {m.patient_nom&&<div style={{fontSize:11,color:C.dim}}>👤 {m.patient_nom}</div>}
+                  <div style={{fontSize:17,fontWeight:600,color:C.text}}>{m.description||m.categorie}</div>
+                  {m.patient_nom&&<div style={{fontSize:14,color:C.dim}}>👤 {m.patient_nom}</div>}
                 </div>
-                <span style={{fontSize:11,color:C.dim}}>{m.mode_paiement}</span>
-                <span style={{fontWeight:700,color:m.type==='entree'?C.green:C.red,fontSize:14,textAlign:'right'}}>{m.type==='entree'?'+':'-'}{fmt(m.montant)} F</span>
+                <span style={{fontSize:14,color:C.dim}}>{m.mode_paiement}</span>
+                <span style={{fontWeight:700,color:m.type==='entree'?C.green:C.red,fontSize:18,textAlign:'right'}}>{m.type==='entree'?'+':'-'}{fmt(m.montant)} F</span>
               </div>
             ))}
           </div>
@@ -3303,15 +3308,15 @@ function PageProprietaire(){
       </div>}
 
       {tab==='analyse'&&<div>
-        <div style={{fontSize:13,fontWeight:700,color:C.muted,marginBottom:14}}>RÉPARTITION DES DÉPENSES DU MOIS</div>
+        <div style={{fontSize:17,fontWeight:700,color:C.muted,marginBottom:14}}>RÉPARTITION DES DÉPENSES DU MOIS</div>
         {(data.top_depenses||[]).length===0 ? <Empty icon="📊" title="Aucune dépense" subtitle="Aucune dépense ce mois"/> : (()=>{
           const total=data.top_depenses.reduce((s,x)=>s+parseFloat(x.total),0);
           return data.top_depenses.map((d,i)=>{
             const pct=total>0?Math.round(parseFloat(d.total)/total*100):0;
             return <div key={i} style={{marginBottom:14}}>
               <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
-                <span style={{fontSize:13,color:C.text,fontWeight:600,textTransform:'capitalize'}}>{d.categorie}</span>
-                <span style={{fontSize:13,color:C.red,fontWeight:700}}>{fmt(d.total)} F ({pct}%)</span>
+                <span style={{fontSize:17,color:C.text,fontWeight:600,textTransform:'capitalize'}}>{d.categorie}</span>
+                <span style={{fontSize:17,color:C.red,fontWeight:700}}>{fmt(d.total)} F ({pct}%)</span>
               </div>
               <div style={{background:C.border,borderRadius:4,height:6}}>
                 <div style={{background:C.amber,borderRadius:4,height:6,width:`${pct}%`}}/>
@@ -3385,33 +3390,33 @@ function PageProfilLogo(){
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,alignItems:'start'}}>
           <div>
             <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24,marginBottom:16}}>
-              <h3 style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:16}}>Logo de la clinique</h3>
+              <h3 style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:16}}>Logo de la clinique</h3>
               <div style={{width:'100%',height:160,borderRadius:10,border:`2px dashed ${preview?C.green:C.border}`,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:16,overflow:'hidden'}}>
-                {preview ? <img src={preview} alt="Logo" style={{maxHeight:140,maxWidth:'100%',objectFit:'contain'}}/> : <div style={{textAlign:'center'}}><div style={{fontSize:36}}>🏥</div><div style={{fontSize:13,color:C.muted}}>Aucun logo</div></div>}
+                {preview ? <img src={preview} alt="Logo" style={{maxHeight:140,maxWidth:'100%',objectFit:'contain'}}/> : <div style={{textAlign:'center'}}><div style={{fontSize:47}}>🏥</div><div style={{fontSize:17,color:C.muted}}>Aucun logo</div></div>}
               </div>
-              <label style={{display:'block',padding:'10px 16px',background:C.green,borderRadius:8,color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',textAlign:'center'}}>
+              <label style={{display:'block',padding:'10px 16px',background:C.green,borderRadius:8,color:'#fff',fontWeight:700,fontSize:17,cursor:'pointer',textAlign:'center'}}>
                 Choisir un logo (JPG/PNG max 2MB)
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} style={{display:'none'}}/>
               </label>
             </div>
             <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:20}}>
-              <h3 style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Apercu en-tete impression</h3>
+              <h3 style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:12}}>Apercu en-tete impression</h3>
               <div style={{background:'#fff',borderRadius:8,padding:14}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,paddingBottom:8,borderBottom:'2px solid #0A8F58'}}>
                   {preview ? <img src={preview} alt="Logo" style={{height:44,objectFit:'contain'}}/> : <div style={{width:44,height:44,background:'#e5e7eb',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center'}}>🏥</div>}
                   <div>
-                    <div style={{fontSize:14,fontWeight:700,color:'#1A2E25'}}>{profil?.nom||'Nom de la clinique'}</div>
-                    {form.slogan&&<div style={{fontSize:11,color:'#5A7A94',fontStyle:'italic'}}>{form.slogan}</div>}
-                    <div style={{fontSize:11,color:'#5A7A94'}}>{form.adresse_complete||profil?.adresse||'Adresse'} · {profil?.ville}</div>
-                    <div style={{fontSize:11,color:'#5A7A94'}}>{profil?.telephone}{profil?.email?' · '+profil.email:''}</div>
+                    <div style={{fontSize:18,fontWeight:700,color:'#1A2E25'}}>{profil?.nom||'Nom de la clinique'}</div>
+                    {form.slogan&&<div style={{fontSize:14,color:'#5A7A94',fontStyle:'italic'}}>{form.slogan}</div>}
+                    <div style={{fontSize:14,color:'#5A7A94'}}>{form.adresse_complete||profil?.adresse||'Adresse'} · {profil?.ville}</div>
+                    <div style={{fontSize:14,color:'#5A7A94'}}>{profil?.telephone}{profil?.email?' · '+profil.email:''}</div>
                   </div>
                 </div>
-                <div style={{marginTop:6,fontSize:10,color:'#9CA3AF',textAlign:'center'}}>{form.horaires} {form.site_web?' · '+form.site_web:''}</div>
+                <div style={{marginTop:6,fontSize:13,color:'#9CA3AF',textAlign:'center'}}>{form.horaires} {form.site_web?' · '+form.site_web:''}</div>
               </div>
             </div>
           </div>
           <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24}}>
-            <h3 style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:16}}>Informations affichees</h3>
+            <h3 style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:16}}>Informations affichees</h3>
             {[
               {label:'Slogan',key:'slogan',ph:'Ex: Votre sante, notre priorite'},
               {label:'Adresse complete',key:'adresse_complete',ph:'Ex: Cocody Riviera 2'},
@@ -3419,13 +3424,13 @@ function PageProfilLogo(){
               {label:'Site web',key:'site_web',ph:'https://www.maclinique.ci'},
             ].map(f=>(
               <div key={f.key} style={{marginBottom:14}}>
-                <label style={{fontSize:11,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>{f.label.toUpperCase()}</label>
+                <label style={{fontSize:14,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>{f.label.toUpperCase()}</label>
                 <input value={form[f.key]} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph}
-                  style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none',boxSizing:'border-box'}}/>
+                  style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:17,outline:'none',boxSizing:'border-box'}}/>
               </div>
             ))}
-            {msg&&<div style={{padding:'10px 14px',borderRadius:8,background:'rgba(10,143,88,.1)',color:C.green,fontSize:13,marginBottom:14}}>{msg}</div>}
-            <button onClick={handleSave} disabled={saving} style={{width:'100%',padding:'12px',background:C.green,border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
+            {msg&&<div style={{padding:'10px 14px',borderRadius:8,background:'rgba(10,143,88,.1)',color:C.green,fontSize:17,marginBottom:14}}>{msg}</div>}
+            <button onClick={handleSave} disabled={saving} style={{width:'100%',padding:'12px',background:C.green,border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:18,cursor:'pointer',fontFamily:'inherit'}}>
               {saving?'Enregistrement...':'Enregistrer le profil'}
             </button>
           </div>
@@ -3488,31 +3493,31 @@ function PageResultatsExamens() {
             placeholder="MC-XX-0000" style={{flex:1}} />
           <Btn style={{alignSelf:"flex-end",padding:"11px 20px"}} loading={recherche} onClick={rechercherPatient}>🔎 Rechercher</Btn>
         </div>
-        {erreur && <div style={{fontSize:12,color:C.red,marginTop:6}}>{erreur}</div>}
+        {erreur && <div style={{fontSize:16,color:C.red,marginTop:6}}>{erreur}</div>}
 
         {patient && (
           <>
             <div style={{background:"rgba(10,143,88,.1)",border:"1px solid rgba(10,143,88,.3)",borderRadius:9,padding:"10px 14px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
-                <div style={{fontSize:14,fontWeight:700,color:C.text}}>{patient.prenom} {patient.nom}</div>
-                <div style={{fontSize:11,color:C.muted}}>Dossier : {patient.code_secret||"—"}</div>
+                <div style={{fontSize:18,fontWeight:700,color:C.text}}>{patient.prenom} {patient.nom}</div>
+                <div style={{fontSize:14,color:C.muted}}>Dossier : {patient.code_secret||"—"}</div>
               </div>
               <button type="button" onClick={()=>{ setPatient(null); setCode(""); }}
-                style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:13}}>✕ Nouvelle recherche</button>
+                style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:17}}>✕ Nouvelle recherche</button>
             </div>
 
             {chargement ? <Loader/> : bulletins.length===0
               ? <Empty icon="🔬" title="Aucun examen" subtitle="Aucune demande d'analyse ou d'imagerie pour ce patient."/>
               : bulletins.map((b,i)=>(
                 <div key={b.id||i} style={{display:"flex",alignItems:"flex-start",gap:14,padding:"12px 0",borderBottom:i<bulletins.length-1?`1px solid ${C.border}`:"none"}}>
-                  <span style={{fontSize:22}}>{b.categorie==="imagerie"?"🩻":"🧪"}</span>
+                  <span style={{fontSize:29}}>{b.categorie==="imagerie"?"🩻":"🧪"}</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{b.type||"Examen"}</div>
-                    <div style={{fontSize:11,color:C.muted}}>{fmtDate ? fmtDate(b.created_at) : new Date(b.created_at).toLocaleDateString("fr-CI")}</div>
-                    {b.rapport && <div style={{fontSize:12,color:C.teal,marginTop:4}}>{b.rapport}</div>}
+                    <div style={{fontSize:17,fontWeight:700,color:C.text}}>{b.type||"Examen"}</div>
+                    <div style={{fontSize:14,color:C.muted}}>{fmtDate ? fmtDate(b.created_at) : new Date(b.created_at).toLocaleDateString("fr-CI")}</div>
+                    {b.rapport && <div style={{fontSize:16,color:C.teal,marginTop:4}}>{b.rapport}</div>}
                     {b.fichier_url && (
                       <a href={b.fichier_url} target="_blank" rel="noopener noreferrer"
-                        style={{display:"inline-block",fontSize:11,color:C.blue,marginTop:4,textDecoration:"none",fontWeight:700}}>
+                        style={{display:"inline-block",fontSize:14,color:C.blue,marginTop:4,textDecoration:"none",fontWeight:700}}>
                         📎 Voir le résultat ↗
                       </a>
                     )}
