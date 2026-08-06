@@ -11,8 +11,20 @@ router.post('/login', async (req, res) => {
   if (!email || !password)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
   try {
+    // Jointures pour resoudre l'etablissement des comptes
+    // laboratoire/imagerie/pharmacie/optique/assureur via leur user_id
+    // (lien inverse) -- utilisateurs n'a pas encore ses propres colonnes
+    // pour ces types (Phase 2 a venir), donc on les retrouve ici.
     const r = await db(
-      'SELECT * FROM utilisateurs WHERE email=$1 AND is_active IS NOT false LIMIT 1',
+      `SELECT u.*, l.id AS laboratoire_id, im.id AS imagerie_id,
+              ph.id AS pharmacie_id, a.id AS assureur_id, co.id AS optique_id
+         FROM utilisateurs u
+         LEFT JOIN laboratoires l ON l.user_id = u.id
+         LEFT JOIN imageries im ON im.user_id = u.id
+         LEFT JOIN pharmacies ph ON ph.user_id = u.id
+         LEFT JOIN assureurs a ON a.user_id = u.id
+         LEFT JOIN cabinets_optiques co ON co.user_id = u.id
+        WHERE u.email=$1 AND u.is_active IS NOT false LIMIT 1`,
       [email]
     );
     if (!r.rows.length)
@@ -21,10 +33,16 @@ router.post('/login', async (req, res) => {
     const ok = await bcrypt.compare(password, user.password);
     if (!ok)
       return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
+    // Avant ce correctif, seul clinique_id etait transmis -- les comptes
+    // laboratoire/imagerie/pharmacie/optique/assureur ne recevaient
+    // jamais leur propre identifiant d'etablissement dans le token.
     const token = jwt.sign(
       { id: user.id, role: user.role, clinique_id: user.clinique_id,
         patient_id: user.patient_id, medecin_id: user.medecin_id,
-        sous_role: user.sous_role || null },
+        sous_role: user.sous_role || null,
+        laboratoire_id: user.laboratoire_id, imagerie_id: user.imagerie_id,
+        pharmacie_id: user.pharmacie_id, assureur_id: user.assureur_id,
+        optique_id: user.optique_id },
       JWT_SECRET, { expiresIn: '7d' }
     );
     const { password: _, ...u } = user;
@@ -179,8 +197,15 @@ router.post('/register', async (req, res) => {
       assureur_id = aid;
     }
 
-    // 3. Générer le token avec clinique_id inclus
-    const tokenPayload = { id: userId, role: roleVal, clinique_id };
+    // 3. Générer le token avec l'identifiant de l'etablissement selon le
+    // role -- avant ce correctif, seul clinique_id etait transmis ; les
+    // comptes laboratoire/imagerie/pharmacie/optique/assureur ne
+    // recevaient jamais leur propre identifiant dans le token, les
+    // empechant de fonctionner comme la clinique le fait deja.
+    const tokenPayload = {
+      id: userId, role: roleVal, clinique_id, pharmacie_id,
+      laboratoire_id: labo_id, imagerie_id, optique_id, assureur_id,
+    };
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
 
     const { password: _, ...u } = r.rows[0];
