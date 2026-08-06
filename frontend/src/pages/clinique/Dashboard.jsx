@@ -855,9 +855,7 @@ function PageDossiers() {
       <div class="section">
         <div class="label">Prescription</div>
         <div class="medicament">
-          <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${o.medicaments||o.medicament||'—'}</div>
-          ${o.posologie?`<div style="font-size:13px;color:#5A7A94;">Posologie : ${o.posologie}</div>`:''}
-          ${o.duree?`<div style="font-size:13px;color:#5A7A94;">Durée : ${o.duree}</div>`:''}
+          ${(o.medicaments||o.medicament||'—').split('\n').map(ligne=>`<div style="font-size:15px;font-weight:700;padding:5px 0;border-bottom:1px solid #e5e7eb;">${ligne}</div>`).join('')}
           ${o.notes_ord?`<div style="font-size:12px;color:#8BA0B5;margin-top:6px;font-style:italic;">${o.notes_ord}</div>`:''}
         </div>
       </div>
