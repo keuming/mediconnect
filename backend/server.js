@@ -419,21 +419,38 @@ app.get('/api/patients', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const { q } = req.query;
-    // FAILLE CONFIDENTIALITE CORRIGEE : toute clinique voyait TOUS les
-    // patients de TOUTES les cliniques. Un compte clinique ne voit
-    // desormais que les patients qu'il a lui-meme crees, plus les
-    // patients anciens (clinique_id NULL, crees avant ce correctif) pour
-    // ne rien faire disparaitre retroactivement. Les comptes sans
-    // clinique_id (admin...) gardent la visibilite complete, inchangee.
+    // FAILLE CONFIDENTIALITE CORRIGEE (historique) : toute clinique
+    // voyait TOUS les patients de TOUTES les cliniques.
+    // ELARGI ENSUITE : l'identite patient est PORTABLE dans le reseau
+    // (carte MediConnect utilisable dans n'importe quelle clinique, pas
+    // seulement celle d'origine) -- un patient devient visible ici dès
+    // qu'il a ete reellement traite par cette clinique (consultation,
+    // rendez-vous ou facture existante), meme si son clinique_id
+    // d'origine est different. Une clinique qui n'a jamais eu de
+    // contact avec un patient ne peut toujours pas le parcourir.
     let sql, params = [];
     if (q) {
       params.push('%'+q.toLowerCase()+'%');
       sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1)`;
-      if (cid) { params.push(cid); sql += ` AND (clinique_id=$${params.length} OR clinique_id IS NULL)`; }
+      if (cid) {
+        params.push(cid);
+        const n = params.length;
+        sql += ` AND (clinique_id=$${n} OR clinique_id IS NULL
+          OR EXISTS (SELECT 1 FROM consultations c WHERE c.patient_id=patients.id AND c.clinique_id=$${n})
+          OR EXISTS (SELECT 1 FROM rendez_vous rv WHERE rv.patient_id=patients.id AND rv.clinique_id=$${n})
+          OR EXISTS (SELECT 1 FROM factures f WHERE f.patient_id=patients.id AND f.clinique_id=$${n}))`;
+      }
       sql += ' ORDER BY nom,prenom LIMIT 100';
     } else {
       sql = 'SELECT * FROM patients WHERE 1=1';
-      if (cid) { params.push(cid); sql += ` AND (clinique_id=$${params.length} OR clinique_id IS NULL)`; }
+      if (cid) {
+        params.push(cid);
+        const n = params.length;
+        sql += ` AND (clinique_id=$${n} OR clinique_id IS NULL
+          OR EXISTS (SELECT 1 FROM consultations c WHERE c.patient_id=patients.id AND c.clinique_id=$${n})
+          OR EXISTS (SELECT 1 FROM rendez_vous rv WHERE rv.patient_id=patients.id AND rv.clinique_id=$${n})
+          OR EXISTS (SELECT 1 FROM factures f WHERE f.patient_id=patients.id AND f.clinique_id=$${n}))`;
+      }
       sql += ' ORDER BY created_at DESC NULLS LAST, nom, prenom LIMIT 1000';
     }
     const r = await db(sql, params);
