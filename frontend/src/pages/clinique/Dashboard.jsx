@@ -573,7 +573,7 @@ function PanelCartePatient({ patient }) {
 
       <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
         <Sel label="Ajouter un acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)}
-          options={[{v:"",l:"— Choisir un acte —"}, ...(catalogue||[]).map(a=>({v:a.id, l:`${a.libelle} — ${fmtF(a.tarif_base)} F`}))]} />
+          options={[{v:"",l:"— Choisir un acte —"}, ...(catalogue||[]).map(a=>({v:a.id, l:`${a.libelle} — ${fmt(a.tarif_base)} F`}))]} />
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
           <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
         </label>
@@ -586,9 +586,9 @@ function PanelCartePatient({ patient }) {
           <div key={a.id} style={{background:C.hover,borderRadius:9,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
               <div style={{fontSize:15,fontWeight:600,color:C.text}}>{a.libelle_acte}</div>
-              <div style={{fontSize:13,color:C.dim}}>{a.code_acte} · {a.quantite} × {fmtF(a.prix_unitaire)} F</div>
+              <div style={{fontSize:13,color:C.dim}}>{a.code_acte} · {a.quantite} × {fmt(a.prix_unitaire)} F</div>
             </div>
-            <div style={{fontWeight:800,color:C.green}}>{fmtF(a.prix_unitaire*a.quantite)} F</div>
+            <div style={{fontWeight:800,color:C.green}}>{fmt(a.prix_unitaire*a.quantite)} F</div>
           </div>
         ))
       }
@@ -596,7 +596,7 @@ function PanelCartePatient({ patient }) {
       {actes.length>0 && (
         <div style={{display:"flex",justifyContent:"space-between",padding:"12px 0",borderTop:`1px solid ${C.border}`,marginTop:6,marginBottom:16}}>
           <span style={{color:C.muted,fontWeight:700}}>Total</span>
-          <span style={{fontSize:20,fontWeight:900,color:C.text}}>{fmtF(total)} F</span>
+          <span style={{fontSize:20,fontWeight:900,color:C.text}}>{fmt(total)} F</span>
         </div>
       )}
 
