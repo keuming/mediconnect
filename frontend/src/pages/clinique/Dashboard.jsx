@@ -2466,25 +2466,148 @@ function PageQualite() {
 // ════════════════════════════════════════════════════════════════════
 //  8. PAGE ASSURANCES (existante, améliorée)
 // ════════════════════════════════════════════════════════════════════
+function PanelCompagniesFormules() {
+  const qc = useQueryClient();
+  const [compagnieOuverte, setCompagnieOuverte] = useState(null);
+  const [showAddCompagnie, setShowAddCompagnie] = useState(false);
+  const [showAddFormule, setShowAddFormule] = useState(false);
+  const [nouvelleCompagnie, setNouvelleCompagnie] = useState({ nom:"", email:"", telephone:"", numero_agrement:"" });
+  const [nouvelleFormule, setNouvelleFormule] = useState({ nom:"", prime_mensuelle:"", taux_couverture:"" });
+
+  const { data: compagnies, isLoading } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const { data: formules } = useQuery({
+    queryKey:["cl-formules", compagnieOuverte],
+    queryFn:()=>cAPI.formulesParAssureur(compagnieOuverte).then(r=>r.data||[]),
+    enabled: !!compagnieOuverte,
+  });
+
+  const addCompagnieMut = useMutation({
+    mutationFn: () => api.post("/assureurs", nouvelleCompagnie),
+    onSuccess: () => { toast.success("Compagnie ajoutée !"); qc.invalidateQueries(["cl-assureurs-liste"]); setShowAddCompagnie(false); setNouvelleCompagnie({ nom:"", email:"", telephone:"", numero_agrement:"" }); },
+    onError: () => toast.error("Erreur"),
+  });
+  const addFormuleMut = useMutation({
+    mutationFn: () => api.post("/formules-assurance", { ...nouvelleFormule, assureur_id: compagnieOuverte }),
+    onSuccess: () => { toast.success("Formule ajoutée !"); qc.invalidateQueries(["cl-formules", compagnieOuverte]); setShowAddFormule(false); setNouvelleFormule({ nom:"", prime_mensuelle:"", taux_couverture:"" }); },
+    onError: () => toast.error("Erreur"),
+  });
+  const editFormuleMut = useMutation({
+    mutationFn: ({id,taux_couverture}) => api.put(`/formules-assurance/${id}`, { taux_couverture }),
+    onSuccess: () => { toast.success("Taux mis à jour"); qc.invalidateQueries(["cl-formules", compagnieOuverte]); },
+    onError: () => toast.error("Erreur"),
+  });
+  const supprimerFormuleMut = useMutation({
+    mutationFn: (id) => api.delete(`/formules-assurance/${id}`),
+    onSuccess: () => { toast.success("Formule retirée"); qc.invalidateQueries(["cl-formules", compagnieOuverte]); },
+    onError: () => toast.error("Erreur"),
+  });
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+        <Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAddCompagnie(true)}>+ Nouvelle compagnie</Btn>
+      </div>
+      {isLoading ? <Loader/> : (compagnies||[]).map(c=>(
+        <Panel key={c.id} style={{marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}}
+            onClick={()=>setCompagnieOuverte(o=>o===c.id?null:c.id)}>
+            <div>
+              <div style={{fontSize:18,fontWeight:700,color:C.text}}>{c.nom}</div>
+              <div style={{fontSize:13,color:C.muted}}>{c.numero_agrement?`Agrément ${c.numero_agrement}`:"—"}</div>
+            </div>
+            <span style={{color:C.muted,fontSize:18}}>{compagnieOuverte===c.id?"▲":"▼"}</span>
+          </div>
+          {compagnieOuverte===c.id && (
+            <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontSize:14,fontWeight:700,color:C.dim,textTransform:"uppercase"}}>Formules</span>
+                <Btn style={{padding:"4px 10px",fontSize:14}} onClick={()=>setShowAddFormule(true)}>+ Formule</Btn>
+              </div>
+              {(formules||[]).length===0
+                ? <Empty icon="📋" title="Aucune formule" />
+                : (formules||[]).map(f=>(
+                  <div key={f.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:15,fontWeight:600,color:C.text}}>{f.nom}</div>
+                      {f.prime_mensuelle && <div style={{fontSize:13,color:C.muted}}>{fmt(f.prime_mensuelle)} F/mois</div>}
+                    </div>
+                    <input type="number" defaultValue={f.taux_couverture} style={{width:70,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14,textAlign:"center"}}
+                      onBlur={e=>{ const v=parseInt(e.target.value); if(v!==f.taux_couverture && !isNaN(v)) editFormuleMut.mutate({id:f.id,taux_couverture:v}); }} />
+                    <span style={{fontSize:13,color:C.muted}}>%</span>
+                    <button onClick={()=>window.confirm("Retirer cette formule ?")&&supprimerFormuleMut.mutate(f.id)}
+                      style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:16}}>✕</button>
+                  </div>
+                ))
+              }
+            </div>
+          )}
+        </Panel>
+      ))}
+
+      <Modal open={showAddCompagnie} onClose={()=>setShowAddCompagnie(false)} title="🏢 Nouvelle compagnie">
+        <Inp label="Nom *" required value={nouvelleCompagnie.nom} onChange={e=>setNouvelleCompagnie(f=>({...f,nom:e.target.value}))} />
+        <Inp label="N° Agrément" value={nouvelleCompagnie.numero_agrement} onChange={e=>setNouvelleCompagnie(f=>({...f,numero_agrement:e.target.value}))} />
+        <Grid cols={2} gap={10}>
+          <Inp label="Email" value={nouvelleCompagnie.email} onChange={e=>setNouvelleCompagnie(f=>({...f,email:e.target.value}))} />
+          <Inp label="Téléphone" value={nouvelleCompagnie.telephone} onChange={e=>setNouvelleCompagnie(f=>({...f,telephone:e.target.value}))} />
+        </Grid>
+        <Btn style={{width:"100%"}} loading={addCompagnieMut.isPending} onClick={()=>{
+          if(!nouvelleCompagnie.nom){toast.error("Nom requis");return;}
+          addCompagnieMut.mutate();
+        }}>Créer</Btn>
+      </Modal>
+
+      <Modal open={showAddFormule} onClose={()=>setShowAddFormule(false)} title="📋 Nouvelle formule">
+        <Inp label="Nom de la formule *" required value={nouvelleFormule.nom} onChange={e=>setNouvelleFormule(f=>({...f,nom:e.target.value}))} placeholder="Ex: Essentielle, Premium…" />
+        <Grid cols={2} gap={10}>
+          <Inp label="Prime mensuelle (FCFA)" type="number" value={nouvelleFormule.prime_mensuelle} onChange={e=>setNouvelleFormule(f=>({...f,prime_mensuelle:e.target.value}))} />
+          <Inp label="Taux de couverture (%) *" required type="number" min="0" max="100" value={nouvelleFormule.taux_couverture} onChange={e=>setNouvelleFormule(f=>({...f,taux_couverture:e.target.value}))} />
+        </Grid>
+        <Btn style={{width:"100%"}} loading={addFormuleMut.isPending} onClick={()=>{
+          if(!nouvelleFormule.nom||nouvelleFormule.taux_couverture===""){toast.error("Nom et taux requis");return;}
+          addFormuleMut.mutate();
+        }}>Créer</Btn>
+      </Modal>
+    </div>
+  );
+}
+
 function PageAssurance() {
   const qc = useQueryClient();
+  const [tab, setTab] = useState("dossiers");
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ patient_nom:"", compagnie:"NSIA Assurances", numero_police:"", taux_couverture:80, montant_plafond:500000 });
+  const [form, setForm] = useState({ patient_nom:"", compagnie:"", numero_police:"", taux_couverture:80, montant_plafond:500000 });
   const { data, isLoading } = useQuery({ queryKey:["cl-dossiers"], queryFn:()=>cAPI.dossiers().then(r=>r.data||[]) });
+  // Liste reelle (16 compagnies), plus la liste fictive a 7 noms
+  // deconnectee de la vraie table assureurs.
+  const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
   const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateDossier(id,{statut}), onSuccess:()=>{ toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); } });
   const addMut = useMutation({ mutationFn:d=>cAPI.addDossier(d), onSuccess:()=>{ toast.success("Dossier soumis !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); } });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteDossier(id), onSuccess:()=>{ toast.success("Supprimé"); qc.invalidateQueries(["cl-dossiers"]); } });
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const dossiers = data||[];
-  const COMPAGNIES = ["NSIA Assurances","Allianz CI","AXA CI","CNAM (CMU)","SANLAM","Saham Assurances","Atlantique Assurances"];
+  const COMPAGNIES = (assureursData||[]).map(a=>a.nom);
   const scol = { soumis:"blue", en_attente:"amber", valide:"green", rejete:"red" };
   const fmt_money = v => <span style={{fontWeight:700,color:C.green}}>{fmt(v)} F</span>;
 
   return (
     <div>
       <PageHeader title="🛡️ Assurances Tiers-Payant" subtitle="Dossiers remboursement · Conventions assurance"
-        actions={<Btn onClick={()=>setShowAdd(true)}>+ Nouveau dossier</Btn>} />
+        actions={tab==="dossiers"?<Btn onClick={()=>setShowAdd(true)}>+ Nouveau dossier</Btn>:null} />
+
+      <div style={{display:"flex",gap:4,background:C.input,borderRadius:10,padding:4,marginBottom:20}}>
+        {[["dossiers","📁 Dossiers"],["compagnies","🏢 Compagnies & formules"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)}
+            style={{flex:1,background:tab===k?C.hover:"transparent",border:"none",borderRadius:8,padding:"9px 4px",cursor:"pointer",fontFamily:"inherit",color:tab===k?C.text:C.muted,fontSize:16,fontWeight:tab===k?700:400}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab==="compagnies" && <PanelCompagniesFormules />}
+
+      {tab==="dossiers" && (<>
       <Grid cols={4} gap={14} style={{marginBottom:20}}>
         <Card label="Total dossiers" value={dossiers.length} icon="📁" />
         <Card label="Validés" value={dossiers.filter(d=>d.statut==="valide").length} icon="✅" color={C.green} />
@@ -2536,6 +2659,7 @@ function PageAssurance() {
           }}>Soumettre</Btn>
         </div>
       </Modal>
+      </>)}
     </div>
   );
 }
