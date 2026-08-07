@@ -60,6 +60,8 @@ const cAPI = {
   updateStock:  (id,d) => api.put(`/stock/${id}`, d),
   // Médecins & RH
   medecins:     () => api.get("/medecins"),
+  updatePatient: (id,d) => api.put(`/patients/${id}`, d),
+  affecterMedecinPassage: (passageId,medecinId) => api.put(`/passages/${passageId}/medecin`, { medecin_id:medecinId }),
   addMedecin:   (d) => api.post("/medecins", d),
   updateMedecin:(id,d) => api.put(`/medecins/${id}`, d),
   personnel:    () => api.get("/clinique/personnel"),
@@ -495,10 +497,21 @@ function PagePlanning() {
 //  la mettre en pause et la reprendre, puis la valide definitivement --
 //  ce qui genere automatiquement la facture correspondante.
 // ══════════════════════════════════════════════════════════════════
+const ASSUREURS_LISTE = ["NSIA Vie CI","NSIA IARDT","Allianz CI","AXA CI","Saham Assurance CI","Sunu Assurances","CNAM (CMU)","Mutuelles CGRAE","Mutuelles MUGEFCI","AMI Assurances","Colina","Prima Assurance","Gras Savoye","SIA (Société Ivoirienne d'Assurance)","Autre"];
+
 function PanelCartePatient({ patient }) {
   const qc = useQueryClient();
   const [acteChoisi, setActeChoisi] = useState("");
-  const [estAssure, setEstAssure] = useState(true);
+  // Par defaut, coherent avec le statut d'assurance ACTUEL du patient --
+  // le bureau des entrees peut toujours decocher pour un acte precis.
+  const [estAssure, setEstAssure] = useState(!!patient?.assurance);
+  const [editAssurance, setEditAssurance] = useState(false);
+  const [assuranceForm, setAssuranceForm] = useState({ est_assure: !!patient?.assurance, assurance: patient?.assurance||"", numero_police: patient?.numero_police||"" });
+
+  const { data: medecinsListe } = useQuery({
+    queryKey: ["cl-medecins-carte"],
+    queryFn: () => cAPI.medecins().then(r => r.data||[]),
+  });
 
   const { data: passageActif, isLoading: chargementActif } = useQuery({
     queryKey: ["cl-passage-actif", patient?.id],
@@ -551,12 +564,32 @@ function PanelCartePatient({ patient }) {
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la validation"),
   });
+  const assuranceMut = useMutation({
+    mutationFn: () => cAPI.updatePatient(patient.id, {
+      assurance: assuranceForm.est_assure ? (assuranceForm.assurance||"") : "",
+      numero_police: assuranceForm.est_assure ? (assuranceForm.numero_police||"") : "",
+    }),
+    onSuccess: () => {
+      toast.success("Statut d'assurance mis à jour");
+      qc.invalidateQueries(["cl-patients"]);
+      setEditAssurance(false);
+    },
+    onError: () => toast.error("Erreur lors de la mise à jour"),
+  });
+  const medecinMut = useMutation({
+    mutationFn: (medecin_id) => cAPI.affecterMedecinPassage(passageActif.id, medecin_id),
+    onSuccess: () => { toast.success("Médecin affecté"); qc.invalidateQueries(["cl-passage-actif", patient.id]); },
+    onError: () => toast.error("Erreur lors de l'affectation"),
+  });
 
   if (chargementActif) return <Panel title="🗂️ Carte patient"><div style={{textAlign:"center",padding:30,color:C.muted}}>Chargement…</div></Panel>;
 
   if (!passageActif) {
     return (
       <Panel title="🗂️ Carte patient">
+        <div style={{marginBottom:16,padding:"10px 14px",background:C.hover,borderRadius:9,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:14,color:C.muted}}>Statut d'assurance : <strong style={{color:patient?.assurance?C.green:C.red}}>{patient?.assurance ? `Assuré (${patient.assurance})` : "Non assuré"}</strong></span>
+        </div>
         <Empty icon="🗂️" title="Aucune carte ouverte" subtitle="Ouvrez une carte pour commencer à ajouter des actes durant le parcours du patient." />
         <Btn style={{width:"100%",marginTop:14}} loading={ouvrirMut.isPending} onClick={()=>ouvrirMut.mutate()}>+ Ouvrir une carte</Btn>
       </Panel>
@@ -570,6 +603,43 @@ function PanelCartePatient({ patient }) {
   return (
     <Panel title="🗂️ Carte patient"
       actions={<Badge color={enPause ? "amber" : "green"}>{enPause ? "En pause" : "Ouverte"}</Badge>}>
+
+      <div style={{marginBottom:14,padding:"10px 14px",background:C.hover,borderRadius:9}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:14,color:C.muted}}>Assurance : <strong style={{color:patient?.assurance?C.green:C.red}}>{patient?.assurance ? patient.assurance : "Non assuré"}</strong></span>
+          <button onClick={()=>{ setAssuranceForm({ est_assure:!!patient?.assurance, assurance:patient?.assurance||"", numero_police:patient?.numero_police||"" }); setEditAssurance(v=>!v); }}
+            style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 10px",color:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+            ✏️ Modifier
+          </button>
+        </div>
+        {editAssurance && (
+          <div style={{marginTop:12}}>
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              {[{val:false,label:"🚫 Non assuré"},{val:true,label:"🛡️ Assuré"}].map(opt=>(
+                <button key={String(opt.val)} onClick={()=>setAssuranceForm(f=>({...f,est_assure:opt.val}))}
+                  style={{flex:1,padding:"8px",borderRadius:8,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",
+                    background:assuranceForm.est_assure===opt.val?(opt.val?"rgba(10,143,88,.15)":"rgba(239,68,68,.1)"):"transparent",
+                    border:`1.5px solid ${assuranceForm.est_assure===opt.val?(opt.val?C.green:"#EF4444"):C.border}`,
+                    color:assuranceForm.est_assure===opt.val?(opt.val?C.green:"#EF4444"):C.muted}}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {assuranceForm.est_assure && (
+              <Grid cols={2} gap={10} style={{marginBottom:10}}>
+                <Sel label="Compagnie" value={assuranceForm.assurance} onChange={e=>setAssuranceForm(f=>({...f,assurance:e.target.value}))}
+                  options={[{v:"",l:"-- Sélectionner --"}, ...ASSUREURS_LISTE.map(a=>({v:a,l:a}))]} />
+                <Inp label="N° Police" value={assuranceForm.numero_police} onChange={e=>setAssuranceForm(f=>({...f,numero_police:e.target.value}))} placeholder="Ex: 2024-NSIA-000123" />
+              </Grid>
+            )}
+            <Btn style={{width:"100%"}} loading={assuranceMut.isPending} onClick={()=>assuranceMut.mutate()}>Enregistrer</Btn>
+          </div>
+        )}
+      </div>
+
+      <Sel label="Médecin affecté" value={passageActif.medecin_id||""} onChange={e=>medecinMut.mutate(e.target.value||null)}
+        options={[{v:"",l:"— Aucun médecin affecté —"}, ...(medecinsListe||[]).map(m=>({v:m.id, l:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`}))]}
+        style={{marginBottom:16}} />
 
       <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
         <Sel label="Ajouter un acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)}
