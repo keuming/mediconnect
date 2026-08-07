@@ -761,22 +761,109 @@ app.put('/api/conventions/:id', auth, requireSousRole('finance'), async (req, re
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
-app.put('/api/patients/:id', auth, async (req, res) => {
-  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police, assureur_id } = req.body;
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPAGNIES D'ASSURANCE + FORMULES (taux reel = celui de la formule
+//  personnelle du patient, independant de la clinique qui facture)
+// ══════════════════════════════════════════════════════════════════
+
+// CRUD compagnies -- ouvert a tout compte authentifie (donnee de
+// reference partagee, pas propre a une clinique).
+app.get('/api/assureurs', auth, async (req, res) => {
   try {
-    // assureur_id est la CLE REELLE utilisee pour retrouver le taux de
-    // couverture negocie (table conventions) -- assurance (texte) reste
-    // pour l'affichage/compatibilite mais ne suffit plus a lui seul.
-    // "" est traite comme "retirer l'assureur" (passage a non-assure),
-    // distinct de undefined qui laisse la valeur actuelle inchangee.
+    const r = await db("SELECT * FROM assureurs WHERE is_active IS NOT false ORDER BY nom");
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/assureurs', auth, async (req, res) => {
+  const { nom, email, telephone, numero_agrement } = req.body;
+  if (!nom) return res.status(400).json({ success:false, message:'nom requis' });
+  try {
+    const r = await db(
+      "INSERT INTO assureurs (id,nom,email,telephone,numero_agrement,pays_code,is_active) VALUES (gen_random_uuid(),$1,$2,$3,$4,'CI',true) RETURNING *",
+      [nom, email||null, telephone||null, numero_agrement||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/assureurs/:id', auth, async (req, res) => {
+  const { nom, email, telephone, numero_agrement, is_active } = req.body;
+  try {
+    const r = await db(
+      `UPDATE assureurs SET nom=COALESCE($1,nom), email=COALESCE($2,email),
+         telephone=COALESCE($3,telephone), numero_agrement=COALESCE($4,numero_agrement),
+         is_active=COALESCE($5,is_active)
+       WHERE id=$6 RETURNING *`,
+      [nom||null, email||null, telephone||null, numero_agrement||null, is_active===undefined?null:is_active, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compagnie introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// CRUD formules, groupees par compagnie -- le taux qui compte vraiment.
+app.get('/api/formules-assurance', auth, async (req, res) => {
+  const { assureur_id } = req.query;
+  try {
+    const r = assureur_id
+      ? await db("SELECT * FROM formules_assurance WHERE assureur_id=$1 AND is_active IS NOT false ORDER BY taux_couverture", [assureur_id])
+      : await db(
+          `SELECT f.*, a.nom AS assureur_nom FROM formules_assurance f
+             JOIN assureurs a ON a.id = f.assureur_id
+            WHERE f.is_active IS NOT false ORDER BY a.nom, f.taux_couverture`
+        );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/formules-assurance', auth, async (req, res) => {
+  const { assureur_id, nom, prime_mensuelle, taux_couverture, plafond_annuel } = req.body;
+  if (!assureur_id || !nom || taux_couverture===undefined) return res.status(400).json({ success:false, message:'assureur_id, nom et taux_couverture requis' });
+  try {
+    const r = await db(
+      "INSERT INTO formules_assurance (id,assureur_id,nom,prime_mensuelle,taux_couverture,plafond_annuel,is_active) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,true) RETURNING *",
+      [assureur_id, nom, prime_mensuelle||null, parseInt(taux_couverture), plafond_annuel||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/formules-assurance/:id', auth, async (req, res) => {
+  const { nom, prime_mensuelle, taux_couverture, plafond_annuel, is_active } = req.body;
+  try {
+    const r = await db(
+      `UPDATE formules_assurance SET nom=COALESCE($1,nom), prime_mensuelle=COALESCE($2,prime_mensuelle),
+         taux_couverture=COALESCE($3,taux_couverture), plafond_annuel=COALESCE($4,plafond_annuel),
+         is_active=COALESCE($5,is_active)
+       WHERE id=$6 RETURNING *`,
+      [nom||null, prime_mensuelle??null, taux_couverture??null, plafond_annuel??null, is_active===undefined?null:is_active, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Formule introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.delete('/api/formules-assurance/:id', auth, async (req, res) => {
+  try {
+    const r = await db("UPDATE formules_assurance SET is_active=false WHERE id=$1 RETURNING *", [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Formule introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/patients/:id', auth, async (req, res) => {
+  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police, assureur_id, formule_assurance_id } = req.body;
+  try {
+    // Le taux reel vient de formule_assurance_id (la formule PRECISE du
+    // patient, prime + taux correspondant) -- assureur_id/assurance
+    // restent pour l'affichage rapide (quelle compagnie) sans devoir
+    // toujours joindre la formule. "" retire (non-assure), distinct de
+    // undefined qui laisse la valeur actuelle inchangee.
     const r = await db(
       `UPDATE patients SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),
          email=COALESCE($4,email),groupe_sanguin=COALESCE($5,groupe_sanguin),allergies=COALESCE($6,allergies),
          antecedents=COALESCE($7,antecedents),assurance=COALESCE($8,assurance),numero_police=COALESCE($9,numero_police),
          assureur_id=CASE WHEN $10::text IS NULL THEN assureur_id WHEN $10='' THEN NULL ELSE $10::uuid END,
-         updated_at=NOW() WHERE id=$11 RETURNING *`,
+         formule_assurance_id=CASE WHEN $11::text IS NULL THEN formule_assurance_id WHEN $11='' THEN NULL ELSE $11::uuid END,
+         updated_at=NOW() WHERE id=$12 RETURNING *`,
       [prenom,nom,telephone,email,groupe_sanguin,allergies,antecedents,assurance,numero_police,
-       assureur_id===undefined?null:assureur_id, req.params.id]
+       assureur_id===undefined?null:assureur_id, formule_assurance_id===undefined?null:formule_assurance_id, req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -3190,27 +3277,22 @@ app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'med
     // conventions), pas le taux par defaut de l'acte -- deux compagnies
     // different generalement l'une de l'autre. Repli sur le taux de
     // l'acte si aucune convention active n'existe pour cet assureur.
+    // Le taux reel vient de la formule PERSONNELLE du patient (prime
+    // payee chez son assureur) -- pas d'un accord par clinique. Repli
+    // sur le taux par defaut de l'acte si le patient n'a aucune formule
+    // renseignee (assure sans formule precise encore saisie).
     let taux = 0;
-    let plafondActe = null;
     if (est_assure) {
-      const patientRow = await db('SELECT assureur_id FROM patients WHERE id=$1', [passage.rows[0].patient_id]);
-      const assureurId = patientRow.rows[0]?.assureur_id;
-      let convention = null;
-      if (assureurId) {
-        const conv = await db(
-          `SELECT taux, plafond_acte FROM conventions
-            WHERE clinique_id=$1 AND assureur_id=$2 AND is_active=true
-              AND (date_debut IS NULL OR date_debut<=CURRENT_DATE)
-              AND (date_fin IS NULL OR date_fin>=CURRENT_DATE)`,
-          [passage.rows[0].clinique_id, assureurId]
-        );
-        convention = conv.rows[0] || null;
+      const patientRow = await db('SELECT formule_assurance_id FROM patients WHERE id=$1', [passage.rows[0].patient_id]);
+      const formuleId = patientRow.rows[0]?.formule_assurance_id;
+      let formule = null;
+      if (formuleId) {
+        const f = await db('SELECT taux_couverture FROM formules_assurance WHERE id=$1 AND is_active IS NOT false', [formuleId]);
+        formule = f.rows[0] || null;
       }
-      taux = convention ? convention.taux : parseInt(a.taux_assurance ?? 70);
-      plafondActe = convention?.plafond_acte ?? null;
+      taux = formule ? formule.taux_couverture : parseInt(a.taux_assurance ?? 70);
     }
-    let partAss = Math.round(total * taux / 100);
-    if (plafondActe != null && partAss > plafondActe) partAss = plafondActe;
+    const partAss = Math.round(total * taux / 100);
     const partPat = total - partAss;
     const r = await db(
       `INSERT INTO prise_en_charge_actes
