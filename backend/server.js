@@ -697,11 +697,11 @@ routesPersonnel('imagerie', 'imagerie_id', SOUS_ROLES_VALIDES_IMAGERIE);
 routesPersonnel('pharmacie', 'pharmacie_id', SOUS_ROLES_VALIDES_PHARMACIE);
 routesPersonnel('assureur', 'assureur_id', SOUS_ROLES_VALIDES_ASSUREUR);
 app.put('/api/patients/:id', auth, async (req, res) => {
-  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance } = req.body;
+  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police } = req.body;
   try {
     const r = await db(
-      'UPDATE patients SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),email=COALESCE($4,email),groupe_sanguin=COALESCE($5,groupe_sanguin),allergies=COALESCE($6,allergies),antecedents=COALESCE($7,antecedents),assurance=COALESCE($8,assurance),updated_at=NOW() WHERE id=$9 RETURNING *',
-      [prenom,nom,telephone,email,groupe_sanguin,allergies,antecedents,assurance,req.params.id]
+      'UPDATE patients SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),email=COALESCE($4,email),groupe_sanguin=COALESCE($5,groupe_sanguin),allergies=COALESCE($6,allergies),antecedents=COALESCE($7,antecedents),assurance=COALESCE($8,assurance),numero_police=COALESCE($9,numero_police),updated_at=NOW() WHERE id=$10 RETURNING *',
+      [prenom,nom,telephone,email,groupe_sanguin,allergies,antecedents,assurance,numero_police,req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -2902,6 +2902,53 @@ app.post('/api/actes', auth, async (req, res) => {
       [req.user?.clinique_id||null, code, libelle, categorie||null, tarif_base||0, taux_assurance??70]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Modifier / desactiver un acte -- JAMAIS les actes globaux
+// (clinique_id IS NULL) ni ceux d'une autre clinique : WHERE porte
+// systematiquement sur clinique_id=$X, pas seulement sur id.
+app.put('/api/actes/:id', auth, async (req, res) => {
+  const { libelle, categorie, tarif_base, taux_assurance, actif } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      `UPDATE actes_medicaux SET
+         libelle=COALESCE($1,libelle), categorie=COALESCE($2,categorie),
+         tarif_base=COALESCE($3,tarif_base), taux_assurance=COALESCE($4,taux_assurance),
+         actif=COALESCE($5,actif)
+       WHERE id=$6 AND clinique_id=$7 RETURNING *`,
+      [libelle||null, categorie||null, tarif_base??null, taux_assurance??null, actif===undefined?null:actif, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Acte introuvable dans votre catalogue (les actes globaux ne sont pas modifiables)' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.delete('/api/actes/:id', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    // Desactivation douce : un acte deja utilise dans des factures
+    // passees ne doit jamais disparaitre de l'historique.
+    const r = await db(
+      "UPDATE actes_medicaux SET actif=false WHERE id=$1 AND clinique_id=$2 RETURNING *",
+      [req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Acte introuvable dans votre catalogue' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Affecter / reaffecter le medecin d'un passage en cours ────────
+app.put('/api/passages/:id/medecin', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  const { medecin_id } = req.body;
+  try {
+    const r = await db(
+      "UPDATE passages_patient SET medecin_id=$1, updated_at=NOW() WHERE id=$2 AND statut IN ('ouvert','ferme_temporaire') RETURNING *",
+      [medecin_id||null, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Passage introuvable ou déjà validé' });
+    res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
