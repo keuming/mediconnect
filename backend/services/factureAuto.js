@@ -246,17 +246,47 @@ async function chargerPriseEnCharge(client, consultationId, patientId) {
 /* 4. Numerotation FAC-YY-00001                                        */
 /* ------------------------------------------------------------------ */
 
+// Code court par clinique (ex: 'ABG'), integre au numero de facture
+// pour garantir l'unicite globale (factures.reference est UNIQUE sans
+// egard a la clinique) tout en preservant une sequence propre par
+// etablissement. Genere et persiste a la volee si absent -- couvre les
+// cliniques creees apres la migration du backfill initial.
+async function obtenirCodeClinique(client, cliniqueId) {
+  if (!cliniqueId) return 'GEN';
+  const { rows } = await client.query('SELECT nom, code_facturation FROM cliniques WHERE id = $1', [cliniqueId]);
+  if (!rows.length) return 'GEN';
+  if (rows[0].code_facturation) return rows[0].code_facturation;
+
+  const base = (rows[0].nom || 'CLI').replace(/[^a-zA-Z]/g, '').slice(0, 3).toUpperCase() || 'CLI';
+  let code = base;
+  let suffixe = 1;
+  // Verifie l'unicite (une autre clinique a peut-etre deja ce code) et
+  // ajoute un suffixe numerique si besoin, meme logique que le backfill.
+  while (true) {
+    const { rows: collision } = await client.query(
+      'SELECT 1 FROM cliniques WHERE code_facturation = $1 AND id != $2', [code, cliniqueId]
+    );
+    if (!collision.length) break;
+    suffixe += 1;
+    code = `${base}${suffixe}`;
+  }
+  await client.query('UPDATE cliniques SET code_facturation = $1 WHERE id = $2', [code, cliniqueId]);
+  return code;
+}
+
 async function genererNumero(client, metaFactures, cliniqueId) {
   const colNum = pickColumn(metaFactures, C.numero);
   const yy = String(new Date().getFullYear()).slice(-2);
-  const prefixe = `FAC-${yy}-`;
   if (!colNum) return null;
 
-  // Verrou transactionnel : deux consultations cloturees en parallele ne
-  // peuvent pas tirer le meme numero. Libere au COMMIT.
+  // Verrou transactionnel : deux passages/consultations cloturees en
+  // parallele ne peuvent pas tirer le meme numero. Libere au COMMIT.
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
     `facture:${cliniqueId || 'global'}:${yy}`,
   ]);
+
+  const codeClinique = await obtenirCodeClinique(client, cliniqueId);
+  const prefixe = `FAC-${codeClinique}-${yy}-`;
 
   const colClinique = pickColumn(metaFactures, ['clinique_id']);
   const where = colClinique && cliniqueId
@@ -264,8 +294,10 @@ async function genererNumero(client, metaFactures, cliniqueId) {
     : `WHERE "${colNum}" LIKE $1`;
   const params = colClinique && cliniqueId ? [`${prefixe}%`, cliniqueId] : [`${prefixe}%`];
 
+  // Le code clinique est desormais dans le prefixe : le numero
+  // sequentiel est le 4e segment ('FAC','CODE','YY','NNNNN'), pas le 3e.
   const { rows } = await client.query(
-    `SELECT COALESCE(MAX(NULLIF(regexp_replace(SPLIT_PART("${colNum}", '-', 3), '\\D', '', 'g'), '')::int), 0) AS n
+    `SELECT COALESCE(MAX(NULLIF(regexp_replace(SPLIT_PART("${colNum}", '-', 4), '\\D', '', 'g'), '')::int), 0) AS n
        FROM "${metaFactures.name}" ${where}`,
     params
   );
