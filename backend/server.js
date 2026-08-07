@@ -735,7 +735,7 @@ app.post('/api/conventions', auth, requireSousRole('finance'), async (req, res) 
   try {
     const r = await db(
       `INSERT INTO conventions (id,assureur_id,clinique_id,taux,plafond_acte,date_debut,date_fin,is_active)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,true) RETURNING *`,
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,COALESCE($5,CURRENT_DATE),$6,true) RETURNING *`,
       [assureur_id, cid, parseInt(taux), plafond_acte||null, date_debut||null, date_fin||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
