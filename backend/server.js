@@ -2992,6 +2992,126 @@ app.get('/api/prise-en-charge/:patient_id', auth, requireSousRole('medecin', 'fi
   } catch(e) { res.json({ success:true, data:[], totaux:{total:0,part_assurance:0,part_patient:0} }); }
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  CARTE PATIENT / PASSAGE MULTI-SERVICES
+// ══════════════════════════════════════════════════════════════════
+// Ouverte au bureau des entrees, accumule des actes au fil du parcours
+// du patient dans plusieurs services, peut etre mise en pause et
+// reprise, puis validee definitivement (facture generee automatiquement).
+
+// Trouve le passage ouvert OU en pause du patient dans cette clinique,
+// s'il existe -- pour savoir s'il faut en creer un nouveau ou reprendre
+// celui deja en cours.
+app.get('/api/passages/patient/:patient_id/actif', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `SELECT * FROM passages_patient
+        WHERE patient_id=$1 AND clinique_id=$2 AND statut IN ('ouvert','ferme_temporaire')
+        ORDER BY created_at DESC LIMIT 1`,
+      [req.params.patient_id, cid]
+    );
+    res.json({ success:true, data:r.rows[0]||null });
+  } catch(e) { res.json({ success:true, data:null }); }
+});
+
+app.post('/api/passages', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  const { patient_id, medecin_id } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!patient_id) return res.status(400).json({ success:false, message:'patient_id requis' });
+  try {
+    const ref = 'PSG-'+Date.now().toString(36).toUpperCase();
+    const r = await db(
+      `INSERT INTO passages_patient (id,reference,patient_id,clinique_id,medecin_id,statut)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,'ouvert') RETURNING *`,
+      [ref, patient_id, cid, medecin_id||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    // Un seul passage ouvert par patient/clinique -- l'index unique
+    // rejette une deuxieme ouverture, message clair plutot qu'une 500 brute.
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Une carte est déjà ouverte pour ce patient' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+
+app.get('/api/passages/:id', auth, async (req, res) => {
+  try {
+    const p = await db('SELECT * FROM passages_patient WHERE id=$1', [req.params.id]);
+    if (!p.rows.length) return res.status(404).json({ success:false, message:'Passage introuvable' });
+    const actes = await db(
+      `SELECT * FROM prise_en_charge_actes WHERE passage_id=$1 ORDER BY created_at ASC`,
+      [req.params.id]
+    );
+    const total = actes.rows.reduce((s,a)=>s+parseFloat(a.prix_unitaire)*a.quantite, 0);
+    res.json({ success:true, data:{ ...p.rows[0], actes:actes.rows, total } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Ajoute un acte (choisi dans le catalogue actes_medicaux) au passage
+// ouvert -- reprend le tarif et le taux d'assurance du catalogue, sauf
+// surcharge explicite.
+app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  const { acte_id, quantite, est_assure, prix_unitaire: prixSurcharge } = req.body;
+  if (!acte_id) return res.status(400).json({ success:false, message:'acte_id requis' });
+  try {
+    const passage = await db("SELECT * FROM passages_patient WHERE id=$1 AND statut IN ('ouvert','ferme_temporaire')", [req.params.id]);
+    if (!passage.rows.length) return res.status(404).json({ success:false, message:'Passage introuvable ou déjà validé' });
+    const acte = await db('SELECT * FROM actes_medicaux WHERE id=$1', [acte_id]);
+    if (!acte.rows.length) return res.status(404).json({ success:false, message:'Acte introuvable dans le catalogue' });
+    const a = acte.rows[0];
+    const qte = parseInt(quantite||1);
+    const pu = prixSurcharge != null ? parseFloat(prixSurcharge) : parseFloat(a.tarif_base||0);
+    const total = qte * pu;
+    const taux = est_assure ? parseInt(a.taux_assurance ?? 70) : 0;
+    const partAss = Math.round(total * taux / 100);
+    const partPat = total - partAss;
+    const r = await db(
+      `INSERT INTO prise_en_charge_actes
+       (patient_id,clinique_id,passage_id,acte_id,code_acte,libelle_acte,
+        quantite,prix_unitaire,taux_assurance,part_assurance,part_patient,statut)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'a_facturer') RETURNING *`,
+      [passage.rows[0].patient_id, passage.rows[0].clinique_id, req.params.id,
+       acte_id, a.code, a.libelle, qte, pu, taux, partAss, partPat]
+    );
+    // Ajouter un acte reactive automatiquement une carte en pause.
+    await db("UPDATE passages_patient SET statut='ouvert', updated_at=NOW() WHERE id=$1 AND statut='ferme_temporaire'", [req.params.id]);
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/passages/:id/pause', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  try {
+    const r = await db("UPDATE passages_patient SET statut='ferme_temporaire', updated_at=NOW() WHERE id=$1 AND statut='ouvert' RETURNING *", [req.params.id]);
+    if (!r.rows.length) return res.status(400).json({ success:false, message:'Passage introuvable ou déjà validé/en pause' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/passages/:id/reprendre', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  try {
+    const r = await db("UPDATE passages_patient SET statut='ouvert', updated_at=NOW() WHERE id=$1 AND statut='ferme_temporaire' RETURNING *", [req.params.id]);
+    if (!r.rows.length) return res.status(400).json({ success:false, message:'Passage introuvable ou pas en pause' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Validation definitive : cloture le passage et genere la facture
+// correspondant a tous les actes accumules, en une seule transaction.
+app.post('/api/passages/:id/valider', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  try {
+    const { pool: dbPool } = require('./config/db');
+    const { withTransaction } = require('./helpers/dbIntrospect');
+    const { genererFacturePassage } = require('./services/factureAuto');
+    const out = await withTransaction(dbPool, async (client) => {
+      const p = await client.query("UPDATE passages_patient SET statut='valide', closed_at=NOW(), updated_at=NOW() WHERE id=$1 AND statut IN ('ouvert','ferme_temporaire') RETURNING *", [req.params.id]);
+      if (!p.rows.length) throw new Error('Passage introuvable ou déjà validé');
+      return genererFacturePassage(client, { passageId: req.params.id, utilisateurId: req.user?.id });
+    });
+    res.json({ success:true, data:out.facture, deja_existante:out.deja_existante||false, totaux:out.totaux });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 
 // ── Backfill + generation code dossier patient ────────────────────
 app.post('/api/admin/backfill-codes-patients', async (req, res) => {

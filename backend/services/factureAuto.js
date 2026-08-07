@@ -455,4 +455,193 @@ async function genererFactureConsultation(client, opts) {
   };
 }
 
-module.exports = { genererFactureConsultation, FactureError };
+/* ------------------------------------------------------------------ */
+/* 6. Facture d'un passage (carte patient multi-services)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Meme principe que genererFactureConsultation, mais pour un "passage"
+ * (carte ouverte au bureau des entrees, actes accumules au fil du
+ * parcours dans plusieurs services, sans exiger de consultation_id).
+ * Reutilise genererNumero et chargerPriseEnCharge tels quels : ce sont
+ * deja des fonctions generiques (patient_id suffit, consultation_id
+ * est optionnel dans chargerPriseEnCharge).
+ */
+
+async function trouverFactureExistantePassage(client, metaFactures, passageId) {
+  const colPassage = pickColumn(metaFactures, ['passage_id']);
+  if (!colPassage) return null;
+  const { rows } = await client.query(
+    `SELECT * FROM "${metaFactures.name}" WHERE "${colPassage}" = $1 LIMIT 1`,
+    [passageId]
+  );
+  return rows[0] || null;
+}
+
+async function chargerActesPassage(client, passageId) {
+  const metaPec = await resolveTable(client, T.pecActes);
+  if (!metaPec) return [];
+  const { rows } = await client.query(
+    `SELECT id, code_acte, libelle_acte, quantite, prix_unitaire,
+            taux_assurance, part_assurance, part_patient, statut
+       FROM "${metaPec.name}"
+      WHERE passage_id = $1
+      ORDER BY created_at ASC`,
+    [passageId]
+  );
+  // Meme priorite que pour les consultations : facturer d'abord ce qui
+  // est marque 'a_facturer', a defaut reprendre toutes les lignes.
+  const aFacturer = rows.filter((r) => r.statut === 'a_facturer');
+  const retenues = aFacturer.length ? aFacturer : rows;
+  return retenues.map((r) => ({
+    code: r.code_acte,
+    libelle: r.libelle_acte || 'Acte medical',
+    tarif: toInt(r.prix_unitaire),
+    quantite: toInt(r.quantite) || 1,
+    taux: r.taux_assurance == null ? null : Number(r.taux_assurance),
+    part_assurance: r.part_assurance == null ? null : toInt(r.part_assurance),
+    part_patient: r.part_patient == null ? null : toInt(r.part_patient),
+    pec_id: r.id,
+  }));
+}
+
+/**
+ * @param {object}  client   client pg DANS une transaction ouverte
+ * @param {object}  opts
+ * @param {string}  opts.passageId
+ * @param {string} [opts.utilisateurId]
+ * @param {boolean}[opts.force]
+ */
+async function genererFacturePassage(client, opts) {
+  const { passageId, utilisateurId, force } = opts;
+  if (!passageId) throw new FactureError('passageId requis', 'BAD_INPUT', 400);
+
+  const metaFactures = await resolveTable(client, T.factures);
+  if (!metaFactures) {
+    throw new FactureError(
+      "Aucune table de factures trouvee (candidats : " + T.factures.join(', ') + ')',
+      'SCHEMA_MISMATCH',
+      500
+    );
+  }
+
+  if (!force) {
+    const existante = await trouverFactureExistantePassage(client, metaFactures, passageId);
+    if (existante) return { facture: existante, lignes: [], deja_existante: true };
+  }
+
+  const { rows: pRows } = await client.query(
+    `SELECT * FROM "passages_patient" WHERE id = $1 LIMIT 1`,
+    [passageId]
+  );
+  const passage = pRows[0];
+  if (!passage) throw new FactureError('Passage introuvable', 'NOT_FOUND', 404);
+  if (!passage.patient_id) {
+    throw new FactureError(
+      'Passage sans patient_id : facture impossible (factures.patient_id NOT NULL)',
+      'PATIENT_MANQUANT',
+      422
+    );
+  }
+
+  const lignes = await chargerActesPassage(client, passageId);
+  if (!lignes.length) {
+    throw new FactureError(
+      'Aucun acte chiffre sur ce passage : facture impossible',
+      'AUCUN_ACTE',
+      422
+    );
+  }
+
+  const pec = await chargerPriseEnCharge(client, null, passage.patient_id);
+  const tauxGlobal = Math.max(0, Math.min(100, pec.taux));
+  let totalBrut = 0;
+  let totalAssurance = 0;
+  let totalPatientLignes = 0;
+
+  const lignesCalc = lignes.map((l) => {
+    const montant = toInt(l.tarif) * (toInt(l.quantite) || 1);
+    const tauxLigne = l.taux == null ? tauxGlobal : Math.max(0, Math.min(100, Number(l.taux)));
+    const assurance = l.part_assurance != null
+      ? l.part_assurance
+      : Math.round((montant * tauxLigne) / 100);
+    const patient = l.part_patient != null ? l.part_patient : montant - assurance;
+    totalBrut += montant;
+    totalAssurance += assurance;
+    totalPatientLignes += patient;
+    return { ...l, montant, taux: tauxLigne, part_assurance: assurance, part_patient: patient };
+  });
+
+  let plafondApplique = false;
+  if (pec.plafond != null && totalAssurance > pec.plafond) {
+    totalAssurance = pec.plafond;
+    plafondApplique = true;
+  }
+  const totalPatient = plafondApplique ? totalBrut - totalAssurance : totalPatientLignes;
+
+  const numero = await genererNumero(client, metaFactures, passage.clinique_id);
+  const maintenant = new Date();
+
+  const insertFacture = buildInsert(metaFactures, {
+    numero:         { candidates: C.numero,        value: numero },
+    passage_id:     { candidates: ['passage_id'],  value: passageId },
+    patient_id:     { candidates: ['patient_id'],  value: passage.patient_id },
+    clinique_id:    { candidates: ['clinique_id'], value: passage.clinique_id },
+    medecin_id:     { candidates: ['medecin_id'],  value: passage.medecin_id },
+    montant_total:  { candidates: C.totalBrut,     value: totalBrut },
+    part_patient:   { candidates: C.partPatient,   value: totalPatient },
+    part_assurance: { candidates: C.partAssurance, value: totalAssurance },
+    taux:           { candidates: C.tauxPec,       value: tauxGlobal },
+    statut:         { candidates: C.statut,        value: totalPatient === 0 ? 'payee' : 'en_attente' },
+    date_facture:   { candidates: C.dateFacture,   value: maintenant },
+    created_at:     { candidates: C.createdAt,     value: maintenant },
+    cree_par:       { candidates: ['cree_par', 'utilisateur_id', 'created_by'], value: utilisateurId },
+  });
+
+  const { rows: fRows } = await client.query(insertFacture);
+  const facture = fRows[0];
+
+  const metaLignes = await resolveTable(client, T.lignes);
+  const lignesEnregistrees = [];
+  if (metaLignes) {
+    for (const l of lignesCalc) {
+      const ins = buildInsert(metaLignes, {
+        facture_id:     { candidates: ['facture_id'], value: facture.id },
+        code:           { candidates: C.codeActe,     value: l.code },
+        libelle:        { candidates: C.libelle,      value: l.libelle },
+        tarif:          { candidates: C.tarif,        value: l.tarif },
+        quantite:       { candidates: ['quantite', 'qte', 'nombre'], value: l.quantite },
+        montant:        { candidates: ['montant', 'montant_ligne', 'total_ligne'], value: l.montant },
+        taux:           { candidates: C.tauxPec,      value: l.taux },
+        part_patient:   { candidates: C.partPatient,  value: l.part_patient },
+        part_assurance: { candidates: C.partAssurance,value: l.part_assurance },
+        created_at:     { candidates: C.createdAt,    value: maintenant },
+      });
+      const { rows } = await client.query(ins);
+      lignesEnregistrees.push(rows[0]);
+    }
+  }
+
+  const pecIds = lignesCalc.map((l) => l.pec_id).filter(Boolean);
+  if (pecIds.length) {
+    await client.query(
+      `UPDATE "prise_en_charge_actes" SET statut = 'facture' WHERE id = ANY($1::uuid[])`,
+      [pecIds]
+    );
+  }
+
+  return {
+    facture,
+    lignes: lignesEnregistrees.length ? lignesEnregistrees : lignesCalc,
+    totaux: {
+      montant_total: totalBrut,
+      part_patient: totalPatient,
+      part_assurance: totalAssurance,
+      taux: totalBrut ? Math.round((totalAssurance * 100) / totalBrut) : 0,
+      plafond_applique: plafondApplique,
+    },
+    deja_existante: false,
+  };
+}
+
+module.exports = { genererFactureConsultation, genererFacturePassage, FactureError };
