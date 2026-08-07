@@ -696,6 +696,71 @@ function routesPersonnel(prefixe, champFk, sousRolesValides) {
 routesPersonnel('imagerie', 'imagerie_id', SOUS_ROLES_VALIDES_IMAGERIE);
 routesPersonnel('pharmacie', 'pharmacie_id', SOUS_ROLES_VALIDES_PHARMACIE);
 routesPersonnel('assureur', 'assureur_id', SOUS_ROLES_VALIDES_ASSUREUR);
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPAGNIES D'ASSURANCE (liste de reference) + CONVENTIONS
+//  (taux de couverture negocie par la clinique avec chaque compagnie)
+// ══════════════════════════════════════════════════════════════════
+
+// Liste de reference, ouverte a tous les comptes authentifies (utile
+// pour peupler des menus deroulants patient/carte).
+app.get('/api/assureurs-liste', auth, async (req, res) => {
+  try {
+    const r = await db("SELECT id,nom,taux_defaut FROM assureurs WHERE is_active IS NOT false ORDER BY nom");
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// Conventions de la clinique connectee : une ligne par assureur avec
+// son taux negocie, plafond eventuel, periode de validite.
+app.get('/api/conventions', auth, requireSousRole('bureau_entrees', 'finance', 'medecin'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `SELECT c.*, a.nom AS assureur_nom
+         FROM conventions c JOIN assureurs a ON a.id = c.assureur_id
+        WHERE c.clinique_id=$1
+        ORDER BY a.nom`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.post('/api/conventions', auth, requireSousRole('finance'), async (req, res) => {
+  const { assureur_id, taux, plafond_acte, date_debut, date_fin } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!assureur_id || taux === undefined) return res.status(400).json({ success:false, message:'assureur_id et taux requis' });
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      `INSERT INTO conventions (id,assureur_id,clinique_id,taux,plafond_acte,date_debut,date_fin,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,true) RETURNING *`,
+      [assureur_id, cid, parseInt(taux), plafond_acte||null, date_debut||null, date_fin||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Une convention existe déjà pour cet assureur' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+
+app.put('/api/conventions/:id', auth, requireSousRole('finance'), async (req, res) => {
+  const { taux, plafond_acte, date_debut, date_fin, is_active } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE conventions SET
+         taux=COALESCE($1,taux), plafond_acte=COALESCE($2,plafond_acte),
+         date_debut=COALESCE($3,date_debut), date_fin=COALESCE($4,date_fin),
+         is_active=COALESCE($5,is_active)
+       WHERE id=$6 AND clinique_id=$7 RETURNING *`,
+      [taux??null, plafond_acte??null, date_debut||null, date_fin||null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
 app.put('/api/patients/:id', auth, async (req, res) => {
   const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police } = req.body;
   try {
@@ -3110,8 +3175,32 @@ app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'med
     const qte = parseInt(quantite||1);
     const pu = prixSurcharge != null ? parseFloat(prixSurcharge) : parseFloat(a.tarif_base||0);
     const total = qte * pu;
-    const taux = est_assure ? parseInt(a.taux_assurance ?? 70) : 0;
-    const partAss = Math.round(total * taux / 100);
+
+    // Taux reellement negocie avec l'assureur du patient (table
+    // conventions), pas le taux par defaut de l'acte -- deux compagnies
+    // different generalement l'une de l'autre. Repli sur le taux de
+    // l'acte si aucune convention active n'existe pour cet assureur.
+    let taux = 0;
+    let plafondActe = null;
+    if (est_assure) {
+      const patientRow = await db('SELECT assureur_id FROM patients WHERE id=$1', [passage.rows[0].patient_id]);
+      const assureurId = patientRow.rows[0]?.assureur_id;
+      let convention = null;
+      if (assureurId) {
+        const conv = await db(
+          `SELECT taux, plafond_acte FROM conventions
+            WHERE clinique_id=$1 AND assureur_id=$2 AND is_active=true
+              AND (date_debut IS NULL OR date_debut<=CURRENT_DATE)
+              AND (date_fin IS NULL OR date_fin>=CURRENT_DATE)`,
+          [passage.rows[0].clinique_id, assureurId]
+        );
+        convention = conv.rows[0] || null;
+      }
+      taux = convention ? convention.taux : parseInt(a.taux_assurance ?? 70);
+      plafondActe = convention?.plafond_acte ?? null;
+    }
+    let partAss = Math.round(total * taux / 100);
+    if (plafondActe != null && partAss > plafondActe) partAss = plafondActe;
     const partPat = total - partAss;
     const r = await db(
       `INSERT INTO prise_en_charge_actes
