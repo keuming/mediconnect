@@ -68,6 +68,14 @@ const cAPI = {
   // Finance
   factures:      () => api.get("/factures"),
   caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
+  actesCatalogue:  () => api.get("/actes"),
+  passageActif:    (patientId) => api.get(`/passages/patient/${patientId}/actif`),
+  ouvrirPassage:   (d) => api.post("/passages", d),
+  passageDetail:   (id) => api.get(`/passages/${id}`),
+  ajouterActe:     (passageId,d) => api.post(`/passages/${passageId}/actes`, d),
+  pausePassage:    (id) => api.put(`/passages/${id}/pause`),
+  reprendrePassage:(id) => api.put(`/passages/${id}/reprendre`),
+  validerPassage:  (id) => api.post(`/passages/${id}/valider`),
   caisses:       () => api.get("/caisses"),
   addCaisse:     (d) => api.post("/caisses", d),
   ouvrirCaisse:  (caisseId) => api.post("/caisse/ouvrir", { caisse_id: caisseId }),
@@ -480,6 +488,132 @@ function PagePlanning() {
 // ════════════════════════════════════════════════════════════════════
 //  3. PAGE DME — DOSSIERS MÉDICAUX ÉLECTRONIQUES
 // ════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+//  CARTE PATIENT (passage multi-services) -- bureau des entrees ouvre
+//  une carte, ajoute des actes au fil du parcours du patient dans
+//  plusieurs services (menu deroulant, catalogue actes_medicaux), peut
+//  la mettre en pause et la reprendre, puis la valide definitivement --
+//  ce qui genere automatiquement la facture correspondante.
+// ══════════════════════════════════════════════════════════════════
+function PanelCartePatient({ patient }) {
+  const qc = useQueryClient();
+  const [acteChoisi, setActeChoisi] = useState("");
+  const [estAssure, setEstAssure] = useState(true);
+
+  const { data: passageActif, isLoading: chargementActif } = useQuery({
+    queryKey: ["cl-passage-actif", patient?.id],
+    queryFn: () => cAPI.passageActif(patient.id).then(r => r.data || null),
+    enabled: !!patient?.id,
+  });
+
+  const { data: passageDetail } = useQuery({
+    queryKey: ["cl-passage-detail", passageActif?.id],
+    queryFn: () => cAPI.passageDetail(passageActif.id).then(r => r.data),
+    enabled: !!passageActif?.id,
+  });
+
+  const { data: catalogue } = useQuery({
+    queryKey: ["cl-actes-catalogue"],
+    queryFn: () => cAPI.actesCatalogue().then(r => r.data || []),
+  });
+
+  const ouvrirMut = useMutation({
+    mutationFn: () => cAPI.ouvrirPassage({ patient_id: patient.id }),
+    onSuccess: () => { toast.success("Carte ouverte !"); qc.invalidateQueries(["cl-passage-actif", patient.id]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur à l'ouverture"),
+  });
+  const ajouterMut = useMutation({
+    mutationFn: () => cAPI.ajouterActe(passageActif.id, { acte_id: acteChoisi, est_assure: estAssure }),
+    onSuccess: () => {
+      toast.success("Acte ajouté !");
+      qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
+      qc.invalidateQueries(["cl-passage-actif", patient.id]);
+      setActeChoisi("");
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
+  });
+  const pauseMut = useMutation({
+    mutationFn: () => cAPI.pausePassage(passageActif.id),
+    onSuccess: () => { toast.success("Carte mise en pause"); qc.invalidateQueries(["cl-passage-actif", patient.id]); },
+    onError: () => toast.error("Erreur"),
+  });
+  const reprendreMut = useMutation({
+    mutationFn: () => cAPI.reprendrePassage(passageActif.id),
+    onSuccess: () => { toast.success("Carte reprise"); qc.invalidateQueries(["cl-passage-actif", patient.id]); },
+    onError: () => toast.error("Erreur"),
+  });
+  const validerMut = useMutation({
+    mutationFn: () => cAPI.validerPassage(passageActif.id),
+    onSuccess: (r) => {
+      toast.success(`Facture générée : ${r?.data?.reference || ""}`);
+      qc.invalidateQueries(["cl-passage-actif", patient.id]);
+      qc.invalidateQueries(["cl-factures"]);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la validation"),
+  });
+
+  if (chargementActif) return <Panel title="🗂️ Carte patient"><div style={{textAlign:"center",padding:30,color:C.muted}}>Chargement…</div></Panel>;
+
+  if (!passageActif) {
+    return (
+      <Panel title="🗂️ Carte patient">
+        <Empty icon="🗂️" title="Aucune carte ouverte" subtitle="Ouvrez une carte pour commencer à ajouter des actes durant le parcours du patient." />
+        <Btn style={{width:"100%",marginTop:14}} loading={ouvrirMut.isPending} onClick={()=>ouvrirMut.mutate()}>+ Ouvrir une carte</Btn>
+      </Panel>
+    );
+  }
+
+  const enPause = passageActif.statut === "ferme_temporaire";
+  const actes = passageDetail?.actes || [];
+  const total = passageDetail?.total || 0;
+
+  return (
+    <Panel title="🗂️ Carte patient"
+      actions={<Badge color={enPause ? "amber" : "green"}>{enPause ? "En pause" : "Ouverte"}</Badge>}>
+
+      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
+        <Sel label="Ajouter un acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)}
+          options={[{v:"",l:"— Choisir un acte —"}, ...(catalogue||[]).map(a=>({v:a.id, l:`${a.libelle} — ${fmtF(a.tarif_base)} F`}))]} />
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
+          <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
+        </label>
+        <Btn loading={ajouterMut.isPending} disabled={!acteChoisi} onClick={()=>ajouterMut.mutate()}>+ Ajouter</Btn>
+      </div>
+
+      {actes.length===0
+        ? <Empty icon="📋" title="Aucun acte ajouté encore" />
+        : actes.map(a=>(
+          <div key={a.id} style={{background:C.hover,borderRadius:9,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:15,fontWeight:600,color:C.text}}>{a.libelle_acte}</div>
+              <div style={{fontSize:13,color:C.dim}}>{a.code_acte} · {a.quantite} × {fmtF(a.prix_unitaire)} F</div>
+            </div>
+            <div style={{fontWeight:800,color:C.green}}>{fmtF(a.prix_unitaire*a.quantite)} F</div>
+          </div>
+        ))
+      }
+
+      {actes.length>0 && (
+        <div style={{display:"flex",justifyContent:"space-between",padding:"12px 0",borderTop:`1px solid ${C.border}`,marginTop:6,marginBottom:16}}>
+          <span style={{color:C.muted,fontWeight:700}}>Total</span>
+          <span style={{fontSize:20,fontWeight:900,color:C.text}}>{fmtF(total)} F</span>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:10}}>
+        {enPause
+          ? <Btn style={{flex:1}} loading={reprendreMut.isPending} onClick={()=>reprendreMut.mutate()}>▶️ Reprendre</Btn>
+          : <Btn variant="outline" style={{flex:1}} loading={pauseMut.isPending} onClick={()=>pauseMut.mutate()}>⏸️ Mettre en pause</Btn>
+        }
+        <Btn variant="danger" style={{flex:1}} disabled={actes.length===0} loading={validerMut.isPending}
+          onClick={()=>{ if(window.confirm("Valider définitivement cette carte et générer la facture ?")) validerMut.mutate(); }}>
+          ✅ Valider & facturer
+        </Btn>
+      </div>
+    </Panel>
+  );
+}
+
 function PageDossiers() {
   const { token, user } = useAuthStore();
   const navigate = useNavigate();
@@ -884,13 +1018,14 @@ function PageDossiers() {
   // sous_role absent = compte historique/proprietaire = acces complet.
   const TABS_TOUTES = [
     { key:"infos", label:"Infos", icon:"👤" },
+    { key:"carte", label:"Carte patient", icon:"🗂️" },
     { key:"consultations", label:"Consultations", icon:"🩺" },
     { key:"ordonnances", label:"Ordonnances", icon:"💊" },
     { key:"examens", label:"Examens", icon:"🔬" },
     { key:"factures", label:"Factures", icon:"📄" },
   ];
   const TABS = user?.sous_role === "bureau_entrees"
-    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="factures")
+    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="carte" || t.key==="factures")
     : TABS_TOUTES;
 
   const bloodGroups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
@@ -1124,6 +1259,8 @@ function PageDossiers() {
             )}
 
             {/* Tab: Factures */}
+            {activeTab==="carte" && <PanelCartePatient patient={selected} />}
+
             {activeTab==="factures" && (
               <Panel title="Facturation des actes"
                 actions={(pec?.data||[]).length>0?<Btn style={{padding:"6px 14px",fontSize:16}} onClick={imprimerFacture}>🖨️ Imprimer la facture</Btn>:null}>
@@ -1894,7 +2031,39 @@ function PageStock() {
 //  6. PAGE FINANCE
 // ════════════════════════════════════════════════════════════════════
 function PageFacturation() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("tableau-bord");
+
+  // Impression simple depuis la liste globale des factures -- pas de
+  // detail ligne par ligne disponible ici (aucune route /api/factures/:id
+  // pour l'instant), document volontairement marque comme resume.
+  const imprimerFactureResume = (f) => {
+    const win = window.open('', '_blank');
+    win.document.write(`
+      <html><head><title>Facture ${f.reference||''}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:520px;margin:0 auto;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
+        .label{color:#8BA0B5;}
+        .valeur{font-weight:700;}
+        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:16px;}
+        .note{font-size:11px;color:#8BA0B5;margin-top:24px;text-align:center;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <h2>📄 Résumé de facture</h2>
+      <div class="champ"><span class="label">Référence</span><span class="valeur">${f.reference||'—'}</span></div>
+      <div class="champ"><span class="label">Patient</span><span class="valeur">${f.patient_nom||'—'}</span></div>
+      <div class="champ"><span class="label">Date</span><span class="valeur">${new Date(f.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}</span></div>
+      <div class="champ"><span class="label">Statut</span><span class="valeur">${f.statut||'—'}</span></div>
+      <div class="total">${Number(f.montant||0).toLocaleString('fr-CI')} F</div>
+      <div class="note">Résumé de facture — le détail ligne par ligne est disponible depuis Dossiers patients.</div>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(()=>win.print(), 300);
+  };
   const { data: factData } = useQuery({ queryKey:["cl-factures"], queryFn:()=>cAPI.factures().then(r=>r.data||[]) });
   const factures = factData||[];
   const totalEncaisse = factures.filter(f=>f.statut==="payee").reduce((s,f)=>s+(+f.montant||0),0);
@@ -1976,7 +2145,7 @@ function PageFacturation() {
       )}
 
       {tab==="factures" && (
-        <Panel title="Toutes les factures" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Facture</Btn>}>
+        <Panel title="Toutes les factures" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>navigate("/clinique/dossiers")}>+ Facture (via Dossiers patients)</Btn>}>
           {factures.length===0
             ? <Empty icon="📄" title="Aucune facture" subtitle="Les factures générées depuis la caisse apparaîtront ici" />
             : <Table columns={[
@@ -1985,7 +2154,7 @@ function PageFacturation() {
                 { key:"montant", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
                 { key:"statut", label:"Statut", render:v=><Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[v]||"gray"}>{v}</Badge> },
                 { key:"created_at", label:"Date", render:v=>fmtDate(v) },
-                { key:"id", label:"", render:()=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>toast.success("Facture téléchargée !")}>PDF</Btn> },
+                { key:"id", label:"", render:(_,f)=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>imprimerFactureResume(f)}>PDF</Btn> },
               ]} rows={factures} />
           }
         </Panel>
