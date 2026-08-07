@@ -324,7 +324,94 @@ function Carte({ resultats, position }) {
   );
 }
 
+function fmtDateHeure(dateStr, heureStr) {
+  const d = new Date(dateStr);
+  const jour = d.toLocaleDateString('fr-CI', { day: 'numeric', month: 'long', year: 'numeric' });
+  return `${jour} à ${(heureStr || '').slice(0, 5)}`;
+}
+
+function ModalMonDossier({ open, onClose, V }) {
+  const [code, setCode] = useState('');
+  const [chargement, setChargement] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const [dossier, setDossier] = useState(null);
+
+  const chercher = () => {
+    if (!code.trim()) { setErreur('Entrez votre code dossier'); return; }
+    setChargement(true); setErreur(''); setDossier(null);
+    fetch(`${API}/public/rdv-par-code/${encodeURIComponent(code.trim())}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.success) { setErreur(d.message || 'Code introuvable'); return; }
+        setDossier(d.data);
+      })
+      .catch(() => setErreur('Erreur de connexion, réessayez.'))
+      .finally(() => setChargement(false));
+  };
+
+  const fermer = () => { onClose(); setCode(''); setDossier(null); setErreur(''); };
+  if (!open) return null;
+
+  const aujourdhui = new Date().toISOString().split('T')[0];
+  const rdvs = dossier?.rendez_vous || [];
+  const aVenir = rdvs.filter(r => r.date_rdv >= aujourdhui).reverse();
+  const passes = rdvs.filter(r => r.date_rdv < aujourdhui);
+
+  return (
+    <div onClick={e => e.target === e.currentTarget && fermer()} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 26, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 22, color: V.text, fontWeight: 400 }}>🗂️ Mon dossier</h2>
+          <button onClick={fermer} style={{ background: 'none', border: 'none', color: V.muted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {!dossier ? (
+          <>
+            <p style={{ fontSize: 13, color: V.muted, marginBottom: 16 }}>Entrez le code reçu lors de votre inscription ou de votre dernier rendez-vous pour retrouver votre historique.</p>
+            <input value={code} onChange={e => setCode(e.target.value)} onKeyDown={e => e.key === 'Enter' && chercher()}
+              placeholder="Ex : MC-KT-4950" style={{ width: '100%', boxSizing: 'border-box', background: V.input, border: `1.5px solid ${V.border}`, borderRadius: 10, padding: 12, color: V.text, fontSize: 15, outline: 'none', marginBottom: 10, fontFamily: 'inherit' }} />
+            {erreur && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{erreur}</div>}
+            <button onClick={chercher} disabled={chargement} style={{ width: '100%', background: `linear-gradient(135deg,${V.green},${V.teal})`, color: '#fff', border: 'none', borderRadius: 10, padding: 13, fontSize: 14, fontWeight: 700, cursor: chargement ? 'not-allowed' : 'pointer', opacity: chargement ? .7 : 1 }}>
+              {chargement ? 'Recherche…' : 'Retrouver mon dossier'}
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ background: V.hover, borderRadius: 10, padding: 12, marginBottom: 18 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: V.text }}>{dossier.patient.prenom} {dossier.patient.nom}</div>
+              <div style={{ fontSize: 12, color: V.muted }}>{dossier.patient.telephone}</div>
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: V.green, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>À venir ({aVenir.length})</div>
+            {aVenir.length === 0
+              ? <div style={{ fontSize: 13, color: V.dim, marginBottom: 16 }}>Aucun rendez-vous à venir.</div>
+              : aVenir.map(r => (
+                <div key={r.id} style={{ background: V.hover, borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: V.text }}>{fmtDateHeure(r.date_rdv, r.heure_rdv)}</div>
+                  <div style={{ fontSize: 12, color: V.muted }}>{r.clinique_nom || r.etablissement_externe || '—'} {r.medecin_nom ? `· Dr ${r.medecin_nom}` : ''}</div>
+                </div>
+              ))
+            }
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: V.dim, textTransform: 'uppercase', letterSpacing: '.5px', marginTop: 16, marginBottom: 8 }}>Passés ({passes.length})</div>
+            {passes.length === 0
+              ? <div style={{ fontSize: 13, color: V.dim }}>Aucun rendez-vous passé.</div>
+              : passes.slice(0, 10).map(r => (
+                <div key={r.id} style={{ padding: '8px 4px', borderBottom: `1px solid ${V.border}`, opacity: .75 }}>
+                  <div style={{ fontSize: 13, color: V.text }}>{fmtDateHeure(r.date_rdv, r.heure_rdv)}</div>
+                  <div style={{ fontSize: 12, color: V.muted }}>{r.clinique_nom || r.etablissement_externe || '—'}</div>
+                </div>
+              ))
+            }
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
+  const [showMonDossier, setShowMonDossier] = useState(false);
   const navigate = useNavigate();
   const [type, setType] = useState('clinique');
   const [q, setQ] = useState('');
@@ -427,6 +514,7 @@ export default function Home() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <ThemeToggle />
+            <button onClick={() => setShowMonDossier(true)} style={{ background: 'none', border: 'none', color: V.muted, cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>🗂️ Mon dossier</button>
             <a href="https://manager.mediconnect4africa.cloud" target="_blank" rel="noreferrer" style={{ color: V.muted, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>Espace pro →</a>
           </div>
       </nav>
@@ -620,6 +708,7 @@ export default function Home() {
         </div>
         <div style={{ fontSize: 12, color: V.dim }}>© 2026 MediConnect Africa · rdv.mediconnect4africa.cloud</div>
       </footer>
+      <ModalMonDossier open={showMonDossier} onClose={() => setShowMonDossier(false)} V={V} />
     </div>
   );
 }
