@@ -972,6 +972,22 @@ function PageDossiers() {
     const clR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:H}).then(r=>r.json()).catch(()=>({data:null}));
     const cl = clR.data;
     const n = v => Number(v||0).toLocaleString('fr-CI');
+
+    // La categorie vit sur actes_medicaux, pas sur prise_en_charge_actes
+    // (qui ne garde qu'un instantane code/libelle/prix) -- on la
+    // retrouve par correspondance de code, pour regrouper l'affichage.
+    const catalogueR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/actes`,{headers:H}).then(r=>r.json()).catch(()=>({data:[]}));
+    const codeVersCategorie = new Map((catalogueR?.data||[]).map(a=>[a.code, a.categorie||'Autres actes']));
+    lignes.forEach(l=>{ l.categorie = codeVersCategorie.get(l.code) || 'Autres actes'; });
+
+    const groupes = new Map();
+    for (const l of lignes) {
+      if (!groupes.has(l.categorie)) groupes.set(l.categorie, { lignes:[], montant:0, assur:0, patient:0 });
+      const g = groupes.get(l.categorie);
+      g.lignes.push(l); g.montant += l.montant; g.assur += l.assur; g.patient += l.patient;
+    }
+    const tauxCouverture = t.total > 0 ? Math.round(t.part_assurance / t.total * 100) : 0;
+
     const win = window.open('','_blank');
     win.document.write(`
       <html><head><title>${proforma?'Proforma':'Facture'} ${ref}</title><style>
@@ -1015,20 +1031,28 @@ function PageDossiers() {
           <div class="lbl">Couverture</div>
           <div style="font-size:14px;font-weight:700;">${selected?.assurance||'Patient non assuré'}</div>
           ${selected?.numero_police?`<div class="ci">Police : ${selected.numero_police}</div>`:''}
+          ${t.part_assurance>0?`<div class="ci">Taux de couverture appliqué : ${tauxCouverture}%</div>`:''}
           <div class="ci">Date : ${new Date().toLocaleDateString('fr-CI')}</div>
         </div>
       </div>
       <table>
         <tr><th>Code</th><th>Acte / Prestation</th><th class="r">Qté</th><th class="r">P.U.</th><th class="r">Total</th><th class="r">Assurance</th><th class="r">Patient</th></tr>
-        ${lignes.map(l=>`<tr>
-          <td><strong>${l.code}</strong></td>
-          <td>${l.libelle}</td>
-          <td class="r">${l.quantite}</td>
-          <td class="r">${n(l.pu)}</td>
-          <td class="r">${n(l.montant)}</td>
-          <td class="r">${n(l.assur)}</td>
-          <td class="r"><strong>${n(l.patient)}</strong></td>
-        </tr>`).join('')}
+        ${Array.from(groupes.entries()).map(([categorie,g])=>`
+          <tr><td colspan="7" style="background:#E8F8F1;font-weight:700;color:#065F3C;text-transform:uppercase;font-size:11px;letter-spacing:.5px;">${categorie}</td></tr>
+          ${g.lignes.map(l=>`<tr>
+            <td><strong>${l.code}</strong></td>
+            <td>${l.libelle}</td>
+            <td class="r">${l.quantite}</td>
+            <td class="r">${n(l.pu)}</td>
+            <td class="r">${n(l.montant)}</td>
+            <td class="r">${n(l.assur)}</td>
+            <td class="r"><strong>${n(l.patient)}</strong></td>
+          </tr>`).join('')}
+          <tr style="background:#f8f9fa;"><td colspan="4" style="font-size:11px;color:#8BA0B5;">Sous-total ${categorie}</td>
+            <td class="r" style="font-size:11px;color:#8BA0B5;">${n(g.montant)}</td>
+            <td class="r" style="font-size:11px;color:#8BA0B5;">${n(g.assur)}</td>
+            <td class="r" style="font-size:11px;color:#8BA0B5;">${n(g.patient)}</td></tr>
+        `).join('')}
         <tr class="tot"><td colspan="4">TOTAL GÉNÉRAL</td>
           <td class="r">${n(t.total)}</td>
           <td class="r">${n(t.part_assurance)}</td>
