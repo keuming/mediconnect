@@ -762,11 +762,21 @@ app.put('/api/conventions/:id', auth, requireSousRole('finance'), async (req, re
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/patients/:id', auth, async (req, res) => {
-  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police } = req.body;
+  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police, assureur_id } = req.body;
   try {
+    // assureur_id est la CLE REELLE utilisee pour retrouver le taux de
+    // couverture negocie (table conventions) -- assurance (texte) reste
+    // pour l'affichage/compatibilite mais ne suffit plus a lui seul.
+    // "" est traite comme "retirer l'assureur" (passage a non-assure),
+    // distinct de undefined qui laisse la valeur actuelle inchangee.
     const r = await db(
-      'UPDATE patients SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),email=COALESCE($4,email),groupe_sanguin=COALESCE($5,groupe_sanguin),allergies=COALESCE($6,allergies),antecedents=COALESCE($7,antecedents),assurance=COALESCE($8,assurance),numero_police=COALESCE($9,numero_police),updated_at=NOW() WHERE id=$10 RETURNING *',
-      [prenom,nom,telephone,email,groupe_sanguin,allergies,antecedents,assurance,numero_police,req.params.id]
+      `UPDATE patients SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),
+         email=COALESCE($4,email),groupe_sanguin=COALESCE($5,groupe_sanguin),allergies=COALESCE($6,allergies),
+         antecedents=COALESCE($7,antecedents),assurance=COALESCE($8,assurance),numero_police=COALESCE($9,numero_police),
+         assureur_id=CASE WHEN $10::text IS NULL THEN assureur_id WHEN $10='' THEN NULL ELSE $10::uuid END,
+         updated_at=NOW() WHERE id=$11 RETURNING *`,
+      [prenom,nom,telephone,email,groupe_sanguin,allergies,antecedents,assurance,numero_police,
+       assureur_id===undefined?null:assureur_id, req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
