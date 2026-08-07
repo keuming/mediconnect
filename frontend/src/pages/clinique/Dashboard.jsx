@@ -2118,6 +2118,98 @@ function PageStock() {
 // ════════════════════════════════════════════════════════════════════
 //  6. PAGE FINANCE
 // ════════════════════════════════════════════════════════════════════
+function PanelGestionActes() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editant, setEditant] = useState(null);
+  const [form, setForm] = useState({ code:"", libelle:"", categorie:"", tarif_base:"", taux_assurance:"70" });
+
+  const { data: actes, isLoading } = useQuery({ queryKey:["cl-actes-gestion"], queryFn:()=>cAPI.actesCatalogue().then(r=>r.data||[]) });
+  const { user } = useAuthStore();
+  const mesActes = (actes||[]).filter(a=>a.clinique_id);
+  const actesGlobaux = (actes||[]).filter(a=>!a.clinique_id);
+
+  const addMut = useMutation({
+    mutationFn: () => api.post("/actes", { ...form, tarif_base:parseInt(form.tarif_base)||0, taux_assurance:parseInt(form.taux_assurance)||70 }),
+    onSuccess: () => { toast.success("Acte créé !"); qc.invalidateQueries(["cl-actes-gestion"]); setShowAdd(false); setForm({ code:"", libelle:"", categorie:"", tarif_base:"", taux_assurance:"70" }); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const editMut = useMutation({
+    mutationFn: ({id,d}) => api.put(`/actes/${id}`, d),
+    onSuccess: () => { toast.success("Acte mis à jour"); qc.invalidateQueries(["cl-actes-gestion"]); setEditant(null); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const supprimerMut = useMutation({
+    mutationFn: (id) => api.delete(`/actes/${id}`),
+    onSuccess: () => { toast.success("Acte retiré"); qc.invalidateQueries(["cl-actes-gestion"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+
+  const LigneActe = ({ a, modifiable }) => {
+    const enEdition = editant===a.id;
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:15,fontWeight:600,color:C.text}}>{a.libelle}</div>
+          <div style={{fontSize:13,color:C.muted}}>{a.code} · {a.categorie||"—"}</div>
+        </div>
+        {enEdition ? (
+          <>
+            <input type="number" defaultValue={a.tarif_base} id={`tarif-${a.id}`} style={{width:90,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+            <input type="number" defaultValue={a.taux_assurance} id={`taux-${a.id}`} style={{width:60,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+            <button onClick={()=>{
+              const tarif_base = parseInt(document.getElementById(`tarif-${a.id}`).value);
+              const taux_assurance = parseInt(document.getElementById(`taux-${a.id}`).value);
+              editMut.mutate({ id:a.id, d:{ tarif_base, taux_assurance } });
+            }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
+          </>
+        ) : (
+          <>
+            <span style={{fontWeight:800,color:C.green,minWidth:90,textAlign:"right"}}>{fmt(a.tarif_base)} F</span>
+            <span style={{fontSize:13,color:C.muted,minWidth:40}}>{a.taux_assurance}%</span>
+            {modifiable && (
+              <>
+                <button onClick={()=>setEditant(a.id)} style={{background:"transparent",border:"none",color:C.blue,cursor:"pointer",fontSize:15}}>✏️</button>
+                <button onClick={()=>window.confirm("Retirer cet acte de votre catalogue ?")&&supprimerMut.mutate(a.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <Panel title="Mes tarifs personnalisés" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAdd(true)}>+ Nouvel acte</Btn>}>
+        {isLoading ? <Loader/> : mesActes.length===0
+          ? <Empty icon="🩺" title="Aucun tarif personnalisé" subtitle="Ajoutez vos propres actes avec vos tarifs, ou ajustez ceux du catalogue global ci-dessous." />
+          : mesActes.map(a=><LigneActe key={a.id} a={a} modifiable={true} />)
+        }
+      </Panel>
+      <Panel title="Catalogue global (lecture seule)" style={{marginTop:16}}>
+        {actesGlobaux.map(a=><LigneActe key={a.id} a={a} modifiable={false} />)}
+      </Panel>
+
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🩺 Nouvel acte">
+        <Grid cols={2} gap={10}>
+          <Inp label="Code *" required value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder="Ex: C1" />
+          <Inp label="Catégorie" value={form.categorie} onChange={e=>setForm(f=>({...f,categorie:e.target.value}))} placeholder="Ex: Consultation" />
+        </Grid>
+        <Inp label="Libellé *" required value={form.libelle} onChange={e=>setForm(f=>({...f,libelle:e.target.value}))} placeholder="Ex: Consultation généraliste" />
+        <Grid cols={2} gap={10}>
+          <Inp label="Tarif (FCFA) *" required type="number" value={form.tarif_base} onChange={e=>setForm(f=>({...f,tarif_base:e.target.value}))} />
+          <Inp label="Taux assurance par défaut (%)" type="number" value={form.taux_assurance} onChange={e=>setForm(f=>({...f,taux_assurance:e.target.value}))} />
+        </Grid>
+        <Btn style={{width:"100%"}} loading={addMut.isPending} onClick={()=>{
+          if(!form.code||!form.libelle||!form.tarif_base){toast.error("Code, libellé et tarif requis");return;}
+          addMut.mutate();
+        }}>Créer</Btn>
+      </Modal>
+    </div>
+  );
+}
+
 function PageFacturation() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("tableau-bord");
@@ -2160,6 +2252,7 @@ function PageFacturation() {
   const FINANCE_TABS = [
     { key:"tableau-bord", label:"Tableau de bord" },
     { key:"factures", label:"Factures" },
+    { key:"actes", label:"Actes & tarifs" },
     { key:"budget", label:"Budget" },
     { key:"assurances", label:"Remboursements" },
     { key:"rapports", label:"Rapports" },
@@ -2293,6 +2386,8 @@ function PageFacturation() {
           </div>
         </Panel>
       )}
+
+      {tab==="actes" && <PanelGestionActes />}
     </div>
   );
 }
