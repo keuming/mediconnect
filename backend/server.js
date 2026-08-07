@@ -1379,6 +1379,42 @@ app.get('/api/public/cliniques', async (req, res) => {
 // des infos minimales id/nom/ville deja connues, donc pas bloquant mais
 // incomplet). Meme logique de fusion cliniques + annuaire que la liste
 // ci-dessus, filtree sur un seul id.
+// ── Historique des RDV via le code secret -- accessible publiquement
+// sans connexion (le code lui-meme fait office de cle d'acces, meme
+// convention que "Resultats d'examens" cote clinique). Retourne le
+// patient (identite minimale) et tous ses rendez-vous, tries du plus
+// recent au plus ancien -- le frontend separe passe/a venir sur la date.
+app.get('/api/public/rdv-par-code/:code', async (req, res) => {
+  try {
+    const p = await db(
+      "SELECT id, prenom, nom, telephone, code_secret FROM patients WHERE UPPER(code_secret)=UPPER($1) LIMIT 1",
+      [req.params.code]
+    );
+    if (!p.rows.length) return res.status(404).json({ success:false, message:'Code introuvable' });
+    const patient = p.rows[0];
+
+    const rdvs = await db(
+      `SELECT rv.id, rv.reference, rv.date_rdv, rv.heure_rdv, rv.statut, rv.motif,
+              rv.medecin_nom, rv.etablissement_externe, rv.prestataire_type,
+              c.nom AS clinique_nom
+         FROM rendez_vous rv
+         LEFT JOIN cliniques c ON c.id = rv.clinique_id
+        WHERE rv.patient_id=$1
+        ORDER BY rv.date_rdv DESC, rv.heure_rdv DESC
+        LIMIT 100`,
+      [patient.id]
+    );
+
+    res.json({
+      success:true,
+      data:{
+        patient:{ prenom:patient.prenom, nom:patient.nom, telephone:patient.telephone },
+        rendez_vous: rdvs.rows,
+      }
+    });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/public/cliniques/:id', async (req, res) => {
   try {
     const { id } = req.params;
