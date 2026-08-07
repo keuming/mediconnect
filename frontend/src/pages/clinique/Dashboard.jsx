@@ -62,6 +62,8 @@ const cAPI = {
   medecins:     () => api.get("/medecins"),
   updatePatient: (id,d) => api.put(`/patients/${id}`, d),
   affecterMedecinPassage: (passageId,medecinId) => api.put(`/passages/${passageId}/medecin`, { medecin_id:medecinId }),
+  assureursListe:  () => api.get("/assureurs"),
+  formulesParAssureur: (assureurId) => api.get("/formules-assurance", { params:{ assureur_id:assureurId } }),
   addMedecin:   (d) => api.post("/medecins", d),
   updateMedecin:(id,d) => api.put(`/medecins/${id}`, d),
   personnel:    () => api.get("/clinique/personnel"),
@@ -684,6 +686,40 @@ function PanelCartePatient({ patient }) {
   );
 }
 
+function WidgetAssuranceCascade({ pForm, setPForm }) {
+  const { data: assureurs } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const { data: formules } = useQuery({
+    queryKey:["cl-formules", pForm.assureur_id],
+    queryFn:()=>cAPI.formulesParAssureur(pForm.assureur_id).then(r=>r.data||[]),
+    enabled: !!pForm.assureur_id,
+  });
+  return (
+    <Grid cols={2} gap={10}>
+      <div>
+        <label style={{fontSize:14,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>COMPAGNIE D'ASSURANCE</label>
+        <select value={pForm.assureur_id} onChange={e=>{
+            const id = e.target.value;
+            const nom = (assureurs||[]).find(a=>a.id===id)?.nom || "";
+            setPForm(p=>({...p, assureur_id:id, assurance:nom, formule_assurance_id:""}));
+          }}
+          style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:pForm.assureur_id?C.text:C.muted,fontSize:17,outline:"none"}}>
+          <option value="">-- Sélectionner --</option>
+          {(assureurs||[]).map(a=>(<option key={a.id} value={a.id}>{a.nom}</option>))}
+        </select>
+      </div>
+      <div>
+        <label style={{fontSize:14,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>FORMULE</label>
+        <select value={pForm.formule_assurance_id} disabled={!pForm.assureur_id} onChange={e=>setPForm(p=>({...p,formule_assurance_id:e.target.value}))}
+          style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:pForm.formule_assurance_id?C.text:C.muted,fontSize:17,outline:"none",opacity:pForm.assureur_id?1:.5}}>
+          <option value="">{pForm.assureur_id ? "-- Sélectionner --" : "Choisir une compagnie d'abord"}</option>
+          {(formules||[]).map(f=>(<option key={f.id} value={f.id}>{f.nom} — {f.taux_couverture}%{f.prime_mensuelle?` (${fmt(f.prime_mensuelle)} F/mois)`:""}</option>))}
+        </select>
+      </div>
+      <Inp label="N° Police / Matricule" value={pForm.numero_police} onChange={e=>setPForm(p=>({...p,numero_police:e.target.value}))} placeholder="Ex: 2024-NSIA-000123"/>
+    </Grid>
+  );
+}
+
 function PageDossiers() {
   const { token, user } = useAuthStore();
   const navigate = useNavigate();
@@ -705,7 +741,7 @@ function PageDossiers() {
   const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", type:"NFS", notes:"" });
   const [fichierPrescription, setFichierPrescription] = useState(null);
   const [uploadPrescriptionEnCours, setUploadPrescriptionEnCours] = useState(false);
-  const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false });
+  const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false, assureur_id:"", formule_assurance_id:"" });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
   // Plusieurs medicaments par ordonnance, chacun avec sa propre
@@ -1392,21 +1428,7 @@ function PageDossiers() {
               </button>
             ))}
           </div>
-          {pForm.est_assure&&(
-            <Grid cols={2} gap={10}>
-              <div>
-                <label style={{fontSize:14,fontWeight:700,color:C.muted,display:"block",marginBottom:5}}>COMPAGNIE D'ASSURANCE</label>
-                <select value={pForm.assurance} onChange={e=>setPForm(p=>({...p,assurance:e.target.value}))}
-                  style={{width:"100%",padding:"9px 12px",background:C.hover,border:`1px solid ${C.border}`,borderRadius:8,color:pForm.assurance?C.text:C.muted,fontSize:17,outline:"none"}}>
-                  <option value="">-- Sélectionner --</option>
-                  {["NSIA Vie CI","NSIA IARDT","Allianz CI","AXA CI","Saham Assurance CI","Sunu Assurances","CNAM (CMU)","Mutuelles CGRAE","Mutuelles MUGEFCI","AMI Assurances","Colina","Prima Assurance","Gras Savoye","SIA (Société Ivoirienne d'Assurance)","Autre"].map(a=>(
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
-              </div>
-              <Inp label="N° Police / Matricule" value={pForm.numero_police} onChange={fp("numero_police")} placeholder="Ex: 2024-NSIA-000123"/>
-            </Grid>
-          )}
+          {pForm.est_assure&&<WidgetAssuranceCascade pForm={pForm} setPForm={setPForm} />}
         </div>
 
         {/* Actes de la prise en charge */}
