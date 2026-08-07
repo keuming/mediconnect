@@ -508,7 +508,7 @@ function PanelCartePatient({ patient }) {
   // le bureau des entrees peut toujours decocher pour un acte precis.
   const [estAssure, setEstAssure] = useState(!!patient?.assurance);
   const [editAssurance, setEditAssurance] = useState(false);
-  const [assuranceForm, setAssuranceForm] = useState({ est_assure: !!patient?.assurance, assurance: patient?.assurance||"", numero_police: patient?.numero_police||"" });
+  const [assuranceForm, setAssuranceForm] = useState({ est_assure: !!patient?.assurance, assurance: patient?.assurance||"", numero_police: patient?.numero_police||"", assureur_id: patient?.assureur_id||"", formule_assurance_id: patient?.formule_assurance_id||"" });
 
   const { data: medecinsListe } = useQuery({
     queryKey: ["cl-medecins-carte"],
@@ -570,6 +570,8 @@ function PanelCartePatient({ patient }) {
     mutationFn: () => cAPI.updatePatient(patient.id, {
       assurance: assuranceForm.est_assure ? (assuranceForm.assurance||"") : "",
       numero_police: assuranceForm.est_assure ? (assuranceForm.numero_police||"") : "",
+      assureur_id: assuranceForm.est_assure ? (assuranceForm.assureur_id||"") : "",
+      formule_assurance_id: assuranceForm.est_assure ? (assuranceForm.formule_assurance_id||"") : "",
     }),
     onSuccess: () => {
       toast.success("Statut d'assurance mis à jour");
@@ -609,7 +611,7 @@ function PanelCartePatient({ patient }) {
       <div style={{marginBottom:14,padding:"10px 14px",background:C.hover,borderRadius:9}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:14,color:C.muted}}>Assurance : <strong style={{color:patient?.assurance?C.green:C.red}}>{patient?.assurance ? patient.assurance : "Non assuré"}</strong></span>
-          <button onClick={()=>{ setAssuranceForm({ est_assure:!!patient?.assurance, assurance:patient?.assurance||"", numero_police:patient?.numero_police||"" }); setEditAssurance(v=>!v); }}
+          <button onClick={()=>{ setAssuranceForm({ est_assure:!!patient?.assurance, assurance:patient?.assurance||"", numero_police:patient?.numero_police||"", assureur_id:patient?.assureur_id||"", formule_assurance_id:patient?.formule_assurance_id||"" }); setEditAssurance(v=>!v); }}
             style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 10px",color:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
             ✏️ Modifier
           </button>
@@ -627,13 +629,7 @@ function PanelCartePatient({ patient }) {
                 </button>
               ))}
             </div>
-            {assuranceForm.est_assure && (
-              <Grid cols={2} gap={10} style={{marginBottom:10}}>
-                <Sel label="Compagnie" value={assuranceForm.assurance} onChange={e=>setAssuranceForm(f=>({...f,assurance:e.target.value}))}
-                  options={[{v:"",l:"-- Sélectionner --"}, ...ASSUREURS_LISTE.map(a=>({v:a,l:a}))]} />
-                <Inp label="N° Police" value={assuranceForm.numero_police} onChange={e=>setAssuranceForm(f=>({...f,numero_police:e.target.value}))} placeholder="Ex: 2024-NSIA-000123" />
-              </Grid>
-            )}
+            {assuranceForm.est_assure && <WidgetAssuranceCascade pForm={assuranceForm} setPForm={setAssuranceForm} />}
             <Btn style={{width:"100%"}} loading={assuranceMut.isPending} onClick={()=>assuranceMut.mutate()}>Enregistrer</Btn>
           </div>
         )}
