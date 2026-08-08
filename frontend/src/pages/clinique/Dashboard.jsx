@@ -1085,6 +1085,9 @@ function PageDossiers() {
     const age = selected?.date_naissance
       ? Math.floor((Date.now() - new Date(selected.date_naissance).getTime()) / (365.25*24*3600*1000))
       : null;
+    // Certains medecin_nom contiennent deja "Dr." (saisie historique
+    // incoherente) -- on ne prefixe que si absent, pour eviter "Dr Dr. X".
+    const nomMedecin = (nom) => nom ? (/^dr\.?\s/i.test(nom) ? nom : `Dr ${nom}`) : '';
 
     const win = window.open('','_blank');
     win.document.write(`
@@ -1143,7 +1146,7 @@ function PageDossiers() {
         <h3>Traitements récents</h3>
         ${ordonnancesRecentes.map(o=>`
           <div class="consult">
-            <div class="consult-date">${new Date(o.created_at).toLocaleDateString('fr-CI')}${o.medecin_nom?' · Dr '+o.medecin_nom:''}</div>
+            <div class="consult-date">${new Date(o.created_at).toLocaleDateString('fr-CI')}${o.medecin_nom?' · '+nomMedecin(o.medecin_nom):''}</div>
             <div>${(o.medicaments||'').split('\n').filter(Boolean).map(m=>`<div>• ${m}</div>`).join('')}</div>
           </div>
         `).join('')}
@@ -1154,7 +1157,7 @@ function PageDossiers() {
         ? '<p style="color:#8BA0B5;font-size:13px;">Aucune consultation enregistrée.</p>'
         : liste.map(c=>`
           <div class="consult">
-            <div class="consult-date">${new Date(c.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}${c.medecin_nom?' · Dr '+c.medecin_nom:''}</div>
+            <div class="consult-date">${new Date(c.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}${c.medecin_nom?' · '+nomMedecin(c.medecin_nom):''}</div>
             <div class="consult-diag">${c.diagnostic||'—'}</div>
             ${c.traitement?`<div style="font-size:13px;">Traitement : ${c.traitement}</div>`:''}
             ${c.notes?`<div style="font-size:12px;color:#5A7A94;margin-top:4px;">${c.notes}</div>`:''}
