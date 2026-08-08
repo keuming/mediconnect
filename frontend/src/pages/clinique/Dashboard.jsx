@@ -717,6 +717,9 @@ function WidgetAssuranceCascade({ pForm, setPForm }) {
 }
 
 function PageDossiers() {
+  // Certains medecin_nom contiennent deja "Dr." (saisie historique
+  // incoherente) -- on ne prefixe que si absent, pour eviter "Dr Dr. X".
+  const nomMedecin = (nom) => nom ? (/^dr\.?\s/i.test(nom) ? nom : `Dr ${nom}`) : '';
   const { token, user } = useAuthStore();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -1085,9 +1088,6 @@ function PageDossiers() {
     const age = selected?.date_naissance
       ? Math.floor((Date.now() - new Date(selected.date_naissance).getTime()) / (365.25*24*3600*1000))
       : null;
-    // Certains medecin_nom contiennent deja "Dr." (saisie historique
-    // incoherente) -- on ne prefixe que si absent, pour eviter "Dr Dr. X".
-    const nomMedecin = (nom) => nom ? (/^dr\.?\s/i.test(nom) ? nom : `Dr ${nom}`) : '';
 
     const win = window.open('','_blank');
     win.document.write(`
@@ -1184,6 +1184,100 @@ function PageDossiers() {
     win.document.close();
   };
 
+  // Rapport DATE d'UNE consultation precise -- distinct de la synthese
+  // complete : chaque consultation realisee genere son propre rapport,
+  // remis au patient a la fin de sa visite.
+  const imprimerRapportConsultation = async (c) => {
+    const H = { Authorization:`Bearer ${token}` };
+    const clR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:H}).then(r=>r.json()).catch(()=>({data:null}));
+    const cl = clR.data;
+    const win = window.open('','_blank');
+    win.document.write(`
+      <html><head><title>Rapport médical - ${new Date(c.created_at).toLocaleDateString('fr-CI')}</title><style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
+        .logo{height:58px;object-fit:contain;}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .ci{font-size:11px;color:#5A7A94;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
+        .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
+        .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+        .warn{background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;}
+        .section{margin-bottom:16px;}
+        .section-lbl{font-size:11px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+        .section-val{font-size:14px;color:#1a2e25;}
+        .vitals{display:flex;gap:16px;background:#f8f9fa;border-radius:8px;padding:10px 14px;font-size:13px;color:#5A7A94;}
+        .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header">
+        ${cl?.logo?`<img src="${cl.logo}" class="logo"/>`:''}
+        <div>
+          <div class="cn">${cl?.nom||'MediConnect Africa'}</div>
+          <div class="ci">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div class="ci">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
+        </div>
+      </div>
+      <h2>Rapport médical</h2>
+
+      <div class="meta">
+        <div class="box">
+          <div class="lbl">Patient</div>
+          <div style="font-size:14px;font-weight:700;">${selected?.prenom||''} ${selected?.nom||''}</div>
+          <div class="ci">${selected?.telephone||''}</div>
+          ${selected?.code_secret?`<div class="ci">Dossier : ${selected.code_secret}</div>`:''}
+        </div>
+        <div class="box">
+          <div class="lbl">Date de la consultation</div>
+          <div style="font-size:14px;font-weight:700;">${new Date(c.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}</div>
+          ${c.medecin_nom?`<div class="ci">${nomMedecin(c.medecin_nom)}</div>`:''}
+        </div>
+      </div>
+
+      ${(selected?.allergies||selected?.antecedents)?`
+        <div class="warn">
+          ${selected?.allergies?`<div>⚠️ <strong>Allergies :</strong> ${selected.allergies}</div>`:''}
+          ${selected?.antecedents?`<div style="margin-top:4px;">📋 <strong>Antécédents :</strong> ${selected.antecedents}</div>`:''}
+        </div>
+      `:''}
+
+      <div class="section">
+        <div class="section-lbl">Diagnostic</div>
+        <div class="section-val">${c.diagnostic||'—'}</div>
+      </div>
+      ${c.traitement?`
+        <div class="section">
+          <div class="section-lbl">Traitement</div>
+          <div class="section-val">${c.traitement}</div>
+        </div>
+      `:''}
+      ${c.notes?`
+        <div class="section">
+          <div class="section-lbl">Notes</div>
+          <div class="section-val">${c.notes}</div>
+        </div>
+      `:''}
+      ${(c.tension_arterielle||c.temperature||c.poids||c.taille)?`
+        <div class="vitals">
+          ${c.tension_arterielle?`<span>TA: ${c.tension_arterielle}</span>`:''}
+          ${c.temperature?`<span>T°: ${c.temperature}°C</span>`:''}
+          ${c.poids?`<span>Poids: ${c.poids}kg</span>`:''}
+          ${c.taille?`<span>Taille: ${c.taille}cm</span>`:''}
+        </div>
+      `:''}
+
+      <div class="footer">
+        <div>MediConnect Africa · CSN<br/>${cl?.site_web||'manager.mediconnect4africa.cloud'}</div>
+        <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
+      </div>
+      <div style="text-align:center;margin-top:18px;">
+        <button onclick="window.print()" style="padding:10px 24px;background:#0A8F58;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;">🖨️ Imprimer</button>
+      </div>
+      </body></html>`);
+    win.document.close();
+  };
+
   const imprimerOrdonnance = async (o) => {
     const logoR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.json()).catch(()=>({data:null}));
     const cl = logoR.data;
@@ -1263,6 +1357,7 @@ function PageDossiers() {
     { key:"ordonnances", label:"Ordonnances", icon:"💊" },
     { key:"examens", label:"Examens", icon:"🔬" },
     { key:"factures", label:"Factures", icon:"📄" },
+    { key:"rapports", label:"Rapports", icon:"🖨️" },
   ];
   const TABS = user?.sous_role === "bureau_entrees"
     ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="carte" || t.key==="factures")
@@ -1528,6 +1623,23 @@ function PageDossiers() {
                         </div>
                       ))}
                     </>
+                }
+              </Panel>
+            )}
+
+            {activeTab==="rapports" && (
+              <Panel title="Rapports médicaux">
+                {(consults||[]).length===0
+                  ? <Empty icon="🖨️" title="Aucun rapport" subtitle="Un rapport peut être généré pour chaque consultation réalisée." />
+                  : (consults||[]).map(c=>(
+                    <div key={c.id} style={{background:C.hover,borderRadius:9,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:15,fontWeight:700,color:C.text}}>{fmtDate(c.created_at)}{c.medecin_nom?` · ${nomMedecin(c.medecin_nom)}`:""}</div>
+                        <div style={{fontSize:14,color:C.dim}}>{c.diagnostic||"—"}</div>
+                      </div>
+                      <Btn variant="outline" style={{padding:"6px 14px",fontSize:14}} onClick={()=>imprimerRapportConsultation(c)}>🖨️ Générer</Btn>
+                    </div>
+                  ))
                 }
               </Panel>
             )}
