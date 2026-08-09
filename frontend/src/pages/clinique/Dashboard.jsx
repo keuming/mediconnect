@@ -760,6 +760,9 @@ function PanelContactsUrgence({ patient }) {
   return (
     <Panel title="🆘 Contacts d'urgence"
       actions={<Btn style={{padding:"6px 14px",fontSize:16}} disabled={liste.length>=10} onClick={()=>{ reset(); setShowAdd(true); }}>+ Ajouter {liste.length}/10</Btn>}>
+      <div style={{background:"#FEF3C7",border:"2px solid #F59E0B",borderRadius:8,padding:10,marginBottom:10,fontSize:11,fontFamily:"monospace",color:"#92400E",wordBreak:"break-all"}}>
+        DIAGNOSTIC TEMPORAIRE — patient.id={String(patient?.id)} | isLoading={String(isLoading)} | contacts (brut)={JSON.stringify(contacts)} | liste.length={liste.length}
+      </div>
       {isLoading ? <div style={{color:C.muted,textAlign:"center",padding:20}}>Chargement…</div>
         : liste.length===0
         ? <Empty icon="🆘" title="Aucun contact d'urgence" subtitle="Essentiel en cas d'urgence médicale — visible via le scan du QR code de la carte du patient." />
