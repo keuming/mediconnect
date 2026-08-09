@@ -81,6 +81,7 @@ const cAPI = {
   ouvrirPassage:   (d) => api.post("/passages", d),
   passageDetail:   (id) => api.get(`/passages/${id}`),
   ajouterActe:     (passageId,d) => api.post(`/passages/${passageId}/actes`, d),
+  ajouterMedicament:(passageId,d) => api.post(`/passages/${passageId}/medicament`, d),
   pausePassage:    (id) => api.put(`/passages/${id}/pause`),
   reprendrePassage:(id) => api.put(`/passages/${id}/reprendre`),
   validerPassage:  (id) => api.post(`/passages/${id}/valider`),
@@ -540,6 +541,12 @@ function PanelCartePatient({ patient }) {
     queryKey: ["cl-categories-actes-carte"],
     queryFn: () => api.get("/categories-actes").then(r => r.data || []),
   });
+  const { data: stockDisponible } = useQuery({
+    queryKey: ["cl-stock-carte"],
+    queryFn: () => cAPI.stock().then(r => r.data || []),
+  });
+  const [medicamentChoisi, setMedicamentChoisi] = useState("");
+  const [quantiteMedicament, setQuantiteMedicament] = useState("1");
 
   const ouvrirMut = useMutation({
     mutationFn: () => cAPI.ouvrirPassage({ patient_id: patient.id }),
@@ -553,6 +560,18 @@ function PanelCartePatient({ patient }) {
       qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
       qc.invalidateQueries(["cl-passage-actif", patient.id]);
       setActeChoisi("");
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
+  });
+  const ajouterMedicamentMut = useMutation({
+    mutationFn: () => cAPI.ajouterMedicament(passageActif.id, { stock_id: medicamentChoisi, quantite: parseInt(quantiteMedicament)||1, est_assure: estAssure }),
+    onSuccess: () => {
+      toast.success("Médicament facturé !");
+      qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
+      qc.invalidateQueries(["cl-passage-actif", patient.id]);
+      qc.invalidateQueries(["cl-stock-carte"]);
+      setMedicamentChoisi("");
+      setQuantiteMedicament("1");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
   });
@@ -657,6 +676,13 @@ function PanelCartePatient({ patient }) {
           <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
         </label>
         <Btn loading={ajouterMut.isPending} disabled={!acteChoisi} onClick={()=>ajouterMut.mutate()}>+ Ajouter</Btn>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"2fr 0.6fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
+        <Sel label="Médicament (depuis le stock)" value={medicamentChoisi} onChange={e=>setMedicamentChoisi(e.target.value)}
+          options={[{v:"",l:"— Choisir un médicament —"}, ...(stockDisponible||[]).filter(s=>s.categorie==="Médicament"&&s.quantite>0).map(s=>({v:s.id, l:`${s.nom} — ${fmt(s.prix_unitaire)} F (${s.quantite} ${s.unite} dispo.)`}))]} />
+        <Inp label="Qté" type="number" min="1" value={quantiteMedicament} onChange={e=>setQuantiteMedicament(e.target.value)} />
+        <Btn loading={ajouterMedicamentMut.isPending} disabled={!medicamentChoisi} onClick={()=>ajouterMedicamentMut.mutate()}>+ Facturer</Btn>
       </div>
 
       {actes.length===0
