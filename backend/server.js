@@ -879,22 +879,28 @@ app.delete('/api/formules-assurance/:id', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/patients/:id', auth, async (req, res) => {
-  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police, assureur_id, formule_assurance_id } = req.body;
+  const { prenom, nom, telephone, email, groupe_sanguin, allergies, antecedents, assurance, numero_police, assureur_id, formule_assurance_id, antecedents_critiques, traitements_sensibles } = req.body;
   try {
     // Le taux reel vient de formule_assurance_id (la formule PRECISE du
     // patient, prime + taux correspondant) -- assureur_id/assurance
     // restent pour l'affichage rapide (quelle compagnie) sans devoir
     // toujours joindre la formule. "" retire (non-assure), distinct de
     // undefined qui laisse la valeur actuelle inchangee.
+    // antecedents_critiques/traitements_sensibles : champs DEDIES a la
+    // fiche d'urgence publique, distincts d'antecedents (historique
+    // general, pas adapte a un affichage rapide par un inconnu).
     const r = await db(
       `UPDATE patients SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),
          email=COALESCE($4,email),groupe_sanguin=COALESCE($5,groupe_sanguin),allergies=COALESCE($6,allergies),
          antecedents=COALESCE($7,antecedents),assurance=COALESCE($8,assurance),numero_police=COALESCE($9,numero_police),
          assureur_id=CASE WHEN $10::text IS NULL THEN assureur_id WHEN $10='' THEN NULL ELSE $10::uuid END,
          formule_assurance_id=CASE WHEN $11::text IS NULL THEN formule_assurance_id WHEN $11='' THEN NULL ELSE $11::uuid END,
-         updated_at=NOW() WHERE id=$12 RETURNING *`,
+         antecedents_critiques=COALESCE($12,antecedents_critiques),
+         traitements_sensibles=COALESCE($13,traitements_sensibles),
+         updated_at=NOW() WHERE id=$14 RETURNING *`,
       [prenom,nom,telephone,email,groupe_sanguin,allergies,antecedents,assurance,numero_police,
-       assureur_id===undefined?null:assureur_id, formule_assurance_id===undefined?null:formule_assurance_id, req.params.id]
+       assureur_id===undefined?null:assureur_id, formule_assurance_id===undefined?null:formule_assurance_id,
+       antecedents_critiques, traitements_sensibles, req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
