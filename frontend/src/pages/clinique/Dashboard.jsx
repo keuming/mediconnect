@@ -2519,16 +2519,17 @@ function PanelGestionActes() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [editant, setEditant] = useState(null);
-  const [form, setForm] = useState({ code:"", libelle:"", categorie:"", tarif_base:"", taux_assurance:"70" });
+  const [form, setForm] = useState({ code:"", libelle:"", categorie_id:"", tarif_base:"", taux_assurance:"70" });
 
   const { data: actes, isLoading } = useQuery({ queryKey:["cl-actes-gestion"], queryFn:()=>cAPI.actesCatalogue().then(r=>r.data||[]) });
+  const { data: categories } = useQuery({ queryKey:["cl-categories-actes"], queryFn:()=>api.get("/categories-actes").then(r=>r.data||[]) });
   const { user } = useAuthStore();
   const mesActes = (actes||[]).filter(a=>a.clinique_id);
   const actesGlobaux = (actes||[]).filter(a=>!a.clinique_id);
 
   const addMut = useMutation({
     mutationFn: () => api.post("/actes", { ...form, tarif_base:parseInt(form.tarif_base)||0, taux_assurance:parseInt(form.taux_assurance)||70 }),
-    onSuccess: () => { toast.success("Acte créé !"); qc.invalidateQueries(["cl-actes-gestion"]); setShowAdd(false); setForm({ code:"", libelle:"", categorie:"", tarif_base:"", taux_assurance:"70" }); },
+    onSuccess: () => { toast.success("Acte créé !"); qc.invalidateQueries(["cl-actes-gestion"]); setShowAdd(false); setForm({ code:"", libelle:"", categorie_id:"", tarif_base:"", taux_assurance:"70" }); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur"),
   });
   const editMut = useMutation({
@@ -2548,7 +2549,7 @@ function PanelGestionActes() {
       <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
         <div style={{flex:1}}>
           <div style={{fontSize:15,fontWeight:600,color:C.text}}>{a.libelle}</div>
-          <div style={{fontSize:13,color:C.muted}}>{a.code} · {a.categorie||"—"}</div>
+          <div style={{fontSize:13,color:C.muted}}>{a.code} · {a.categorie_nom||"—"}</div>
         </div>
         {enEdition ? (
           <>
@@ -2591,7 +2592,8 @@ function PanelGestionActes() {
       <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🩺 Nouvel acte">
         <Grid cols={2} gap={10}>
           <Inp label="Code *" required value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value}))} placeholder="Ex: C1" />
-          <Inp label="Catégorie" value={form.categorie} onChange={e=>setForm(f=>({...f,categorie:e.target.value}))} placeholder="Ex: Consultation" />
+          <Sel label="Catégorie" value={form.categorie_id} onChange={e=>setForm(f=>({...f,categorie_id:e.target.value}))}
+            options={[{v:"",l:"-- Choisir --"}, ...(categories||[]).map(c=>({v:c.id,l:c.nom}))]} />
         </Grid>
         <Inp label="Libellé *" required value={form.libelle} onChange={e=>setForm(f=>({...f,libelle:e.target.value}))} placeholder="Ex: Consultation généraliste" />
         <Grid cols={2} gap={10}>
