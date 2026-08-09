@@ -2044,14 +2044,14 @@ function PageMediConnectCard() {
 
   if (loading) return <div style={{textAlign:'center',padding:40,color:C.muted}}>Chargement...</div>;
 
-  const TABS=[{key:'carte',label:'💳 Ma Carte'},{key:'contacts',label:'🆘 Urgences'},{key:'recharger',label:'💰 Recharger'},{key:'transactions',label:'📋 Historique'}];
+  const TABS=[{key:'carte',label:'💳 Ma VigieCard'},{key:'contacts',label:'🆘 Urgences'},{key:'recharger',label:'💰 Recharger'},{key:'transactions',label:'📋 Historique'}];
 
   if (!compte) return (
     <div>
-      <PageHeader title="💳 MediConnect Card" subtitle="Liez votre carte pour accéder aux réductions"/>
+      <PageHeader title="🛡️ VigieCard" subtitle="Liez votre VigieCard pour accéder aux réductions"/>
       <div style={{...cardStyle,background:'linear-gradient(135deg,#071A12,#0A2E1A)',borderColor:C.green,padding:24,textAlign:'center',marginBottom:20}}>
         <div style={{fontSize:48,marginBottom:8}}>💳</div>
-        <div style={{fontSize:18,fontWeight:800,color:'#fff',marginBottom:6}}>Lier ma MediConnect Card</div>
+        <div style={{fontSize:18,fontWeight:800,color:'#fff',marginBottom:6}}>Lier ma VigieCard</div>
         <div style={{fontSize:13,color:C.muted}}>Carte prépayée · Réductions prestataires · Contacts d'urgence QR Code</div>
       </div>
       <div style={cardStyle}>
@@ -2068,7 +2068,7 @@ function PageMediConnectCard() {
       </div>
       <div style={cardStyle}>
         <div style={{fontSize:14,fontWeight:800,color:C.text,marginBottom:8}}>💳 Numéro de carte *</div>
-        <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Inscrit sur le recto de votre carte physique MediConnect</div>
+        <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Inscrit sur le recto de votre VigieCard physique</div>
         <input value={formLink.numero_carte} onChange={e=>setFormLink(p=>({...p,numero_carte:e.target.value.toUpperCase()}))} placeholder="MC-CI-2024-000001"
           style={{width:'100%',background:C.hover,border:`2px solid ${C.green}`,borderRadius:10,padding:'12px 16px',color:'#4ade80',fontSize:18,fontWeight:900,outline:'none',boxSizing:'border-box',letterSpacing:3,textAlign:'center'}}/>
       </div>
@@ -2106,14 +2106,14 @@ function PageMediConnectCard() {
         {!contacts.length&&<div style={{textAlign:'center',color:C.dim,padding:12,fontSize:13}}>Aucun contact ajouté</div>}
       </div>
       <button onClick={lierCarte} disabled={saving} style={{width:'100%',background:saving?'#1E2F42':C.green,border:'none',borderRadius:12,padding:16,color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',marginBottom:32}}>
-        {saving?'Liaison en cours...':'💳 Lier ma MediConnect Card'}
+        {saving?'Liaison en cours...':'💳 Lier ma VigieCard'}
       </button>
     </div>
   );
 
   return (
     <div>
-      <PageHeader title="💳 MediConnect Card" subtitle={`N° compte : ${compte.numero_compte}`}/>
+      <PageHeader title="🛡️ VigieCard" subtitle={`N° compte : ${compte.numero_compte}`}/>
       <div style={{background:'linear-gradient(135deg,#071A12,#0A2E1A)',border:`1px solid ${C.green}`,borderRadius:20,padding:22,marginBottom:16}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
           <div><div style={{color:'#4ade80',fontSize:10,fontWeight:700,letterSpacing:3}}>MEDICONNECT CARD</div><div style={{color:C.dim,fontSize:9}}>UEMOA · CEMAC</div></div>
@@ -2182,7 +2182,7 @@ function PageMediConnectCard() {
       )}
       {onglet==='recharger'&&(
         <div style={cardStyle}>
-          <div style={{fontWeight:800,color:C.text,marginBottom:4}}>💰 Recharger ma carte</div>
+          <div style={{fontWeight:800,color:C.text,marginBottom:4}}>💰 Recharger ma VigieCard</div>
           <div style={{color:C.muted,fontSize:12,marginBottom:16}}>Solde : <span style={{color:'#4ade80',fontWeight:700}}>{fmt(compte.solde)} FCFA</span></div>
           <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:12}}>
             {[1000,2000,5000,10000,20000,50000].map(m=>(
