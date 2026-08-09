@@ -2349,6 +2349,11 @@ app.post('/api/patients/dossier-acces', async (req, res) => {
 // cette ancienne implementation prenait le pas sur la nouvelle
 // (definie plus bas dans ce fichier) et la rendait totalement inerte.
 app.get('/api/patients/:patient_id/contacts-urgence', auth, async (req, res) => {
+  // Donnee critique en situation d'urgence, ne doit JAMAIS etre servie
+  // depuis un cache (navigateur ou intermediaire) -- un ETag perime a
+  // deja fait croire a une liste vide alors que des contacts existaient
+  // reellement en base.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   try {
     const r = await db(
       'SELECT * FROM contacts_urgence WHERE patient_id=$1 ORDER BY ordre, created_at',
