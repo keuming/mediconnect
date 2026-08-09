@@ -687,10 +687,10 @@ function PanelCartePatient({ patient }) {
 }
 
 function WidgetAssuranceCascade({ pForm, setPForm }) {
-  const { data: assureurs } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data?.data||[]) });
+  const { data: assureurs } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
   const { data: formules } = useQuery({
     queryKey:["cl-formules", pForm.assureur_id],
-    queryFn:()=>cAPI.formulesParAssureur(pForm.assureur_id).then(r=>r.data?.data||[]),
+    queryFn:()=>cAPI.formulesParAssureur(pForm.assureur_id).then(r=>r.data||[]),
     enabled: !!pForm.assureur_id,
   });
   return (
@@ -732,7 +732,7 @@ function PanelContactsUrgence({ patient }) {
 
   const { data: contacts, isLoading } = useQuery({
     queryKey:["cl-contacts-urgence", patient?.id],
-    queryFn:()=>cAPI.contactsUrgence(patient.id).then(r=>r.data?.data||[]),
+    queryFn:()=>cAPI.contactsUrgence(patient.id).then(r=>r.data||[]),
     enabled: !!patient?.id,
   });
 
@@ -760,9 +760,6 @@ function PanelContactsUrgence({ patient }) {
   return (
     <Panel title="🆘 Contacts d'urgence"
       actions={<Btn style={{padding:"6px 14px",fontSize:16}} disabled={liste.length>=10} onClick={()=>{ reset(); setShowAdd(true); }}>+ Ajouter {liste.length}/10</Btn>}>
-      <div style={{background:"#FEF3C7",border:"2px solid #F59E0B",borderRadius:8,padding:10,marginBottom:10,fontSize:11,fontFamily:"monospace",color:"#92400E",wordBreak:"break-all"}}>
-        DIAGNOSTIC TEMPORAIRE — patient.id={String(patient?.id)} | isLoading={String(isLoading)} | contacts (brut)={JSON.stringify(contacts)} | liste.length={liste.length}
-      </div>
       {isLoading ? <div style={{color:C.muted,textAlign:"center",padding:20}}>Chargement…</div>
         : liste.length===0
         ? <Empty icon="🆘" title="Aucun contact d'urgence" subtitle="Essentiel en cas d'urgence médicale — visible via le scan du QR code de la carte du patient." />
@@ -2906,10 +2903,10 @@ function PanelCompagniesFormules() {
   const [nouvelleCompagnie, setNouvelleCompagnie] = useState({ nom:"", email:"", telephone:"", numero_agrement:"" });
   const [nouvelleFormule, setNouvelleFormule] = useState({ nom:"", prime_mensuelle:"", taux_couverture:"" });
 
-  const { data: compagnies, isLoading } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data?.data||[]) });
+  const { data: compagnies, isLoading } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
   const { data: formules } = useQuery({
     queryKey:["cl-formules", compagnieOuverte],
-    queryFn:()=>cAPI.formulesParAssureur(compagnieOuverte).then(r=>r.data?.data||[]),
+    queryFn:()=>cAPI.formulesParAssureur(compagnieOuverte).then(r=>r.data||[]),
     enabled: !!compagnieOuverte,
   });
 
@@ -3012,7 +3009,7 @@ function PageAssurance() {
   const { data, isLoading } = useQuery({ queryKey:["cl-dossiers"], queryFn:()=>cAPI.dossiers().then(r=>r.data||[]) });
   // Liste reelle (16 compagnies), plus la liste fictive a 7 noms
   // deconnectee de la vraie table assureurs.
-  const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data?.data||[]) });
+  const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
   const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateDossier(id,{statut}), onSuccess:()=>{ toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); } });
   const addMut = useMutation({ mutationFn:d=>cAPI.addDossier(d), onSuccess:()=>{ toast.success("Dossier soumis !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); } });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteDossier(id), onSuccess:()=>{ toast.success("Supprimé"); qc.invalidateQueries(["cl-dossiers"]); } });
