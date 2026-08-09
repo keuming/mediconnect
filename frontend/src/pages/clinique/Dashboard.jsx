@@ -824,7 +824,15 @@ function PanelInfosVitales({ patient }) {
 
   return (
     <Panel title="⚡ Informations vitales"
-      actions={!edition && <button onClick={ouvrirEdition} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 10px",color:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>}>
+      actions={!edition && (
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>window.open(`https://manager.mediconnect4africa.cloud/card/scan/${patient?.code_secret}`,"_blank")}
+            style={{background:"rgba(220,38,38,.1)",border:"1px solid rgba(220,38,38,.3)",borderRadius:7,padding:"4px 10px",color:"#DC2626",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+            👁️ Aperçu fiche d'urgence
+          </button>
+          <button onClick={ouvrirEdition} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 10px",color:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
+        </div>
+      )}>
       <div style={{fontSize:12,color:C.dim,marginBottom:12}}>Visibles sur la fiche d'urgence publique (scan du QR code) — à remplir uniquement si critique pour les premiers secours.</div>
       {!edition ? (
         <>
