@@ -806,15 +806,19 @@ function PanelInfosVitales({ patient }) {
   const qc = useQueryClient();
   const [edition, setEdition] = useState(false);
   const [form, setForm] = useState({ antecedents_critiques: patient?.antecedents_critiques||"", traitements_sensibles: patient?.traitements_sensibles||"" });
+  // Affichage suivi localement, mis a jour directement a la reussite de
+  // l'enregistrement -- invalider la liste des patients ne rafraichit
+  // pas automatiquement l'objet "selected" deja capture par le parent.
+  const [donnees, setDonnees] = useState({ antecedents_critiques: patient?.antecedents_critiques||"", traitements_sensibles: patient?.traitements_sensibles||"" });
 
   const enregistrerMut = useMutation({
     mutationFn: () => cAPI.updatePatient(patient.id, form),
-    onSuccess: () => { toast.success("Informations vitales mises à jour"); qc.invalidateQueries(["cl-patients"]); setEdition(false); },
+    onSuccess: () => { toast.success("Informations vitales mises à jour"); setDonnees({...form}); qc.invalidateQueries(["cl-patients"]); setEdition(false); },
     onError: () => toast.error("Erreur lors de la mise à jour"),
   });
 
   const ouvrirEdition = () => {
-    setForm({ antecedents_critiques: patient?.antecedents_critiques||"", traitements_sensibles: patient?.traitements_sensibles||"" });
+    setForm({ antecedents_critiques: donnees.antecedents_critiques||"", traitements_sensibles: donnees.traitements_sensibles||"" });
     setEdition(true);
   };
 
@@ -826,11 +830,11 @@ function PanelInfosVitales({ patient }) {
         <>
           <div style={{marginBottom:10}}>
             <div style={{fontSize:12,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Antécédents critiques</div>
-            <div style={{fontSize:15,color:C.text}}>{patient?.antecedents_critiques||"—"}</div>
+            <div style={{fontSize:15,color:C.text}}>{donnees.antecedents_critiques||"—"}</div>
           </div>
           <div>
             <div style={{fontSize:12,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Traitements sensibles en cours</div>
-            <div style={{fontSize:15,color:C.text}}>{patient?.traitements_sensibles||"—"}</div>
+            <div style={{fontSize:15,color:C.text}}>{donnees.traitements_sensibles||"—"}</div>
           </div>
         </>
       ) : (
