@@ -508,6 +508,7 @@ const ASSUREURS_LISTE = ["NSIA Vie CI","NSIA IARDT","Allianz CI","AXA CI","Saham
 function PanelCartePatient({ patient }) {
   const qc = useQueryClient();
   const [acteChoisi, setActeChoisi] = useState("");
+  const [typeActeChoisi, setTypeActeChoisi] = useState("");
   // Par defaut, coherent avec le statut d'assurance ACTUEL du patient --
   // le bureau des entrees peut toujours decocher pour un acte precis.
   const [estAssure, setEstAssure] = useState(!!patient?.assurance);
@@ -534,6 +535,10 @@ function PanelCartePatient({ patient }) {
   const { data: catalogue } = useQuery({
     queryKey: ["cl-actes-catalogue"],
     queryFn: () => cAPI.actesCatalogue().then(r => r.data || []),
+  });
+  const { data: categoriesActes } = useQuery({
+    queryKey: ["cl-categories-actes-carte"],
+    queryFn: () => api.get("/categories-actes").then(r => r.data || []),
   });
 
   const ouvrirMut = useMutation({
@@ -643,9 +648,11 @@ function PanelCartePatient({ patient }) {
         options={[{v:"",l:"— Aucun médecin affecté —"}, ...(medecinsListe||[]).map(m=>({v:m.id, l:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`}))]}
         style={{marginBottom:16}} />
 
-      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
-        <Sel label="Ajouter un acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)}
-          options={[{v:"",l:"— Choisir un acte —"}, ...(catalogue||[]).map(a=>({v:a.id, l:`${a.libelle} — ${fmt(a.tarif_base)} F`}))]} />
+      <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1.8fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
+        <Sel label="Type d'actes" value={typeActeChoisi} onChange={e=>{ setTypeActeChoisi(e.target.value); setActeChoisi(""); }}
+          options={[{v:"",l:"— Choisir un type —"}, ...(categoriesActes||[]).map(c=>({v:c.id, l:c.nom}))]} />
+        <Sel label="Acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)} disabled={!typeActeChoisi}
+          options={[{v:"",l:typeActeChoisi?"— Choisir un acte —":"Choisir un type d'abord"}, ...(catalogue||[]).filter(a=>a.categorie_id===typeActeChoisi).map(a=>({v:a.id, l:`${a.libelle} — ${fmt(a.tarif_base)} F`}))]} />
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
           <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
         </label>
