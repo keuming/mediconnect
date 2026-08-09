@@ -797,6 +797,56 @@ function PanelContactsUrgence({ patient }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  INFORMATIONS VITALES -- antecedents critiques et traitements
+//  sensibles, distincts des antecedents generaux : visibles sur la
+//  fiche d'urgence publique (scan QR), lisibles en quelques secondes.
+// ══════════════════════════════════════════════════════════════════
+function PanelInfosVitales({ patient }) {
+  const qc = useQueryClient();
+  const [edition, setEdition] = useState(false);
+  const [form, setForm] = useState({ antecedents_critiques: patient?.antecedents_critiques||"", traitements_sensibles: patient?.traitements_sensibles||"" });
+
+  const enregistrerMut = useMutation({
+    mutationFn: () => cAPI.updatePatient(patient.id, form),
+    onSuccess: () => { toast.success("Informations vitales mises à jour"); qc.invalidateQueries(["cl-patients"]); setEdition(false); },
+    onError: () => toast.error("Erreur lors de la mise à jour"),
+  });
+
+  const ouvrirEdition = () => {
+    setForm({ antecedents_critiques: patient?.antecedents_critiques||"", traitements_sensibles: patient?.traitements_sensibles||"" });
+    setEdition(true);
+  };
+
+  return (
+    <Panel title="⚡ Informations vitales"
+      actions={!edition && <button onClick={ouvrirEdition} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:7,padding:"4px 10px",color:C.muted,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>}>
+      <div style={{fontSize:12,color:C.dim,marginBottom:12}}>Visibles sur la fiche d'urgence publique (scan du QR code) — à remplir uniquement si critique pour les premiers secours.</div>
+      {!edition ? (
+        <>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:12,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Antécédents critiques</div>
+            <div style={{fontSize:15,color:C.text}}>{patient?.antecedents_critiques||"—"}</div>
+          </div>
+          <div>
+            <div style={{fontSize:12,color:C.dim,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Traitements sensibles en cours</div>
+            <div style={{fontSize:15,color:C.text}}>{patient?.traitements_sensibles||"—"}</div>
+          </div>
+        </>
+      ) : (
+        <>
+          <Inp label="Antécédents critiques" value={form.antecedents_critiques} onChange={e=>setForm(f=>({...f,antecedents_critiques:e.target.value}))} placeholder="Ex: Diabète type 1, Épilepsie, Cardiopathie…" />
+          <Inp label="Traitements sensibles en cours" value={form.traitements_sensibles} onChange={e=>setForm(f=>({...f,traitements_sensibles:e.target.value}))} placeholder="Ex: Anticoagulant, Insuline…" />
+          <div style={{display:"flex",gap:10,marginTop:10}}>
+            <button onClick={()=>setEdition(false)} style={{flex:1,background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:10,color:C.muted,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Annuler</button>
+            <Btn style={{flex:2}} loading={enregistrerMut.isPending} onClick={()=>enregistrerMut.mutate()}>Enregistrer</Btn>
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 function PageDossiers() {
   // Certains medecin_nom contiennent deja "Dr." (saisie historique
   // incoherente) -- on ne prefixe que si absent, pour eviter "Dr Dr. X".
@@ -1535,6 +1585,7 @@ function PageDossiers() {
                   ))}
                 </Grid>
               </Panel>
+              <div style={{marginTop:16}}><PanelInfosVitales patient={selected} /></div>
               <div style={{marginTop:16}}><PanelContactsUrgence patient={selected} /></div>
               </>
             )}

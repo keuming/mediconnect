@@ -114,6 +114,18 @@ export default function CardScan() {
               <div style={{ fontSize: 13, color: C.text }}>{p.allergies}</div>
             </div>
           )}
+          {p.antecedents_critiques && (
+            <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '10px 12px', marginTop: 10 }}>
+              <div style={{ fontSize: 10, color: '#FCA5A5', marginBottom: 3, fontWeight: 700 }}>🩺 ANTÉCÉDENTS CRITIQUES</div>
+              <div style={{ fontSize: 13, color: C.text }}>{p.antecedents_critiques}</div>
+            </div>
+          )}
+          {p.traitements_sensibles && (
+            <div style={{ background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.25)', borderRadius: 10, padding: '10px 12px', marginTop: 10 }}>
+              <div style={{ fontSize: 10, color: '#93C5FD', marginBottom: 3, fontWeight: 700 }}>💊 TRAITEMENTS EN COURS</div>
+              <div style={{ fontSize: 13, color: C.text }}>{p.traitements_sensibles}</div>
+            </div>
+          )}
         </div>
 
         {/* Contacts urgence */}
