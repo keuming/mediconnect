@@ -40,7 +40,7 @@ export default function CardScan() {
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 32, textAlign: 'center', maxWidth: 380 }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
           <div style={{ color: C.text, fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Carte introuvable</div>
-          <div style={{ color: C.muted, fontSize: 13 }}>{error || 'Cette carte MediConnect n\'existe pas ou n\'est pas encore active.'}</div>
+          <div style={{ color: C.muted, fontSize: 13 }}>{error || 'Cette VigieCard n\'existe pas ou n\'est pas encore active.'}</div>
         </div>
       </div>
     );
@@ -70,6 +70,7 @@ export default function CardScan() {
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(10,143,88,0.2)', border: `1.5px solid ${C.green}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, color: C.greenL }}>+</div>
             <span style={{ fontSize: 18, fontWeight: 800, color: C.text }}>Medi<span style={{ color: C.greenL }}>Connect</span></span>
           </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.greenL, marginBottom: 2 }}>🛡️ VigieCard</div>
           <div style={{ color: C.dim, fontSize: 12 }}>Fiche d'urgence médicale</div>
         </div>
 
@@ -144,7 +145,7 @@ export default function CardScan() {
         )}
 
         <div style={{ textAlign: 'center', marginTop: 24, color: C.dim, fontSize: 11 }}>
-          Carte n° {numero} · mediconnect4africa.cloud
+          VigieCard n° {numero} · mediconnect4africa.cloud
         </div>
       </div>
     </div>
