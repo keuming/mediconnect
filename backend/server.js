@@ -3094,6 +3094,63 @@ app.post('/api/admin/init-nomenclature', async (req, res) => {
 });
 
 // ── Liste des actes (clinique + catalogue global) ─────────────────
+// ══════════════════════════════════════════════════════════════════
+//  CONTACTS D'URGENCE (dossier patient) -- accessibles au bureau des
+//  entrees et au medecin, jusqu'a 10 par patient. Evenement reel ayant
+//  motive cette fonctionnalite : patient decede en salle d'attente,
+//  famille injoignable pendant plusieurs heures.
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/patients/:id/contacts-urgence', auth, async (req, res) => {
+  try {
+    const r = await db(
+      'SELECT * FROM contacts_urgence WHERE patient_id=$1 ORDER BY ordre, created_at',
+      [req.params.id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.post('/api/patients/:id/contacts-urgence', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  if (!prenom || !telephone) return res.status(400).json({ success:false, message:'Prénom et téléphone requis' });
+  try {
+    const compte = await db('SELECT COUNT(*) c FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    if (parseInt(compte.rows[0].c) >= 10) {
+      return res.status(400).json({ success:false, message:'Maximum 10 contacts d\'urgence par patient' });
+    }
+    const ordreR = await db('SELECT COALESCE(MAX(ordre),0)+1 AS n FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    const r = await db(
+      `INSERT INTO contacts_urgence (id,patient_id,ordre,prenom,nom,telephone,telephone_2,relation,est_principal)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.params.id, ordreR.rows[0].n, prenom, nom||null, telephone, telephone_2||null, relation||null, !!est_principal]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/contacts-urgence/:id', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  try {
+    const r = await db(
+      `UPDATE contacts_urgence SET prenom=COALESCE($1,prenom), nom=COALESCE($2,nom),
+         telephone=COALESCE($3,telephone), telephone_2=COALESCE($4,telephone_2),
+         relation=COALESCE($5,relation), est_principal=COALESCE($6,est_principal)
+       WHERE id=$7 AND patient_id IS NOT NULL RETURNING *`,
+      [prenom||null, nom||null, telephone||null, telephone_2||null, relation||null, est_principal===undefined?null:est_principal, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Contact introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.delete('/api/contacts-urgence/:id', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  try {
+    const r = await db('DELETE FROM contacts_urgence WHERE id=$1 AND patient_id IS NOT NULL RETURNING *', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Contact introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/actes', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;

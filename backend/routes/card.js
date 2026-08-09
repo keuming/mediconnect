@@ -14,7 +14,37 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
       // pas encore liee a un vrai compte mediconnect_accounts
       const request = await db('SELECT * FROM mediconnect_card_requests WHERE numero_carte=$1', [numero_carte]);
       if (!request.rows.length) {
-        return res.status(404).json({ success: false, message: 'Carte introuvable' });
+        // Dernier recours : le numero scanne est peut-etre le code secret
+        // d'un dossier patient cree directement en clinique (jamais passe
+        // par l'achat/liaison d'une carte MediConnect). Sans ce repli, ce
+        // patient n'aurait structurellement aucun moyen d'avoir des
+        // contacts d'urgence accessibles par scan -- c'est exactement le
+        // trou ayant coute un temps precieux lors d'une urgence reelle.
+        const patient = await db(
+          'SELECT id, prenom, nom, telephone, ville, groupe_sanguin, allergies, photo_url FROM patients WHERE UPPER(code_secret)=UPPER($1)',
+          [numero_carte]
+        );
+        if (!patient.rows.length) {
+          return res.status(404).json({ success: false, message: 'Carte introuvable' });
+        }
+        const p = patient.rows[0];
+        const contactsPatient = await db(
+          'SELECT prenom, nom, telephone, telephone_2, relation, est_principal FROM contacts_urgence WHERE patient_id=$1 ORDER BY ordre',
+          [p.id]
+        );
+        return res.json({
+          success: true,
+          data: {
+            liee: true,
+            carte: numero_carte,
+            patient: {
+              prenom: p.prenom, nom: p.nom, telephone: p.telephone, ville: p.ville,
+              groupe_sanguin: p.groupe_sanguin, allergies: p.allergies,
+              niveau: null, photo_url: p.photo_url,
+            },
+            contacts_urgence: contactsPatient.rows,
+          }
+        });
       }
       const r = request.rows[0];
 
