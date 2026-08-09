@@ -31,6 +31,7 @@ const PALETTE_LIGHT = {
 // eslint-disable-next-line prefer-const
 let C = { ...PALETTE_DARK };
 const fmt = (n) => Number(n||0).toLocaleString("fr-CI");
+const UNITES_MEDICAMENT = ["boite","flacon","sachet","ampoule","comprimé","litre","pièce","carton"];
 const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"}) : "—";
 
@@ -681,7 +682,7 @@ function PanelCartePatient({ patient }) {
       <div style={{ display:"grid", gridTemplateColumns:"2fr 0.6fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
         <Sel label="Médicament (depuis le stock)" value={medicamentChoisi} onChange={e=>setMedicamentChoisi(e.target.value)}
           options={[{v:"",l:"— Choisir un médicament —"}, ...(stockDisponible||[]).filter(s=>s.categorie==="Médicament"&&s.quantite>0).map(s=>({v:s.id, l:`${s.nom} — ${fmt(s.prix_unitaire)} F (${s.quantite} ${s.unite} dispo.)`}))]} />
-        <Inp label="Qté" type="number" min="1" value={quantiteMedicament} onChange={e=>setQuantiteMedicament(e.target.value)} />
+        <Inp label={`Qté${medicamentChoisi?" ("+((stockDisponible||[]).find(s=>s.id===medicamentChoisi)?.unite||"")+")":""}`} type="number" min="1" value={quantiteMedicament} onChange={e=>setQuantiteMedicament(e.target.value)} />
         <Btn loading={ajouterMedicamentMut.isPending} disabled={!medicamentChoisi} onClick={()=>ajouterMedicamentMut.mutate()}>+ Facturer</Btn>
       </div>
 
@@ -923,8 +924,8 @@ function PageDossiers() {
   // posologie/duree -- meme mecanisme que le formulaire d'ordonnance de
   // PageConsultation (le formulaire a un seul champ etait incomplet pour
   // une vraie prescription a plusieurs medicaments).
-  const [lignesOrd, setLignesOrd] = useState([{nom:"",qte:"",posologie:"",duree:""}]);
-  const addLigneOrd = ()=>setLignesOrd(l=>[...l,{nom:"",qte:"",posologie:"",duree:""}]);
+  const [lignesOrd, setLignesOrd] = useState([{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
+  const addLigneOrd = ()=>setLignesOrd(l=>[...l,{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
   const delLigneOrd = (i)=>setLignesOrd(l=>l.filter((_,j)=>j!==i));
   const updLigneOrd = (i,k,v)=>setLignesOrd(l=>l.map((row,j)=>j===i?{...row,[k]:v}:row));
   // Consultation ciblee par l'ordonnance en cours de creation (null =
@@ -2010,12 +2011,13 @@ function PageDossiers() {
       )}
 
       {/* Modal: Ordonnance — plusieurs medicaments, chacun avec sa propre ligne */}
-      <Modal open={showOrd} onClose={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",posologie:"",duree:""}]); }} title={`💊 Ordonnance — ${selected?.prenom} ${selected?.nom}`} width={520}>
+      <Modal open={showOrd} onClose={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",unite:"",posologie:"",duree:""}]); }} title={`💊 Ordonnance — ${selected?.prenom} ${selected?.nom}`} width={520}>
         <div style={{marginBottom:14}}>
           {lignesOrd.map((ligne,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
+            <div key={i} style={{display:"grid",gridTemplateColumns:"1.8fr 0.7fr 0.9fr 0.9fr 0.9fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
               <Inp label={i===0?"Médicament *":""} value={ligne.nom} onChange={e=>updLigneOrd(i,"nom",e.target.value)} placeholder="Amoxicilline 500mg" />
-              <Inp label={i===0?"Qté":""} value={ligne.qte} onChange={e=>updLigneOrd(i,"qte",e.target.value)} placeholder="1 bte" />
+              <Inp label={i===0?"Qté":""} value={ligne.qte} onChange={e=>updLigneOrd(i,"qte",e.target.value)} placeholder="1" />
+              <Sel label={i===0?"Unité":""} value={ligne.unite} onChange={e=>updLigneOrd(i,"unite",e.target.value)} options={[{v:"",l:"—"}, ...UNITES_MEDICAMENT.map(u=>({v:u,l:u}))]} />
               <Inp label={i===0?"Posologie":""} value={ligne.posologie} onChange={e=>updLigneOrd(i,"posologie",e.target.value)} placeholder="2x/jour" />
               <Inp label={i===0?"Durée":""} value={ligne.duree} onChange={e=>updLigneOrd(i,"duree",e.target.value)} placeholder="7 jours" />
               <button onClick={()=>delLigneOrd(i)} disabled={lignesOrd.length<=1} style={{padding:"11px 10px",borderRadius:8,background:"transparent",border:`1.5px solid ${C.border}`,color:lignesOrd.length<=1?C.dim:C.red,cursor:lignesOrd.length<=1?"not-allowed":"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>
@@ -2027,15 +2029,15 @@ function PageDossiers() {
         </div>
         <Inp label="Notes / Instructions" value={oForm.notes_ord} onChange={fo("notes_ord")} placeholder="À prendre pendant les repas…" />
         <div style={{display:"flex",gap:10,marginTop:4}}>
-          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",posologie:"",duree:""}]); }}>Annuler</Btn>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",unite:"",posologie:"",duree:""}]); }}>Annuler</Btn>
           <Btn style={{flex:2}} loading={addOrd.isPending} onClick={()=>{
             const valides = lignesOrd.filter(l=>l.nom.trim());
             if(!valides.length){toast.error("Au moins un médicament requis");return;}
-            const medicaments = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
+            const medicaments = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.unite?' '+l.unite:''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
             const posologie = valides.map(l=>l.posologie).filter(Boolean).join(' | ');
             const duree = valides.map(l=>l.duree).filter(Boolean).join(' | ');
             addOrd.mutate({ medicaments, posologie, duree, notes_ord:oForm.notes_ord, patient_id:selected.id, consultation_id:consultationPourOrdonnance?.id||null });
-            setLignesOrd([{nom:"",qte:"",posologie:"",duree:""}]);
+            setLignesOrd([{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
           }}>Créer l'ordonnance</Btn>
         </div>
       </Modal>
@@ -3334,8 +3336,8 @@ function PageConsultation() {
   const [searchTrait, setSearchTrait] = useState("");
   const [lastConsult, setLastConsult] = useState(null);
   const [showOrd, setShowOrd] = useState(false);
-  const [lignes, setLignes] = useState([{nom:"",qte:"",posologie:"",duree:""}]);
-  const addLigne = ()=>setLignes(l=>[...l,{nom:"",qte:"",posologie:"",duree:""}]);
+  const [lignes, setLignes] = useState([{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
+  const addLigne = ()=>setLignes(l=>[...l,{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
   const delLigne = (i)=>setLignes(l=>l.filter((_,j)=>j!==i));
   const updLigne = (i,k,v)=>setLignes(l=>l.map((row,j)=>j===i?{...row,[k]:v}:row));
 
@@ -3382,7 +3384,7 @@ function PageConsultation() {
 
   const addOrd = useMutation({
     mutationFn: d => api.post('/ordonnances',d),
-    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setLignes([{nom:"",qte:"",posologie:"",duree:""}]); },
+    onSuccess: ()=>{ toast.success("💊 Ordonnance créée !"); setShowOrd(false); setLignes([{nom:"",qte:"",unite:"",posologie:"",duree:""}]); },
     onError: ()=>toast.error("Erreur ordonnance"),
   });
 
@@ -3605,15 +3607,22 @@ function PageConsultation() {
                 <label style={{fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase"}}>Médicaments *</label>
                 <button onClick={addLigne} style={{background:"rgba(124,58,237,.15)",border:"1px solid rgba(124,58,237,.3)",borderRadius:6,padding:"5px 12px",color:"#7C3AED",cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter une ligne</button>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr 1fr auto",gap:6,marginBottom:6,padding:"0 2px"}}>
-                {["Nom du médicament","Dosage","Posologie","Durée",""].map((h,i)=><div key={i} style={{fontSize:13,color:C.dim,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
+              <div style={{display:"grid",gridTemplateColumns:"1.8fr 0.8fr 0.7fr 0.9fr 1.6fr 0.9fr auto",gap:6,marginBottom:6,padding:"0 2px"}}>
+                {["Nom du médicament","Dosage","Qté","Unité","Posologie","Durée",""].map((h,i)=><div key={i} style={{fontSize:13,color:C.dim,fontWeight:700,textTransform:"uppercase"}}>{h}</div>)}
               </div>
               {lignes.map((l,i)=>(
-                <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 2fr 1fr auto",gap:6,marginBottom:8,alignItems:"center"}}>
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1.8fr 0.8fr 0.7fr 0.9fr 1.6fr 0.9fr auto",gap:6,marginBottom:8,alignItems:"center"}}>
                   <input value={l.nom} onChange={e=>updLigne(i,"nom",e.target.value)} placeholder={i===0?"Paracétamol":"Médicament..."}
                     style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.qte} onChange={e=>updLigne(i,"qte",e.target.value)} placeholder="500mg"
                     style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <input value={l.quantite_boites} onChange={e=>updLigne(i,"quantite_boites",e.target.value)} placeholder="1"
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
+                  <select value={l.unite} onChange={e=>updLigne(i,"unite",e.target.value)}
+                    style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 6px",color:C.text,fontSize:16,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}>
+                    <option value="">—</option>
+                    {UNITES_MEDICAMENT.map(u=><option key={u} value={u}>{u}</option>)}
+                  </select>
                   <input value={l.posologie} onChange={e=>updLigne(i,"posologie",e.target.value)} placeholder="1 cp matin/soir"
                     style={{background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:8,padding:"9px 10px",color:C.text,fontSize:17,outline:"none",fontFamily:"inherit",boxSizing:"border-box",width:"100%"}}/>
                   <input value={l.duree} onChange={e=>updLigne(i,"duree",e.target.value)} placeholder="7 jours"
@@ -3630,7 +3639,7 @@ function PageConsultation() {
               <button disabled={addOrd.isPending} onClick={()=>{
                 const valides = lignes.filter(l=>l.nom.trim());
                 if(!valides.length){toast.error("Au moins un médicament requis");return;}
-                const medicament = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
+                const medicament = valides.map(l=>`${l.nom}${l.qte?' '+l.qte:''}${l.quantite_boites?' — '+l.quantite_boites+(l.unite?' '+l.unite:''):''}${l.posologie?' — '+l.posologie:''}${l.duree?' ('+l.duree+')':''}`).join('\n');
                 const posologie = valides.map(l=>l.posologie).filter(Boolean).join(' | ');
                 const duree = valides.map(l=>l.duree).filter(Boolean).join(' | ');
                 addOrd.mutate({patient_id:patient.id,consultation_id:lastConsult?.id,medicaments:medicament,posologie,duree});
