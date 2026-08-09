@@ -21,7 +21,7 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
         // contacts d'urgence accessibles par scan -- c'est exactement le
         // trou ayant coute un temps precieux lors d'une urgence reelle.
         const patient = await db(
-          'SELECT id, prenom, nom, telephone, ville, groupe_sanguin, allergies, photo_url FROM patients WHERE UPPER(code_secret)=UPPER($1)',
+          'SELECT id, prenom, nom, telephone, ville, groupe_sanguin, allergies FROM patients WHERE UPPER(code_secret)=UPPER($1)',
           [numero_carte]
         );
         if (!patient.rows.length) {
@@ -40,7 +40,7 @@ router.get('/public/scan/:numero_carte', async (req, res) => {
             patient: {
               prenom: p.prenom, nom: p.nom, telephone: p.telephone, ville: p.ville,
               groupe_sanguin: p.groupe_sanguin, allergies: p.allergies,
-              niveau: null, photo_url: p.photo_url,
+              niveau: null, photo_url: null,
             },
             contacts_urgence: contactsPatient.rows,
           }
