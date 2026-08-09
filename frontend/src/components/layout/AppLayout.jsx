@@ -49,6 +49,7 @@ const NAV = {
     { path:'/clinique/dossiers-ass', icon:'📋', label:'Dossiers assurance' },
     { path:'/clinique/stats',        icon:'📈', label:'Statistiques' },
     { path:'/clinique/resultats-examens', icon:'🔬', label:'Résultats d\'examens' },
+    { path:'/clinique/actes-tarifs', icon:'🩺', label:'Actes & tarifs' },
     { path:'/clinique/administration', icon:'👤', label:'Administration' },
   ],
   pharmacie: [

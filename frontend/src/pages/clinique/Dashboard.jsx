@@ -4541,6 +4541,7 @@ export default function Dashboard() {
       <Route path="qualite"      element={<PageQualite />} />
       <Route path="stats"        element={<PageStats />} />
       <Route path="administration" element={<PageAdministration />} />
+      <Route path="actes-tarifs" element={<PanelGestionActes />} />
       <Route path="*"            element={<PageHome />} />
     </Routes>
   );
