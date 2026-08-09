@@ -3153,13 +3153,38 @@ app.delete('/api/contacts-urgence/:id', auth, requireSousRole('bureau_entrees', 
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// ── Categories d'actes -- liste fermee (menu deroulant), plus
+// souple qu'une simple enumeration cote code : une clinique peut en
+// ajouter une nouvelle si vraiment besoin ("et bien d'autres").
+app.get('/api/categories-actes', auth, async (req, res) => {
+  try {
+    const r = await db("SELECT * FROM categories_actes WHERE is_active IS NOT false ORDER BY ordre, nom");
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/categories-actes', auth, async (req, res) => {
+  const { nom } = req.body;
+  if (!nom) return res.status(400).json({ success:false, message:'nom requis' });
+  try {
+    const r = await db(
+      "INSERT INTO categories_actes (id,nom,ordre) VALUES (gen_random_uuid(),$1,(SELECT COALESCE(MAX(ordre),0)+1 FROM categories_actes)) RETURNING *",
+      [nom]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Cette catégorie existe déjà' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+
 app.get('/api/actes', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
     const r = await db(
-      `SELECT * FROM actes_medicaux
-       WHERE actif IS NOT false AND (clinique_id IS NULL OR clinique_id=$1)
-       ORDER BY categorie, code`, [cid||null]
+      `SELECT a.*, c.nom AS categorie_nom FROM actes_medicaux a
+         LEFT JOIN categories_actes c ON c.id = a.categorie_id
+        WHERE a.actif IS NOT false AND (a.clinique_id IS NULL OR a.clinique_id=$1)
+        ORDER BY c.ordre, a.code`, [cid||null]
     );
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
@@ -3167,13 +3192,13 @@ app.get('/api/actes', auth, async (req, res) => {
 
 // ── Personnaliser un tarif pour sa clinique ──────────────────────
 app.post('/api/actes', auth, async (req, res) => {
-  const { code, libelle, categorie, tarif_base, taux_assurance } = req.body;
+  const { code, libelle, categorie_id, tarif_base, taux_assurance } = req.body;
   if (!code || !libelle) return res.status(400).json({ success:false, message:'code et libelle requis' });
   try {
     const r = await db(
-      `INSERT INTO actes_medicaux (clinique_id,code,libelle,categorie,tarif_base,taux_assurance)
+      `INSERT INTO actes_medicaux (clinique_id,code,libelle,categorie_id,tarif_base,taux_assurance)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [req.user?.clinique_id||null, code, libelle, categorie||null, tarif_base||0, taux_assurance??70]
+      [req.user?.clinique_id||null, code, libelle, categorie_id||null, tarif_base||0, taux_assurance??70]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
@@ -3183,17 +3208,18 @@ app.post('/api/actes', auth, async (req, res) => {
 // (clinique_id IS NULL) ni ceux d'une autre clinique : WHERE porte
 // systematiquement sur clinique_id=$X, pas seulement sur id.
 app.put('/api/actes/:id', auth, async (req, res) => {
-  const { libelle, categorie, tarif_base, taux_assurance, actif } = req.body;
+  const { libelle, categorie_id, tarif_base, taux_assurance, actif } = req.body;
   const cid = req.user?.clinique_id;
   if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
   try {
     const r = await db(
       `UPDATE actes_medicaux SET
-         libelle=COALESCE($1,libelle), categorie=COALESCE($2,categorie),
+         libelle=COALESCE($1,libelle),
+         categorie_id=CASE WHEN $2::text IS NULL THEN categorie_id ELSE $2::uuid END,
          tarif_base=COALESCE($3,tarif_base), taux_assurance=COALESCE($4,taux_assurance),
          actif=COALESCE($5,actif)
        WHERE id=$6 AND clinique_id=$7 RETURNING *`,
-      [libelle||null, categorie||null, tarif_base??null, taux_assurance??null, actif===undefined?null:actif, req.params.id, cid]
+      [libelle||null, categorie_id===undefined?null:categorie_id, tarif_base??null, taux_assurance??null, actif===undefined?null:actif, req.params.id, cid]
     );
     if (!r.rows.length) return res.status(404).json({ success:false, message:'Acte introuvable dans votre catalogue (les actes globaux ne sont pas modifiables)' });
     res.json({ success:true, data:r.rows[0] });
