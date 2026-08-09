@@ -3446,6 +3446,61 @@ app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'med
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// Vente d'un medicament du stock, facturee dans le meme passage --
+// ex: chirurgie ou soins infirmiers consommant des medicaments. Verifie
+// la disponibilite et decremente le stock dans la MEME transaction que
+// la creation de la ligne facturable, pour eviter toute survente en cas
+// d'acces simultane par deux membres du personnel.
+app.post('/api/passages/:id/medicament', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  const { stock_id, quantite, est_assure } = req.body;
+  if (!stock_id) return res.status(400).json({ success:false, message:'stock_id requis' });
+  try {
+    const { pool: dbPool } = require('./config/db');
+    const { withTransaction } = require('./helpers/dbIntrospect');
+    const out = await withTransaction(dbPool, async (client) => {
+      const passageR = await client.query("SELECT * FROM passages_patient WHERE id=$1 AND statut IN ('ouvert','ferme_temporaire')", [req.params.id]);
+      if (!passageR.rows.length) throw new Error('Passage introuvable ou déjà validé');
+      const passage = passageR.rows[0];
+
+      // Verrou pendant la transaction : deux ventes simultanees sur le
+      // meme produit ne peuvent pas toutes les deux passer si le stock
+      // devient insuffisant entre-temps.
+      const stockR = await client.query('SELECT * FROM stock WHERE id=$1 AND clinique_id=$2 FOR UPDATE', [stock_id, passage.clinique_id]);
+      if (!stockR.rows.length) throw new Error('Produit introuvable dans le stock de votre clinique');
+      const produit = stockR.rows[0];
+      const qte = parseInt(quantite || 1);
+      if (produit.quantite < qte) throw new Error(`Stock insuffisant : ${produit.quantite} ${produit.unite} disponible(s)`);
+
+      await client.query('UPDATE stock SET quantite = quantite - $1, updated_at = NOW() WHERE id=$2', [qte, stock_id]);
+
+      const pu = parseFloat(produit.prix_unitaire || 0);
+      const total = qte * pu;
+      let taux = 0;
+      if (est_assure) {
+        const patientR = await client.query('SELECT formule_assurance_id FROM patients WHERE id=$1', [passage.patient_id]);
+        const formuleId = patientR.rows[0]?.formule_assurance_id;
+        if (formuleId) {
+          const f = await client.query('SELECT taux_couverture FROM formules_assurance WHERE id=$1 AND is_active IS NOT false', [formuleId]);
+          taux = f.rows[0]?.taux_couverture ?? 0;
+        }
+      }
+      const partAss = Math.round(total * taux / 100);
+      const partPat = total - partAss;
+
+      const r = await client.query(
+        `INSERT INTO prise_en_charge_actes
+         (patient_id,clinique_id,passage_id,stock_id,code_acte,libelle_acte,
+          quantite,prix_unitaire,taux_assurance,part_assurance,part_patient,statut)
+         VALUES ($1,$2,$3,$4,'MED',$5,$6,$7,$8,$9,$10,'a_facturer') RETURNING *`,
+        [passage.patient_id, passage.clinique_id, req.params.id, stock_id, produit.nom, qte, pu, taux, partAss, partPat]
+      );
+      await client.query("UPDATE passages_patient SET statut='ouvert', updated_at=NOW() WHERE id=$1 AND statut='ferme_temporaire'", [req.params.id]);
+      return r.rows[0];
+    });
+    res.status(201).json({ success:true, data:out });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.put('/api/passages/:id/pause', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
   try {
     const r = await db("UPDATE passages_patient SET statut='ferme_temporaire', updated_at=NOW() WHERE id=$1 AND statut='ouvert' RETURNING *", [req.params.id]);
