@@ -64,6 +64,10 @@ const cAPI = {
   affecterMedecinPassage: (passageId,medecinId) => api.put(`/passages/${passageId}/medecin`, { medecin_id:medecinId }),
   assureursListe:  () => api.get("/assureurs"),
   formulesParAssureur: (assureurId) => api.get("/formules-assurance", { params:{ assureur_id:assureurId } }),
+  contactsUrgence:       (patientId) => api.get(`/patients/${patientId}/contacts-urgence`),
+  ajouterContactUrgence: (patientId,d) => api.post(`/patients/${patientId}/contacts-urgence`, d),
+  modifierContactUrgence:(id,d) => api.put(`/contacts-urgence/${id}`, d),
+  supprimerContactUrgence:(id) => api.delete(`/contacts-urgence/${id}`),
   addMedecin:   (d) => api.post("/medecins", d),
   updateMedecin:(id,d) => api.put(`/medecins/${id}`, d),
   personnel:    () => api.get("/clinique/personnel"),
@@ -713,6 +717,83 @@ function WidgetAssuranceCascade({ pForm, setPForm }) {
       </div>
       <Inp label="N° Police / Matricule" value={pForm.numero_police} onChange={e=>setPForm(p=>({...p,numero_police:e.target.value}))} placeholder="Ex: 2024-NSIA-000123"/>
     </Grid>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  CONTACTS D'URGENCE -- accessibles au bureau des entrees et au
+//  medecin, jusqu'a 10 par patient. Visibles dans l'onglet Infos.
+// ══════════════════════════════════════════════════════════════════
+function PanelContactsUrgence({ patient }) {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editant, setEditant] = useState(null);
+  const [form, setForm] = useState({ prenom:"", nom:"", telephone:"", telephone_2:"", relation:"", est_principal:false });
+
+  const { data: contacts, isLoading } = useQuery({
+    queryKey:["cl-contacts-urgence", patient?.id],
+    queryFn:()=>cAPI.contactsUrgence(patient.id).then(r=>r.data||[]),
+    enabled: !!patient?.id,
+  });
+
+  const reset = () => { setForm({ prenom:"", nom:"", telephone:"", telephone_2:"", relation:"", est_principal:false }); setShowAdd(false); setEditant(null); };
+
+  const ajouterMut = useMutation({
+    mutationFn: () => cAPI.ajouterContactUrgence(patient.id, form),
+    onSuccess: () => { toast.success("Contact ajouté !"); qc.invalidateQueries(["cl-contacts-urgence", patient.id]); reset(); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
+  });
+  const modifierMut = useMutation({
+    mutationFn: () => cAPI.modifierContactUrgence(editant, form),
+    onSuccess: () => { toast.success("Contact mis à jour"); qc.invalidateQueries(["cl-contacts-urgence", patient.id]); reset(); },
+    onError: () => toast.error("Erreur lors de la mise à jour"),
+  });
+  const supprimerMut = useMutation({
+    mutationFn: (id) => cAPI.supprimerContactUrgence(id),
+    onSuccess: () => { toast.success("Contact retiré"); qc.invalidateQueries(["cl-contacts-urgence", patient.id]); },
+    onError: () => toast.error("Erreur"),
+  });
+
+  const liste = contacts||[];
+  const ouvrirEdition = (c) => { setForm({ prenom:c.prenom||"", nom:c.nom||"", telephone:c.telephone||"", telephone_2:c.telephone_2||"", relation:c.relation||"", est_principal:!!c.est_principal }); setEditant(c.id); setShowAdd(true); };
+
+  return (
+    <Panel title="🆘 Contacts d'urgence"
+      actions={<Btn style={{padding:"6px 14px",fontSize:16}} disabled={liste.length>=10} onClick={()=>{ reset(); setShowAdd(true); }}>+ Ajouter {liste.length}/10</Btn>}>
+      {isLoading ? <div style={{color:C.muted,textAlign:"center",padding:20}}>Chargement…</div>
+        : liste.length===0
+        ? <Empty icon="🆘" title="Aucun contact d'urgence" subtitle="Essentiel en cas d'urgence médicale — visible via le scan du QR code de la carte du patient." />
+        : liste.map(c=>(
+          <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:C.hover,borderRadius:9,marginBottom:8,border:c.est_principal?`1px solid ${C.green}`:"none"}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:15,fontWeight:700,color:C.text}}>{c.prenom} {c.nom} {c.est_principal&&<span style={{color:C.green,fontSize:12}}>(Principal)</span>}</div>
+              <div style={{fontSize:13,color:C.dim}}>{c.relation||"Contact"} · {c.telephone}{c.telephone_2?" / "+c.telephone_2:""}</div>
+            </div>
+            <button onClick={()=>ouvrirEdition(c)} style={{background:"transparent",border:"none",color:C.blue,cursor:"pointer",fontSize:15}}>✏️</button>
+            <button onClick={()=>window.confirm("Retirer ce contact d'urgence ?")&&supprimerMut.mutate(c.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>
+          </div>
+        ))
+      }
+
+      <Modal open={showAdd} onClose={reset} title={editant?"✏️ Modifier le contact":"🆘 Nouveau contact d'urgence"}>
+        <Grid cols={2} gap={10}>
+          <Inp label="Prénom *" required value={form.prenom} onChange={e=>setForm(f=>({...f,prenom:e.target.value}))} />
+          <Inp label="Nom" value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} />
+        </Grid>
+        <Inp label="Relation" value={form.relation} onChange={e=>setForm(f=>({...f,relation:e.target.value}))} placeholder="Ex: Époux/se, Fils, Fille, Ami…" />
+        <Grid cols={2} gap={10}>
+          <Inp label="Téléphone *" required value={form.telephone} onChange={e=>setForm(f=>({...f,telephone:e.target.value}))} placeholder="+225 07 00 00 00 00" />
+          <Inp label="Téléphone secondaire" value={form.telephone_2} onChange={e=>setForm(f=>({...f,telephone_2:e.target.value}))} />
+        </Grid>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,color:C.muted,marginBottom:14}}>
+          <input type="checkbox" checked={form.est_principal} onChange={e=>setForm(f=>({...f,est_principal:e.target.checked}))} /> Contact principal
+        </label>
+        <Btn style={{width:"100%"}} loading={ajouterMut.isPending||modifierMut.isPending} onClick={()=>{
+          if(!form.prenom||!form.telephone){toast.error("Prénom et téléphone requis");return;}
+          editant ? modifierMut.mutate() : ajouterMut.mutate();
+        }}>{editant?"Enregistrer":"Ajouter"}</Btn>
+      </Modal>
+    </Panel>
   );
 }
 
@@ -1443,6 +1524,7 @@ function PageDossiers() {
 
             {/* Tab: Infos */}
             {activeTab==="infos" && (
+              <>
               <Panel title="Informations personnelles" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={imprimerRapportMedical}>🖨️ Rapport médical</Btn>}>
                 <Grid cols={2} gap={12}>
                   {[["Prénom",selected.prenom],["Nom",selected.nom],["Téléphone",selected.telephone],["Email",selected.email],["Date de naissance",fmtDate(selected.date_naissance)],["Groupe sanguin",selected.groupe_sanguin],["Code secret",selected.code_secret]].map(([k,v])=>(
@@ -1453,6 +1535,8 @@ function PageDossiers() {
                   ))}
                 </Grid>
               </Panel>
+              <div style={{marginTop:16}}><PanelContactsUrgence patient={selected} /></div>
+              </>
             )}
 
             {/* Tab: Consultations */}
