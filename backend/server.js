@@ -499,6 +499,20 @@ app.post('/api/patients', auth, async (req, res) => {
       'INSERT INTO patients (id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police,clinique_id,assureur_id,formule_assurance_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
       [patientId, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null, req.user?.clinique_id||null, assureur_id||null, formule_assurance_id||null]
     );
+
+    // Liaison automatique : si ce numero correspond a un compte de
+    // connexion (app patient / rdv-site) encore orphelin, on le relie
+    // desormais a ce dossier -- comparaison sur les 8 derniers chiffres
+    // pour absorber les differences d'indicatif +225 / zero initial.
+    if (telephone) {
+      db(
+        `UPDATE utilisateurs SET patient_id=$1
+          WHERE role='patient' AND patient_id IS NULL
+            AND RIGHT(regexp_replace(telephone, '[^0-9]', '', 'g'), 8) = RIGHT(regexp_replace($2, '[^0-9]', '', 'g'), 8)`,
+        [patientId, telephone]
+      ).catch(() => {});
+    }
+
     // Retourner explicitement le code_secret pour affichage
     res.status(201).json({ success:true, data:{ ...r.rows[0], code_secret:code } });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
