@@ -3232,11 +3232,19 @@ app.post('/api/categories-actes', auth, async (req, res) => {
 app.get('/api/actes', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
+    // Si la clinique a personnalise un acte (meme code), sa version
+    // remplace celle du catalogue global dans l'affichage -- jamais les
+    // deux en double. DISTINCT ON (code) + tri secondaire qui prefere
+    // la version de la clinique quand les deux existent.
     const r = await db(
-      `SELECT a.*, c.nom AS categorie_nom FROM actes_medicaux a
-         LEFT JOIN categories_actes c ON c.id = a.categorie_id
-        WHERE a.actif IS NOT false AND (a.clinique_id IS NULL OR a.clinique_id=$1)
-        ORDER BY c.ordre, a.code`, [cid||null]
+      `WITH dedup AS (
+         SELECT DISTINCT ON (a.code) a.*, c.nom AS categorie_nom, COALESCE(c.ordre,999) AS cat_ordre
+           FROM actes_medicaux a
+           LEFT JOIN categories_actes c ON c.id = a.categorie_id
+          WHERE a.actif IS NOT false AND (a.clinique_id IS NULL OR a.clinique_id=$1)
+          ORDER BY a.code, (a.clinique_id = $1) DESC NULLS LAST
+       )
+       SELECT * FROM dedup ORDER BY cat_ordre, code`, [cid||null]
     );
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
