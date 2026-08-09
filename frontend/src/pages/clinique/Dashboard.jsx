@@ -2415,17 +2415,24 @@ function PageStock() {
   const totalValeur = stock.reduce((s,p)=>(s+(+p.quantite*(+p.prix_unitaire||0))),0);
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addStock(d), onSuccess:()=>{ toast.success("Produit ajouté !"); qc.invalidateQueries(["cl-stock"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
+  const [editantStock, setEditantStock] = useState(null);
+  const [showAddFournisseur, setShowAddFournisseur] = useState(false);
+  const [formFournisseur, setFormFournisseur] = useState({ nom:"", contact:"", produits:"" });
+
+  const { data: fournisseursData } = useQuery({ queryKey:["cl-fournisseurs"], queryFn:()=>api.get("/fournisseurs-stock").then(r=>r.data||[]) });
+  const FOURNISSEURS = fournisseursData||[];
+
+  const editStockMut = useMutation({ mutationFn:({id,d})=>api.put(`/stock/${id}`,d), onSuccess:()=>{ toast.success("Produit mis à jour"); qc.invalidateQueries(["cl-stock"]); setEditantStock(null); }, onError:()=>toast.error("Erreur") });
+  const supprimerStockMut = useMutation({ mutationFn:id=>api.delete(`/stock/${id}`), onSuccess:()=>{ toast.success("Produit retiré"); qc.invalidateQueries(["cl-stock"]); }, onError:()=>toast.error("Erreur") });
+  const addFournisseurMut = useMutation({
+    mutationFn: () => api.post("/fournisseurs-stock", formFournisseur),
+    onSuccess: () => { toast.success("Fournisseur ajouté !"); qc.invalidateQueries(["cl-fournisseurs"]); setShowAddFournisseur(false); setFormFournisseur({ nom:"", contact:"", produits:"" }); },
+    onError: () => toast.error("Erreur"),
+  });
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const CATS = ["Médicament","Consommable","Équipement","Désinfectant","Dispositif médical"];
   const UNITES = ["boite","flacon","sachet","ampoule","comprimé","litre","pièce","carton"];
-
-  // Fournisseurs démo
-  const FOURNISSEURS = [
-    { id:1, nom:"Pharma Ivoire SARL", contact:"+225 27 00 00 00", produits:"Médicaments généraux" },
-    { id:2, nom:"MediSupply CI", contact:"+225 27 11 11 11", produits:"Consommables médicaux" },
-    { id:3, nom:"BioLab Diagnostics", contact:"+225 27 22 22 22", produits:"Réactifs, équipements labo" },
-  ];
 
   const STOCK_TABS = [
     { key:"inventaire", label:"Inventaire" },
@@ -2478,6 +2485,22 @@ function PageStock() {
                       {v===0?"Rupture":v<=r.seuil_alerte?"Alerte":"OK"}
                     </Badge>
                   )},
+                  { key:"id", label:"", render:(id,r)=>(
+                    editantStock===id ? (
+                      <div style={{display:"flex",gap:6}}>
+                        <input type="number" defaultValue={r.prix_unitaire} id={`px-${id}`} style={{width:80,padding:"5px 7px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:13}} />
+                        <button onClick={()=>{
+                          const prix_unitaire = parseFloat(document.getElementById(`px-${id}`).value);
+                          editStockMut.mutate({ id, d:{ prix_unitaire } });
+                        }} style={{background:C.green,border:"none",borderRadius:6,padding:"5px 9px",color:"#fff",cursor:"pointer",fontSize:12}}>✓</button>
+                      </div>
+                    ) : (
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>setEditantStock(id)} style={{background:"transparent",border:"none",color:C.blue,cursor:"pointer",fontSize:15}}>✏️</button>
+                        <button onClick={()=>window.confirm("Retirer ce produit du stock ?")&&supprimerStockMut.mutate(id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>
+                      </div>
+                    )
+                  )},
                 ]} rows={stock} />
             }
           </Panel>
@@ -2504,17 +2527,29 @@ function PageStock() {
       )}
 
       {tab==="fournisseurs" && (
-        <Panel title="Fournisseurs et contacts" actions={<Btn style={{padding:"6px 14px",fontSize:16}}>+ Fournisseur</Btn>}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:14 }}>
-            {FOURNISSEURS.map(f=>(
-              <div key={f.id} style={{ background:C.hover, borderRadius:12, padding:16 }}>
-                <div style={{ fontSize:18, fontWeight:700, color:C.text, marginBottom:6 }}>{f.nom}</div>
-                <div style={{ fontSize:16, color:C.muted, marginBottom:4 }}>📞 {f.contact}</div>
-                <div style={{ fontSize:16, color:C.muted, marginBottom:12 }}>📦 {f.produits}</div>
-                <Btn variant="outline" style={{width:"100%",padding:"7px",fontSize:16}} onClick={()=>toast.success("Commande envoyée !")}>Passer commande</Btn>
+        <Panel title="Fournisseurs et contacts" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAddFournisseur(true)}>+ Fournisseur</Btn>}>
+          {FOURNISSEURS.length===0
+            ? <Empty icon="🚚" title="Aucun fournisseur" subtitle="Ajoutez vos fournisseurs pour les retrouver lors de l'ajout d'un produit." />
+            : <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:14 }}>
+                {FOURNISSEURS.map(f=>(
+                  <div key={f.id} style={{ background:C.hover, borderRadius:12, padding:16 }}>
+                    <div style={{ fontSize:18, fontWeight:700, color:C.text, marginBottom:6 }}>{f.nom}</div>
+                    <div style={{ fontSize:16, color:C.muted, marginBottom:4 }}>📞 {f.contact||"—"}</div>
+                    <div style={{ fontSize:16, color:C.muted, marginBottom:12 }}>📦 {f.produits||"—"}</div>
+                    <Btn variant="outline" style={{width:"100%",padding:"7px",fontSize:16}} onClick={()=>toast.success("Commande envoyée !")}>Passer commande</Btn>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+          }
+          <Modal open={showAddFournisseur} onClose={()=>setShowAddFournisseur(false)} title="🚚 Nouveau fournisseur">
+            <Inp label="Nom *" required value={formFournisseur.nom} onChange={e=>setFormFournisseur(p=>({...p,nom:e.target.value}))} placeholder="Pharma Ivoire SARL" />
+            <Inp label="Contact" value={formFournisseur.contact} onChange={e=>setFormFournisseur(p=>({...p,contact:e.target.value}))} placeholder="+225 27 00 00 00" />
+            <Inp label="Produits fournis" value={formFournisseur.produits} onChange={e=>setFormFournisseur(p=>({...p,produits:e.target.value}))} placeholder="Médicaments généraux" />
+            <Btn style={{width:"100%"}} loading={addFournisseurMut.isPending} onClick={()=>{
+              if(!formFournisseur.nom){toast.error("Nom requis");return;}
+              addFournisseurMut.mutate();
+            }}>Créer</Btn>
+          </Modal>
         </Panel>
       )}
 
@@ -2535,7 +2570,12 @@ function PageStock() {
           <Inp label="Prix unitaire (FCFA)" value={form.prix_unitaire} onChange={f("prix_unitaire")} type="number" placeholder="500" />
           <Inp label="Date d'expiration" value={form.date_expiration} onChange={f("date_expiration")} type="date" />
         </Grid>
-        <Inp label="Fournisseur" value={form.fournisseur} onChange={f("fournisseur")} placeholder="Pharma Ivoire SARL" />
+        <Sel label="Fournisseur" value={form.fournisseur_id||""} onChange={e=>{
+            const id = e.target.value;
+            const nom = FOURNISSEURS.find(x=>x.id===id)?.nom || "";
+            setForm(p=>({...p, fournisseur_id:id, fournisseur:nom}));
+          }}
+          options={[{v:"",l:"-- Aucun --"}, ...FOURNISSEURS.map(x=>({v:x.id,l:x.nom}))]} />
         <div style={{display:"flex",gap:10,marginTop:4}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
           <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{ if(!form.nom||!form.quantite){toast.error("Nom et quantité requis");return;} addMut.mutate(form); }}>Ajouter au stock</Btn>
