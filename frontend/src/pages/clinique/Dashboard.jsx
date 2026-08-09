@@ -150,10 +150,10 @@ const Btn = ({ children, onClick, variant="primary", loading, style:s={}, type="
   );
 };
 
-const Inp = ({ label, value, onChange, type="text", placeholder, required, style:s={} }) => (
+const Inp = ({ label, value, onChange, type="text", placeholder, required, list, style:s={} }) => (
   <div style={{ marginBottom:14, ...s }}>
     <label style={{ display:"block", fontSize:14, fontWeight:700, color:C.muted, textTransform:"uppercase", letterSpacing:".5px", marginBottom:5 }}>{label}{required&&" *"}</label>
-    <input type={type} value={value||""} onChange={onChange} placeholder={placeholder} required={required}
+    <input type={type} value={value||""} onChange={onChange} placeholder={placeholder} required={required} list={list}
       style={{ width:"100%", background:C.hover, border:`1.5px solid ${C.border}`, borderRadius:9, padding:"10px 14px", color:C.text, fontSize:18, outline:"none", fontFamily:"inherit", boxSizing:"border-box" }}
       onFocus={e=>e.target.style.borderColor=C.green} onBlur={e=>e.target.style.borderColor=C.border} />
   </div>
@@ -1005,6 +1005,7 @@ function PageDossiers() {
     const d = await r.json();
     return d.data||[];
   }, enabled:!!selected });
+  const { data: stockMedicaments } = useQuery({ queryKey:["cl-stock-ordonnance"], queryFn:()=>cAPI.stock().then(r=>r.data||[]) });
   const { data: examens } = useQuery({ queryKey:["cl-examens",selected?.id], queryFn:async()=>{
     if(!selected) return [];
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/examens?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
@@ -2015,7 +2016,7 @@ function PageDossiers() {
         <div style={{marginBottom:14}}>
           {lignesOrd.map((ligne,i)=>(
             <div key={i} style={{display:"grid",gridTemplateColumns:"1.8fr 0.7fr 0.9fr 0.9fr 0.9fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
-              <Inp label={i===0?"Médicament *":""} value={ligne.nom} onChange={e=>updLigneOrd(i,"nom",e.target.value)} placeholder="Amoxicilline 500mg" />
+              <Inp label={i===0?"Médicament *":""} value={ligne.nom} onChange={e=>updLigneOrd(i,"nom",e.target.value)} placeholder="Amoxicilline 500mg" list="liste-medicaments-stock" />
               <Inp label={i===0?"Qté":""} value={ligne.qte} onChange={e=>updLigneOrd(i,"qte",e.target.value)} placeholder="1" />
               <Sel label={i===0?"Unité":""} value={ligne.unite} onChange={e=>updLigneOrd(i,"unite",e.target.value)} options={[{v:"",l:"—"}, ...UNITES_MEDICAMENT.map(u=>({v:u,l:u}))]} />
               <Inp label={i===0?"Posologie":""} value={ligne.posologie} onChange={e=>updLigneOrd(i,"posologie",e.target.value)} placeholder="2x/jour" />
@@ -2026,6 +2027,9 @@ function PageDossiers() {
             </div>
           ))}
           <button onClick={addLigneOrd} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle ligne</button>
+          <datalist id="liste-medicaments-stock">
+            {(stockMedicaments||[]).filter(s=>s.categorie==="Médicament").map(s=><option key={s.id} value={s.nom} />)}
+          </datalist>
         </div>
         <Inp label="Notes / Instructions" value={oForm.notes_ord} onChange={fo("notes_ord")} placeholder="À prendre pendant les repas…" />
         <div style={{display:"flex",gap:10,marginTop:4}}>
