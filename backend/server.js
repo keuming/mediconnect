@@ -1124,7 +1124,7 @@ app.put('/api/ordonnances/:id', auth, async (req, res) => {
 app.get('/api/stock', auth, async (req, res) => {
   try {
     const cid = req.user?.clinique_id;
-    let sql='SELECT * FROM stock WHERE 1=1'; const p=[];
+    let sql='SELECT * FROM stock WHERE is_active IS NOT false'; const p=[];
     if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
     sql+=' ORDER BY nom';
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
@@ -1137,29 +1137,81 @@ app.get('/api/stock/clinique', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.post('/api/stock', auth, async (req, res) => {
-  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration } = req.body;
+// ── Fournisseurs de stock -- remplace la liste demo codee en dur ──
+app.get('/api/fournisseurs-stock', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db(
+      'SELECT * FROM fournisseurs_stock WHERE is_active IS NOT false AND (clinique_id=$1 OR clinique_id IS NULL) ORDER BY nom',
+      [cid||null]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/fournisseurs-stock', auth, async (req, res) => {
+  const { nom, contact, produits } = req.body;
   if (!nom) return res.status(400).json({ success:false, message:'Nom requis' });
   try {
     const r = await db(
-      'INSERT INTO stock (id,clinique_id,nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,date_expiration) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [uuid(),req.user?.clinique_id,nom,categorie||'Médicament',quantite||0,unite||'boite',seuil_alerte||10,prix_unitaire||null,fournisseur||null,vd(date_expiration)]
+      'INSERT INTO fournisseurs_stock (id,clinique_id,nom,contact,produits) VALUES (gen_random_uuid(),$1,$2,$3,$4) RETURNING *',
+      [req.user?.clinique_id||null, nom, contact||null, produits||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/fournisseurs-stock/:id', auth, async (req, res) => {
+  const { nom, contact, produits, is_active } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE fournisseurs_stock SET nom=COALESCE($1,nom), contact=COALESCE($2,contact),
+         produits=COALESCE($3,produits), is_active=COALESCE($4,is_active)
+       WHERE id=$5 AND clinique_id=$6 RETURNING *`,
+      [nom||null, contact||null, produits||null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Fournisseur introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.post('/api/stock', auth, async (req, res) => {
+  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, fournisseur_id, date_expiration } = req.body;
+  if (!nom) return res.status(400).json({ success:false, message:'Nom requis' });
+  try {
+    const r = await db(
+      'INSERT INTO stock (id,clinique_id,nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,fournisseur_id,date_expiration) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [uuid(),req.user?.clinique_id,nom,categorie||'Médicament',quantite||0,unite||'boite',seuil_alerte||10,prix_unitaire||null,fournisseur||null,fournisseur_id||null,vd(date_expiration)]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/stock/:id', auth, async (req, res) => {
-  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, date_expiration } = req.body;
+  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, fournisseur_id, date_expiration } = req.body;
   try {
     const r = await db(
-      'UPDATE stock SET nom=COALESCE($1,nom),categorie=COALESCE($2,categorie),quantite=COALESCE($3,quantite),unite=COALESCE($4,unite),seuil_alerte=COALESCE($5,seuil_alerte),prix_unitaire=COALESCE($6,prix_unitaire),fournisseur=COALESCE($7,fournisseur),date_expiration=COALESCE($8,date_expiration),updated_at=NOW() WHERE id=$9 RETURNING *',
-      [nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,vd(date_expiration),req.params.id]
+      `UPDATE stock SET nom=COALESCE($1,nom),categorie=COALESCE($2,categorie),quantite=COALESCE($3,quantite),
+         unite=COALESCE($4,unite),seuil_alerte=COALESCE($5,seuil_alerte),prix_unitaire=COALESCE($6,prix_unitaire),
+         fournisseur=COALESCE($7,fournisseur),
+         fournisseur_id=CASE WHEN $8::text IS NULL THEN fournisseur_id WHEN $8='' THEN NULL ELSE $8::uuid END,
+         date_expiration=COALESCE($9,date_expiration),updated_at=NOW() WHERE id=$10 RETURNING *`,
+      [nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,fournisseur_id===undefined?null:fournisseur_id,vd(date_expiration),req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+// FAILLE CORRIGEE : aucune verification de clinique proprietaire --
+// n'importe quel compte connecte pouvait supprimer le stock de
+// n'importe quelle autre clinique en devinant/recuperant un id.
+// Desactivation douce plutot que suppression definitive : un produit
+// deja utilise dans des ventes passees (prise_en_charge_actes.stock_id)
+// ne doit jamais disparaitre de l'historique.
 app.delete('/api/stock/:id', auth, async (req, res) => {
-  try { await db('DELETE FROM stock WHERE id=$1', [req.params.id]); res.json({ success:true }); }
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db('UPDATE stock SET is_active=false, updated_at=NOW() WHERE id=$1 AND clinique_id=$2 RETURNING *', [req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Produit introuvable dans votre stock' });
+    res.json({ success:true, data:r.rows[0] });
+  }
   catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
