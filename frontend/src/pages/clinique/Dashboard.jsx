@@ -2621,6 +2621,11 @@ function PanelGestionActes() {
     onSuccess: () => { toast.success("Acte retiré"); qc.invalidateQueries(["cl-actes-gestion"]); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur"),
   });
+  const personnaliserMut = useMutation({
+    mutationFn: (d) => api.post("/actes", d),
+    onSuccess: () => { toast.success("Tarif personnalisé !"); qc.invalidateQueries(["cl-actes-gestion"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
 
   const LigneActe = ({ a, modifiable }) => {
     const enEdition = editant===a.id;
@@ -2646,11 +2651,19 @@ function PanelGestionActes() {
           <>
             <span style={{fontWeight:800,color:C.green,minWidth:90,textAlign:"right"}}>{fmt(a.tarif_base)} F</span>
             <span style={{fontSize:13,color:C.muted,minWidth:40}}>{a.taux_assurance}%</span>
-            {modifiable && (
+            {modifiable ? (
               <>
                 <button onClick={()=>setEditant(a.id)} style={{background:"transparent",border:"none",color:C.blue,cursor:"pointer",fontSize:15}}>✏️</button>
                 <button onClick={()=>window.confirm("Retirer cet acte de votre catalogue ?")&&supprimerMut.mutate(a.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>
               </>
+            ) : (
+              <button onClick={()=>{
+                const nouveauPrix = window.prompt(`Votre tarif pour "${a.libelle}" (FCFA) :`, a.tarif_base);
+                if (nouveauPrix===null) return;
+                const tarif_base = parseInt(nouveauPrix);
+                if (!tarif_base || tarif_base<0) { toast.error("Tarif invalide"); return; }
+                personnaliserMut.mutate({ code:a.code, libelle:a.libelle, categorie_id:a.categorie_id, tarif_base, taux_assurance:a.taux_assurance });
+              }} style={{background:"rgba(10,143,88,.12)",border:`1px solid ${C.green}`,borderRadius:6,padding:"5px 10px",color:C.green,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>✏️ Personnaliser</button>
             )}
           </>
         )}
