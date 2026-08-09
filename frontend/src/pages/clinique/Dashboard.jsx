@@ -687,10 +687,10 @@ function PanelCartePatient({ patient }) {
 }
 
 function WidgetAssuranceCascade({ pForm, setPForm }) {
-  const { data: assureurs } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const { data: assureurs } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data?.data||[]) });
   const { data: formules } = useQuery({
     queryKey:["cl-formules", pForm.assureur_id],
-    queryFn:()=>cAPI.formulesParAssureur(pForm.assureur_id).then(r=>r.data||[]),
+    queryFn:()=>cAPI.formulesParAssureur(pForm.assureur_id).then(r=>r.data?.data||[]),
     enabled: !!pForm.assureur_id,
   });
   return (
@@ -732,7 +732,7 @@ function PanelContactsUrgence({ patient }) {
 
   const { data: contacts, isLoading } = useQuery({
     queryKey:["cl-contacts-urgence", patient?.id],
-    queryFn:()=>cAPI.contactsUrgence(patient.id).then(r=>r.data||[]),
+    queryFn:()=>cAPI.contactsUrgence(patient.id).then(r=>r.data?.data||[]),
     enabled: !!patient?.id,
   });
 
@@ -2903,10 +2903,10 @@ function PanelCompagniesFormules() {
   const [nouvelleCompagnie, setNouvelleCompagnie] = useState({ nom:"", email:"", telephone:"", numero_agrement:"" });
   const [nouvelleFormule, setNouvelleFormule] = useState({ nom:"", prime_mensuelle:"", taux_couverture:"" });
 
-  const { data: compagnies, isLoading } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const { data: compagnies, isLoading } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data?.data||[]) });
   const { data: formules } = useQuery({
     queryKey:["cl-formules", compagnieOuverte],
-    queryFn:()=>cAPI.formulesParAssureur(compagnieOuverte).then(r=>r.data||[]),
+    queryFn:()=>cAPI.formulesParAssureur(compagnieOuverte).then(r=>r.data?.data||[]),
     enabled: !!compagnieOuverte,
   });
 
@@ -3009,7 +3009,7 @@ function PageAssurance() {
   const { data, isLoading } = useQuery({ queryKey:["cl-dossiers"], queryFn:()=>cAPI.dossiers().then(r=>r.data||[]) });
   // Liste reelle (16 compagnies), plus la liste fictive a 7 noms
   // deconnectee de la vraie table assureurs.
-  const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data?.data||[]) });
   const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateDossier(id,{statut}), onSuccess:()=>{ toast.success("Dossier mis à jour"); qc.invalidateQueries(["cl-dossiers"]); } });
   const addMut = useMutation({ mutationFn:d=>cAPI.addDossier(d), onSuccess:()=>{ toast.success("Dossier soumis !"); qc.invalidateQueries(["cl-dossiers"]); setShowAdd(false); } });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteDossier(id), onSuccess:()=>{ toast.success("Supprimé"); qc.invalidateQueries(["cl-dossiers"]); } });
