@@ -2343,32 +2343,19 @@ app.post('/api/patients/dossier-acces', async (req, res) => {
 });
 
 // ── ACCÈS CONTACTS URGENCE PAR CLINIQUE ───────────────────────────
-app.get('/api/patients/:patient_id/contacts-urgence', async (req, res) => {
-  const auth = req.headers['authorization']?.replace('Bearer ','');
-  if (!auth) return res.status(401).json({ success: false, message: 'Token requis' });
+// CORRIGE : lisait patients.contact_urgence_1..5 (colonnes a plat,
+// systeme abandonne) au lieu de la table contacts_urgence -- Express
+// executant toujours la PREMIERE route definie pour un chemin donne,
+// cette ancienne implementation prenait le pas sur la nouvelle
+// (definie plus bas dans ce fichier) et la rendait totalement inerte.
+app.get('/api/patients/:patient_id/contacts-urgence', auth, async (req, res) => {
   try {
-    const jwt = require('jsonwebtoken');
-    const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
-    if (!['medecin','medecin_independant','clinique','admin'].includes(payload.role))
-      return res.status(403).json({ success: false, message: 'Accès non autorisé' });
-
     const r = await db(
-      `SELECT p.prenom, p.nom, p.telephone,
-        p.contact_urgence_1, p.telephone_urgence_1,
-        p.contact_urgence_2, p.telephone_urgence_2,
-        p.contact_urgence_3, p.telephone_urgence_3,
-        p.contact_urgence_4, p.telephone_urgence_4,
-        p.contact_urgence_5, p.telephone_urgence_5,
-        p.groupe_sanguin, p.allergies
-       FROM patients p WHERE p.id=$1 OR p.user_id=$1 LIMIT 1`,
+      'SELECT * FROM contacts_urgence WHERE patient_id=$1 ORDER BY ordre, created_at',
       [req.params.patient_id]
     );
-
-    if (!r.rows[0]) return res.status(404).json({ success: false, message: 'Patient non trouvé' });
-    res.json({ success: true, data: r.rows[0] });
-  } catch(e) {
-    res.status(500).json({ success: false, message: e.message });
-  }
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
 });
 
 
@@ -3100,16 +3087,6 @@ app.post('/api/admin/init-nomenclature', async (req, res) => {
 //  motive cette fonctionnalite : patient decede en salle d'attente,
 //  famille injoignable pendant plusieurs heures.
 // ══════════════════════════════════════════════════════════════════
-app.get('/api/patients/:id/contacts-urgence', auth, async (req, res) => {
-  try {
-    const r = await db(
-      'SELECT * FROM contacts_urgence WHERE patient_id=$1 ORDER BY ordre, created_at',
-      [req.params.id]
-    );
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-
 app.post('/api/patients/:id/contacts-urgence', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
   const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
   if (!prenom || !telephone) return res.status(400).json({ success:false, message:'Prénom et téléphone requis' });
