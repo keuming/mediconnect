@@ -2626,12 +2626,14 @@ function PanelGestionActes() {
         </div>
         {enEdition ? (
           <>
+            <input defaultValue={a.libelle} id={`libelle-${a.id}`} placeholder="Libellé" style={{width:160,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
             <input type="number" defaultValue={a.tarif_base} id={`tarif-${a.id}`} style={{width:90,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
             <input type="number" defaultValue={a.taux_assurance} id={`taux-${a.id}`} style={{width:60,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
             <button onClick={()=>{
+              const libelle = document.getElementById(`libelle-${a.id}`).value;
               const tarif_base = parseInt(document.getElementById(`tarif-${a.id}`).value);
               const taux_assurance = parseInt(document.getElementById(`taux-${a.id}`).value);
-              editMut.mutate({ id:a.id, d:{ tarif_base, taux_assurance } });
+              editMut.mutate({ id:a.id, d:{ libelle, tarif_base, taux_assurance } });
             }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
           </>
         ) : (
