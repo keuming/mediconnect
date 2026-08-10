@@ -190,7 +190,10 @@ function PageBulletins() {
     setRechercheEnCours(true); setErreurRecherche(''); setPatientPassage(null);
     try {
       const r = await api.get(`/patients/by-code/${encodeURIComponent(code)}`);
-      const p = r?.data?.data;
+      // BUG CORRIGE : api.js deballe deja response.json(), r.data EST le
+      // patient -- r.data.data pointait sur un champ inexistant (undefined),
+      // donc la recherche echouait TOUJOURS malgre une reponse 200 valide.
+      const p = r?.data;
       if (p?.id) setPatientPassage(p); else setErreurRecherche('Aucun patient avec ce code');
     } catch(e) {
       setErreurRecherche(e?.response?.data?.message || 'Aucun patient avec ce code');
@@ -203,7 +206,7 @@ function PageBulletins() {
     setRechercheConsultEnCours(true); setErreurConsult(''); setPatientConsult(null);
     try {
       const r = await api.get(`/patients/by-code/${encodeURIComponent(code)}`);
-      const p = r?.data?.data;
+      const p = r?.data;
       if (p?.id) setPatientConsult(p); else setErreurConsult('Aucun patient avec ce code');
     } catch(e) {
       setErreurConsult(e?.response?.data?.message || 'Aucun patient avec ce code');
