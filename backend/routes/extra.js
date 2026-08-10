@@ -69,9 +69,16 @@ router.post('/bulletins', auth, async (req, res) => {
     // une demande a traiter -- d'ou 'traite' par defaut dans ce cas,
     // contre 'nouveau' pour une demande initiee par une clinique.
     const statutFinal = statut || ((req.user?.laboratoire_id || req.user?.imagerie_id) ? 'traite' : 'nouveau');
+    // Destinataire : si c'est le labo/imagerie lui-meme qui cree le
+    // bulletin, son propre id prime toujours (jamais ecrasable par le
+    // corps de la requete). Sinon (clinique qui demande un examen), le
+    // destinataire vient du corps -- sans ca, le bulletin reste orphelin
+    // (labo_id NULL) et invisible pour tout labo, meme apres reponse.
+    const laboId = req.user?.laboratoire_id || (categorie==='laboratoire' ? (req.body.labo_id||null) : null);
+    const imagerieId = req.user?.imagerie_id || (categorie==='imagerie' ? (req.body.imagerie_id||null) : null);
     const r = await db(
       'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,labo_id,imagerie_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, req.user?.laboratoire_id||null, req.user?.imagerie_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statutFinal, fichier_prescription_url||null, fichier_prescription_nom||null]
+      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, laboId, imagerieId, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statutFinal, fichier_prescription_url||null, fichier_prescription_nom||null]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }

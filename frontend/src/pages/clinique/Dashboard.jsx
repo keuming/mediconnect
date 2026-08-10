@@ -97,6 +97,9 @@ const cAPI = {
   addDossier:   (d) => api.post("/assurances", d),
   updateDossier:(id,d) => api.put(`/assurances/${id}`, d),
   deleteDossier:(id) => api.delete(`/assurances/${id}`),
+  // Etablissements labo/imagerie (destinataire d'une demande d'examen)
+  laboratoiresListe: () => api.get("/public/laboratoires"),
+  imageriesListe:    () => api.get("/public/imageries"),
 };
 
 // ── UI Components ─────────────────────────────────────────────────
@@ -914,7 +917,7 @@ function PageDossiers() {
   const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
   const [erreurRecherche, setErreurRecherche] = useState("");
-  const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", types:["NFS"], notes:"" });
+  const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", types:["NFS"], destinataire_id:"", notes:"" });
   const [fichierPrescription, setFichierPrescription] = useState(null);
   const [uploadPrescriptionEnCours, setUploadPrescriptionEnCours] = useState(false);
   const [envoiMultipleEnCours, setEnvoiMultipleEnCours] = useState(false);
@@ -978,6 +981,8 @@ function PageDossiers() {
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/affections`);
     const d = await r.json(); return d.data||[];
   }});
+  const { data: laboratoiresDisponibles } = useQuery({ queryKey:["cl-laboratoires"], queryFn:()=>cAPI.laboratoiresListe().then(r=>r.data||[]) });
+  const { data: imageriesDisponibles } = useQuery({ queryKey:["cl-imageries"], queryFn:()=>cAPI.imageriesListe().then(r=>r.data||[]) });
   const { data: pec } = useQuery({ queryKey:["cl-pec",selected?.id], queryFn:async()=>{
     if(!selected) return {data:[],totaux:{total:0,part_assurance:0,part_patient:0}};
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/prise-en-charge/${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
@@ -2122,7 +2127,7 @@ function PageDossiers() {
               )}
             </div>
             <Sel label="Catégorie" value={examenForm.categorie}
-              onChange={e=>setExamenForm(p=>({...p,categorie:e.target.value,types:[TYPES_EXAMEN[e.target.value][0]]}))}
+              onChange={e=>setExamenForm(p=>({...p,categorie:e.target.value,types:[TYPES_EXAMEN[e.target.value][0]],destinataire_id:""}))}
               options={[{v:"laboratoire",l:"🧪 Laboratoire"},{v:"imagerie",l:"🩻 Imagerie médicale"}]} />
             <div style={{marginBottom:14}}>
               <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>
@@ -2146,6 +2151,10 @@ function PageDossiers() {
                 })}
               </div>
             </div>
+            <Sel label={examenForm.categorie==="laboratoire"?"Laboratoire destinataire *":"Service d'imagerie destinataire *"}
+              value={examenForm.destinataire_id}
+              onChange={e=>setExamenForm(p=>({...p,destinataire_id:e.target.value}))}
+              options={[{v:"",l:"— Sélectionner —"}, ...((examenForm.categorie==="laboratoire"?laboratoiresDisponibles:imageriesDisponibles)||[]).map(e=>({v:e.id,l:e.nom}))]} />
             <Inp label="Notes pour le service (optionnel)" value={examenForm.notes}
               onChange={e=>setExamenForm(p=>({...p,notes:e.target.value}))}
               placeholder="Contexte clinique, urgence, elements a rechercher…" rows={3} />
@@ -2159,6 +2168,7 @@ function PageDossiers() {
               <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowExamen(false); setPatientCible(null); setFichierPrescription(null); }}>Annuler</Btn>
               <Btn style={{flex:2}} loading={envoiMultipleEnCours||uploadPrescriptionEnCours} onClick={async ()=>{
                 if (examenForm.types.length===0) { toast.error("Sélectionnez au moins un type d'examen"); return; }
+                if (!examenForm.destinataire_id) { toast.error(examenForm.categorie==="laboratoire"?"Sélectionnez un laboratoire destinataire":"Sélectionnez un service d'imagerie destinataire"); return; }
                 let prescriptionUrl = null, prescriptionNom = null;
                 if (fichierPrescription) {
                   try {
@@ -2185,6 +2195,8 @@ function PageDossiers() {
                     patient_nom: `${patientCible.prenom} ${patientCible.nom}`,
                     emetteur_nom: selected ? `Dr. clinique` : undefined,
                     notes: examenForm.notes || null,
+                    labo_id: examenForm.categorie==="laboratoire" ? examenForm.destinataire_id : undefined,
+                    imagerie_id: examenForm.categorie==="imagerie" ? examenForm.destinataire_id : undefined,
                     fichier_prescription_url: prescriptionUrl,
                     fichier_prescription_nom: prescriptionNom,
                   })));
@@ -2192,7 +2204,7 @@ function PageDossiers() {
                   toast.success(`${n} demande${n>1?"s":""} envoyée${n>1?"s":""} au service`);
                   qc.invalidateQueries(["cl-examens",selected?.id]);
                   setShowExamen(false); setPatientCible(null); setCodeRecherche("");
-                  setExamenForm({ categorie:"laboratoire", types:["NFS"], notes:"" });
+                  setExamenForm({ categorie:"laboratoire", types:["NFS"], destinataire_id:"", notes:"" });
                 } catch(err) {
                   toast.error("Erreur lors de l'envoi d'une des demandes");
                 } finally {
