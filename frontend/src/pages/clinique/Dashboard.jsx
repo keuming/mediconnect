@@ -914,9 +914,10 @@ function PageDossiers() {
   const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
   const [erreurRecherche, setErreurRecherche] = useState("");
-  const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", type:"NFS", notes:"" });
+  const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", types:["NFS"], notes:"" });
   const [fichierPrescription, setFichierPrescription] = useState(null);
   const [uploadPrescriptionEnCours, setUploadPrescriptionEnCours] = useState(false);
+  const [envoiMultipleEnCours, setEnvoiMultipleEnCours] = useState(false);
   const [pForm, setPForm] = useState({ prenom:"", nom:"", telephone:"", date_naissance:"", groupe_sanguin:"", allergies:"", antecedents:"", email:"", assurance:"", numero_police:"", est_assure:false, assureur_id:"", formule_assurance_id:"" });
   const [cForm, setCForm] = useState({ diagnostic:"", traitement:"", notes:"", tension_arterielle:"", temperature:"", poids:"", taille:"" });
   const [oForm, setOForm] = useState({ medicaments:"", duree:"", posologie:"", notes_ord:"" });
@@ -1045,8 +1046,6 @@ function PageDossiers() {
 
   const demanderExamen = useMutation({
     mutationFn: d => cAPI.demanderExamen(d),
-    onSuccess: () => { toast.success("Demande envoyée au service"); qc.invalidateQueries(["cl-examens",selected?.id]); setShowExamen(false); setPatientCible(null); setCodeRecherche(""); setExamenForm({ categorie:"laboratoire", type:"NFS", notes:"" }); },
-    onError: () => toast.error("Erreur lors de l'envoi de la demande"),
   });
 
   // Recherche par code dossier EXACT (ex: MC-KT-5069). Independante de
@@ -1071,6 +1070,10 @@ function PageDossiers() {
     laboratoire: ['NFS','Glycémie','Bilan lipidique','Bilan hépatique','Bilan rénal','Sérologie','Hémoculture','Ionogramme','HbA1c','Urine ECBU','Frottis','PCR','Groupe sanguin','Autre'],
     imagerie: ['Radiologie','IRM','Scanner','Échographie','Mammographie','Scintigraphie'],
   };
+  const toggleTypeExamen = (t) => setExamenForm(p => ({
+    ...p,
+    types: p.types.includes(t) ? p.types.filter(x=>x!==t) : [...p.types, t],
+  }));
 
   // Upload direct vers Cloudinary (preset non signe, cote client), meme
   // mecanisme que labo/imagerie/dossier patient. Sert ici a joindre la
@@ -2119,10 +2122,30 @@ function PageDossiers() {
               )}
             </div>
             <Sel label="Catégorie" value={examenForm.categorie}
-              onChange={e=>setExamenForm(p=>({...p,categorie:e.target.value,type:TYPES_EXAMEN[e.target.value][0]}))}
+              onChange={e=>setExamenForm(p=>({...p,categorie:e.target.value,types:[TYPES_EXAMEN[e.target.value][0]]}))}
               options={[{v:"laboratoire",l:"🧪 Laboratoire"},{v:"imagerie",l:"🩻 Imagerie médicale"}]} />
-            <Sel label="Type d'examen *" value={examenForm.type} onChange={e=>setExamenForm(p=>({...p,type:e.target.value}))}
-              options={TYPES_EXAMEN[examenForm.categorie].map(t=>({v:t,l:t}))} />
+            <div style={{marginBottom:14}}>
+              <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>
+                Types d'examen * ({examenForm.types.length} sélectionné{examenForm.types.length>1?"s":""})
+              </label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {TYPES_EXAMEN[examenForm.categorie].map(t=>{
+                  const actif = examenForm.types.includes(t);
+                  return (
+                    <button key={t} type="button" onClick={()=>toggleTypeExamen(t)}
+                      style={{
+                        border:`1.5px solid ${actif?C.teal:C.border}`,
+                        background: actif?"rgba(13,148,136,.15)":"transparent",
+                        color: actif?C.teal:C.muted,
+                        borderRadius:20, padding:"6px 14px", fontSize:14, fontWeight:700,
+                        cursor:"pointer", fontFamily:"inherit",
+                      }}>
+                      {actif?"✓ ":""}{t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <Inp label="Notes pour le service (optionnel)" value={examenForm.notes}
               onChange={e=>setExamenForm(p=>({...p,notes:e.target.value}))}
               placeholder="Contexte clinique, urgence, elements a rechercher…" rows={3} />
@@ -2134,7 +2157,8 @@ function PageDossiers() {
             </div>
             <div style={{display:"flex",gap:10,marginTop:4}}>
               <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowExamen(false); setPatientCible(null); setFichierPrescription(null); }}>Annuler</Btn>
-              <Btn style={{flex:2}} loading={demanderExamen.isPending||uploadPrescriptionEnCours} onClick={async ()=>{
+              <Btn style={{flex:2}} loading={envoiMultipleEnCours||uploadPrescriptionEnCours} onClick={async ()=>{
+                if (examenForm.types.length===0) { toast.error("Sélectionnez au moins un type d'examen"); return; }
                 let prescriptionUrl = null, prescriptionNom = null;
                 if (fichierPrescription) {
                   try {
@@ -2148,18 +2172,34 @@ function PageDossiers() {
                   }
                   setUploadPrescriptionEnCours(false);
                 }
-                demanderExamen.mutate({
-                  type: examenForm.type,
-                  categorie: examenForm.categorie,
-                  patient_id: patientCible.id,
-                  patient_nom: `${patientCible.prenom} ${patientCible.nom}`,
-                  emetteur_nom: selected ? `Dr. clinique` : undefined,
-                  notes: examenForm.notes || null,
-                  fichier_prescription_url: prescriptionUrl,
-                  fichier_prescription_nom: prescriptionNom,
-                });
+                // Un bulletin par type d'examen selectionne -- chaque type
+                // suit son propre statut/rapport cote labo (une NFS peut
+                // etre traitee avant une glycemie), donc une ligne par type
+                // plutot qu'un seul bulletin fourre-tout.
+                setEnvoiMultipleEnCours(true);
+                try {
+                  await Promise.all(examenForm.types.map(t => demanderExamen.mutateAsync({
+                    type: t,
+                    categorie: examenForm.categorie,
+                    patient_id: patientCible.id,
+                    patient_nom: `${patientCible.prenom} ${patientCible.nom}`,
+                    emetteur_nom: selected ? `Dr. clinique` : undefined,
+                    notes: examenForm.notes || null,
+                    fichier_prescription_url: prescriptionUrl,
+                    fichier_prescription_nom: prescriptionNom,
+                  })));
+                  const n = examenForm.types.length;
+                  toast.success(`${n} demande${n>1?"s":""} envoyée${n>1?"s":""} au service`);
+                  qc.invalidateQueries(["cl-examens",selected?.id]);
+                  setShowExamen(false); setPatientCible(null); setCodeRecherche("");
+                  setExamenForm({ categorie:"laboratoire", types:["NFS"], notes:"" });
+                } catch(err) {
+                  toast.error("Erreur lors de l'envoi d'une des demandes");
+                } finally {
+                  setEnvoiMultipleEnCours(false);
+                }
                 setFichierPrescription(null);
-              }}>{uploadPrescriptionEnCours?'📎 Envoi du fichier…':'📤 Envoyer la demande'}</Btn>
+              }}>{uploadPrescriptionEnCours?'📎 Envoi du fichier…':envoiMultipleEnCours?'📤 Envoi en cours…':`📤 Envoyer ${examenForm.types.length>1?`(${examenForm.types.length})`:"la demande"}`}</Btn>
             </div>
           </div>
         )}
