@@ -15,6 +15,18 @@ router.get('/bulletins', auth, async (req, res) => {
       if (!req.user.patient_id) { return res.json({ success: true, data: [] }); }
       p.push(req.user.patient_id);
       sql += ` AND patient_id=$${p.length}`;
+    } else if (req.user?.laboratoire_id) {
+      // Cloisonnement labo -- avant ce correctif, un compte laboratoire
+      // ne tombait dans aucune branche ci-dessous et voyait soit rien,
+      // soit TOUS les bulletins de TOUS les etablissements des qu'il en
+      // existait (aucun filtre applique par defaut).
+      p.push(req.user.laboratoire_id);
+      sql += ` AND labo_id=$${p.length}`;
+      if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    } else if (req.user?.imagerie_id) {
+      p.push(req.user.imagerie_id);
+      sql += ` AND imagerie_id=$${p.length}`;
+      if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
     } else if (req.user?.clinique_id) {
       p.push(req.user.clinique_id);
       sql += ` AND clinique_id=$${p.length}`;
@@ -52,9 +64,14 @@ router.post('/bulletins', auth, async (req, res) => {
     const patientId = req.user?.role === 'patient'
       ? (req.user.patient_id || null)
       : (req.body.patient_id || null);
+    // Un compte labo/imagerie qui cree lui-meme un bulletin depose un
+    // resultat deja pret (patient de passage retrouve par code) -- pas
+    // une demande a traiter -- d'ou 'traite' par defaut dans ce cas,
+    // contre 'nouveau' pour une demande initiee par une clinique.
+    const statutFinal = statut || ((req.user?.laboratoire_id || req.user?.imagerie_id) ? 'traite' : 'nouveau');
     const r = await db(
-      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statut||'nouveau', fichier_prescription_url||null, fichier_prescription_nom||null]
+      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,labo_id,imagerie_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, req.user?.laboratoire_id||null, req.user?.imagerie_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statutFinal, fichier_prescription_url||null, fichier_prescription_nom||null]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
