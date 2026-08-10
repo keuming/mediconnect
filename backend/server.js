@@ -1673,6 +1673,7 @@ app.post('/api/public/rdv', async (req, res) => {
 
 // ── CHATBOT
 app.use("/api/chatbot", require("./routes/chatbot"));
+app.use("/api/laboratoire", require("./routes/laboratoire_bulletins"));
 app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 
