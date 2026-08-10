@@ -100,7 +100,7 @@ const PageHeader = ({ title,subtitle }) => (
 function PageHome() {
   const { user } = useAuthStore();
   const nav = useNavigate();
-  const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data.data||[]), retry:1 });
+  const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data||[]), retry:1 });
   const bulletins = data||[];
 
   return (
@@ -158,12 +158,12 @@ function PageBulletins() {
   const [rechercheConsultEnCours, setRechercheConsultEnCours] = useState(false);
   const [erreurConsult, setErreurConsult] = useState('');
 
-  const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data.data||[]) });
+  const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data||[]) });
   const bulletins = data||[];
 
   const { data: bulletinsPatientData, isLoading: chargementConsult } = useQuery({
     queryKey: ['lab-bulletins-patient', patientConsult?.id],
-    queryFn: () => labAPI.bulletinsPatient(patientConsult.id).then(r=>r.data.data||[]),
+    queryFn: () => labAPI.bulletinsPatient(patientConsult.id).then(r=>r.data||[]),
     enabled: !!patientConsult,
   });
   const bulletinsPatient = bulletinsPatientData || [];
