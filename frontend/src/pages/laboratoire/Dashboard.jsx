@@ -52,6 +52,7 @@ async function uploadVersCloudinary(fichier) {
 
 const labAPI = {
   bulletins: () => api.get('/bulletins', { params:{ categorie:'laboratoire' } }).catch(()=>({ data:{ data:[] } })),
+  bulletinsPatient: (patientId) => api.get('/bulletins', { params:{ categorie:'laboratoire', patient_id:patientId } }).catch(()=>({ data:{ data:[] } })),
   addBulletin: d => api.post('/bulletins', d),
   updBulletin: (id,d) => api.put(`/bulletins/${id}`, d),
   personnel:    () => api.get('/laboratoire/personnel'),
@@ -152,9 +153,20 @@ function PageBulletins() {
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
   const [erreurRecherche, setErreurRecherche] = useState('');
   const [patientPassage, setPatientPassage] = useState(null);
+  const [codeConsult, setCodeConsult] = useState('');
+  const [patientConsult, setPatientConsult] = useState(null);
+  const [rechercheConsultEnCours, setRechercheConsultEnCours] = useState(false);
+  const [erreurConsult, setErreurConsult] = useState('');
 
   const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data.data||[]) });
   const bulletins = data||[];
+
+  const { data: bulletinsPatientData, isLoading: chargementConsult } = useQuery({
+    queryKey: ['lab-bulletins-patient', patientConsult?.id],
+    queryFn: () => labAPI.bulletinsPatient(patientConsult.id).then(r=>r.data.data||[]),
+    enabled: !!patientConsult,
+  });
+  const bulletinsPatient = bulletinsPatientData || [];
 
   const reinitialiserFormulaire = () => {
     setResultat(''); setFichier(null); setPatientNom(''); setNotes('');
@@ -185,6 +197,19 @@ function PageBulletins() {
     }
     setRechercheEnCours(false);
   };
+  const rechercherPatientConsult = async () => {
+    const code = codeConsult.trim();
+    if (!code) { setErreurConsult('Entrez un code dossier'); return; }
+    setRechercheConsultEnCours(true); setErreurConsult(''); setPatientConsult(null);
+    try {
+      const r = await api.get(`/patients/by-code/${encodeURIComponent(code)}`);
+      const p = r?.data?.data;
+      if (p?.id) setPatientConsult(p); else setErreurConsult('Aucun patient avec ce code');
+    } catch(e) {
+      setErreurConsult(e?.response?.data?.message || 'Aucun patient avec ce code');
+    }
+    setRechercheConsultEnCours(false);
+  };
   const updMut = useMutation({
     mutationFn: ({id,statut}) => labAPI.updBulletin(id,{statut}),
     onSuccess: () => { toast.success('Mis à jour'); qc.invalidateQueries(['lab-bulletins']); },
@@ -197,7 +222,7 @@ function PageBulletins() {
       <PageHeader title="🔬 Bulletins d'analyses" subtitle="Gestion des demandes et résultats"/>
 
       <div style={{ display:'flex',gap:4,background:C.input,borderRadius:12,padding:4,marginBottom:24,width:'fit-content' }}>
-        {[['recus','📥 Demandes reçues'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
+        {[['recus','📥 Demandes reçues'],['consulter','🔎 Consulter demandes'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
           <button key={v} onClick={()=>setTab(v)}
             style={{ background:tab===v?C.teal:'none',border:'none',borderRadius:8,padding:'8px 20px',color:tab===v?'#fff':C.muted,fontSize:13,fontWeight:tab===v?700:400,cursor:'pointer',fontFamily:'inherit' }}>
             {l}
@@ -241,6 +266,74 @@ function PageBulletins() {
             </div>
           ))}
         </Panel>
+      )}
+
+      {tab==='consulter'&&(
+        <div style={{ maxWidth:640 }}>
+          {!patientConsult ? (
+            <Panel title="Consulter les demandes d'un patient">
+              <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Code dossier du patient *</label>
+              <div style={{display:'flex',gap:8}}>
+                <input value={codeConsult} onChange={e=>{ setCodeConsult(e.target.value); setErreurConsult(''); }}
+                  placeholder="MC-XX-0000"
+                  style={{ flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box' }}/>
+                <button onClick={rechercherPatientConsult} disabled={rechercheConsultEnCours}
+                  style={{padding:'0 18px',background:C.teal,border:'none',borderRadius:9,color:'#fff',fontSize:13,fontWeight:700,cursor:rechercheConsultEnCours?'not-allowed':'pointer',fontFamily:'inherit'}}>
+                  {rechercheConsultEnCours?'…':'🔎 Rechercher'}
+                </button>
+              </div>
+              {erreurConsult && <div style={{fontSize:12,color:C.red,marginTop:6}}>{erreurConsult}</div>}
+            </Panel>
+          ) : (
+            <>
+              <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientConsult.prenom} {patientConsult.nom}</div>
+                  <div style={{fontSize:11,color:C.muted}}>Dossier : {patientConsult.code_secret||'—'}</div>
+                </div>
+                <button type="button" onClick={()=>{ setPatientConsult(null); setCodeConsult(''); }}
+                  style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕ Nouvelle recherche</button>
+              </div>
+              {chargementConsult?<Loader/>:bulletinsPatient.length===0?
+                <Empty icon="🧪" title="Aucun examen" subtitle="Aucune demande d'analyse pour ce patient."/>:
+                <Panel title={`Examens de ce patient (${bulletinsPatient.length})`}>
+                  {bulletinsPatient.map((b,i)=>(
+                    <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
+                      <span style={{ fontSize:22 }}>🧪</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.type||'Analyse'}</div>
+                        <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                        {b.notes&&<div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.notes}</div>}
+                        {b.fichier_prescription_url&&(
+                          <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                            📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                          </a>
+                        )}
+                        {b.rapport&&<div style={{ fontSize:12,color:C.teal,marginTop:4,fontStyle:'italic' }}>📋 Résultats: {b.rapport.slice(0,80)}…</div>}
+                        {b.fichier_url&&(
+                          <a href={b.fichier_url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:'inline-block',fontSize:11,color:C.green,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                            📥 Télécharger le résultat ↗
+                          </a>
+                        )}
+                      </div>
+                      <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
+                        <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'En attente':'Traité'}</Badge>
+                        {b.statut==='nouveau'&&(
+                          <button onClick={()=>{ setBulletinActif(b); setType(b.type||'NFS'); setNotes(''); setResultat(''); setFichier(null); setTab('envoyer'); }}
+                            style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                            📝 Traiter
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </Panel>
+              }
+            </>
+          )}
+        </div>
       )}
 
       {tab==='envoyer'&&(
