@@ -3013,11 +3013,25 @@ app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
     if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
     else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
 
-    const [imagerie, labo] = await Promise.all([
+    const [imagerie, labo, bulletinsR] = await Promise.all([
       db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
       db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT * FROM bulletins ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
     ]);
-    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    // Bulletins (systeme demandes/reponses labo+imagerie) adaptes au meme
+    // format d'affichage que les deux tables historiques -- sans ca, une
+    // demande envoyee via 'Demander un examen' restait invisible ici
+    // malgre un succes d'envoi confirme (bug reel constate en test).
+    const bulletinsAdaptes = bulletinsR.rows.map(b => ({
+      ...b,
+      type_source: b.categorie === 'laboratoire' ? 'labo' : 'imagerie',
+      type_analyse: b.type,
+      type_examen: b.type,
+      statut: b.statut === 'nouveau' ? 'en_attente' : (b.statut === 'traite' ? 'valide' : b.statut),
+      interpretation: b.rapport,
+      observations: b.notes,
+    }));
+    const data = [...imagerie.rows, ...labo.rows, ...bulletinsAdaptes].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
     res.json({ success: true, data });
   } catch(e) { res.json({ success: true, data: [] }); }
 });
