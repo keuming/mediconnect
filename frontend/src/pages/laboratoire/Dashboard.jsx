@@ -157,6 +157,9 @@ function PageBulletins() {
   const [patientConsult, setPatientConsult] = useState(null);
   const [rechercheConsultEnCours, setRechercheConsultEnCours] = useState(false);
   const [erreurConsult, setErreurConsult] = useState('');
+  const [groupeActif, setGroupeActif] = useState(null); // lot d'examens en cours de traitement
+  const [resultatsGroupe, setResultatsGroupe] = useState({}); // { [bulletinId]: {resultat, norme} }
+  const [groupeEnCours, setGroupeEnCours] = useState(false);
 
   const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data||[]) });
   const bulletins = data||[];
@@ -167,6 +170,33 @@ function PageBulletins() {
     enabled: !!patientConsult,
   });
   const bulletinsPatient = bulletinsPatientData || [];
+
+  // Regroupe les bulletins partageant un meme groupe_id (envoyes ensemble
+  // par la clinique) en une seule entree -- une carte par lot au lieu
+  // d'une ligne par examen, pour ne pas saturer l'espace.
+  const regrouper = (liste) => {
+    const groupes = new Map();
+    const isoles = [];
+    liste.forEach(b => {
+      if (b.groupe_id) {
+        if (!groupes.has(b.groupe_id)) groupes.set(b.groupe_id, []);
+        groupes.get(b.groupe_id).push(b);
+      } else {
+        isoles.push(b);
+      }
+    });
+    const groupesArr = Array.from(groupes.entries()).map(([id, items]) => ({
+      id: `groupe-${id}`, groupe_id: id, items,
+      created_at: items[0]?.created_at,
+      patient_nom: items[0]?.patient_nom,
+      emetteur_nom: items[0]?.emetteur_nom,
+      fichier_prescription_url: items[0]?.fichier_prescription_url,
+      fichier_prescription_nom: items[0]?.fichier_prescription_nom,
+    }));
+    return [...isoles, ...groupesArr].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  };
+  const groupesBulletins = regrouper(bulletins);
+  const groupesBulletinsPatient = regrouper(bulletinsPatient);
 
   const reinitialiserFormulaire = () => {
     setResultat(''); setFichier(null); setPatientNom(''); setNotes('');
@@ -236,7 +266,33 @@ function PageBulletins() {
       {tab==='recus'&&(
         isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses apparaîtront ici"/>:
         <Panel title={`Demandes reçues (${bulletins.length})`}>
-          {bulletins.map((b,i)=>(
+          {groupesBulletins.map((b,i)=> b.items ? (
+            <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:22 }}>🧪</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.items.length} examens groupés — {b.patient_nom||'—'}</div>
+                <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                <div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.items.map(it=>it.type).join(', ')}</div>
+                {b.fichier_prescription_url&&(
+                  <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                    📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                  </a>
+                )}
+              </div>
+              <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
+                <Badge color={b.items.every(it=>it.statut!=='nouveau')?'green':'blue'}>
+                  {b.items.filter(it=>it.statut!=='nouveau').length}/{b.items.length} traités
+                </Badge>
+                {b.items.some(it=>it.statut==='nouveau')&&(
+                  <button onClick={()=>{ setGroupeActif(b); setResultatsGroupe({}); setTab('envoyer'); }}
+                    style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                    📝 Traiter le lot
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
             <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
               <span style={{ fontSize:22 }}>🧪</span>
               <div style={{ flex:1 }}>
@@ -300,7 +356,33 @@ function PageBulletins() {
               {chargementConsult?<Loader/>:bulletinsPatient.length===0?
                 <Empty icon="🧪" title="Aucun examen" subtitle="Aucune demande d'analyse pour ce patient."/>:
                 <Panel title={`Examens de ce patient (${bulletinsPatient.length})`}>
-                  {bulletinsPatient.map((b,i)=>(
+                  {groupesBulletinsPatient.map((b,i)=> b.items ? (
+                    <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
+                      <span style={{ fontSize:22 }}>🧪</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.items.length} examens groupés</div>
+                        <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                        <div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.items.map(it=>it.type).join(', ')}</div>
+                        {b.fichier_prescription_url&&(
+                          <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                            📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                          </a>
+                        )}
+                      </div>
+                      <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
+                        <Badge color={b.items.every(it=>it.statut!=='nouveau')?'green':'blue'}>
+                          {b.items.filter(it=>it.statut!=='nouveau').length}/{b.items.length} traités
+                        </Badge>
+                        {b.items.some(it=>it.statut==='nouveau')&&(
+                          <button onClick={()=>{ setGroupeActif(b); setResultatsGroupe({}); setTab('envoyer'); }}
+                            style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                            📝 Traiter le lot
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
                     <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
                       <span style={{ fontSize:22 }}>🧪</span>
                       <div style={{ flex:1 }}>
@@ -340,12 +422,76 @@ function PageBulletins() {
       )}
 
       {tab==='envoyer'&&(
-        <div style={{ maxWidth:600 }}>
+        <div style={{ maxWidth: groupeActif?820:600 }}>
           {succes?(
             <div style={{ textAlign:'center',padding:'60px',background:C.input,borderRadius:16,border:`1px solid rgba(13,148,136,.3)` }}>
               <div style={{ fontSize:60,marginBottom:12 }}>✅</div>
               <div style={{ fontSize:18,fontWeight:800,color:C.text }}>Résultats envoyés avec succès !</div>
               <div style={{ fontSize:13,color:C.muted,marginTop:8 }}>Les résultats sont disponibles dans le dossier patient.</div>
+            </div>
+          ): groupeActif ? (
+            <div style={{ background:C.input,border:`1px solid ${C.border}`,borderRadius:16,padding:24 }}>
+              <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>📝 Traiter le lot — {groupeActif.patient_nom||'Patient'}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{groupeActif.items.length} examens · lot du {fmtDate(groupeActif.created_at)}</div>
+                </div>
+                <button type="button" onClick={()=>{ setGroupeActif(null); setResultatsGroupe({}); }}
+                  style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+              </div>
+              <table style={{width:'100%',borderCollapse:'collapse',marginBottom:16}}>
+                <thead>
+                  <tr style={{textAlign:'left',fontSize:11,color:C.muted,textTransform:'uppercase'}}>
+                    <th style={{padding:'6px 8px'}}>Examen</th>
+                    <th style={{padding:'6px 8px'}}>Résultat *</th>
+                    <th style={{padding:'6px 8px'}}>Norme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupeActif.items.map(item=>(
+                    <tr key={item.id} style={{borderTop:`1px solid ${C.border}`}}>
+                      <td style={{padding:'8px',fontWeight:700,color:C.text,fontSize:13}}>{item.type}</td>
+                      <td style={{padding:'8px'}}>
+                        <input value={resultatsGroupe[item.id]?.resultat||''}
+                          onChange={e=>setResultatsGroupe(p=>({...p,[item.id]:{...p[item.id],resultat:e.target.value}}))}
+                          placeholder="Résultat"
+                          style={{width:'100%',background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:7,padding:'7px 10px',color:C.text,fontSize:13,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                      </td>
+                      <td style={{padding:'8px'}}>
+                        <input value={resultatsGroupe[item.id]?.norme||''}
+                          onChange={e=>setResultatsGroupe(p=>({...p,[item.id]:{...p[item.id],norme:e.target.value}}))}
+                          placeholder="Norme"
+                          style={{width:'100%',background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:7,padding:'7px 10px',color:C.text,fontSize:13,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button
+                onClick={async ()=>{
+                  const incomplets = groupeActif.items.filter(item=>!resultatsGroupe[item.id]?.resultat?.trim());
+                  if (incomplets.length) { toast.error(`Résultat manquant pour : ${incomplets.map(i=>i.type).join(', ')}`); return; }
+                  setGroupeEnCours(true);
+                  try {
+                    await Promise.all(groupeActif.items.map(item => labAPI.updBulletin(item.id, {
+                      statut: 'traite',
+                      rapport: resultatsGroupe[item.id]?.resultat || null,
+                      norme: resultatsGroupe[item.id]?.norme || null,
+                    })));
+                    qc.invalidateQueries(['lab-bulletins']);
+                    qc.invalidateQueries(['lab-bulletins-patient']);
+                    setGroupeActif(null); setResultatsGroupe({});
+                    setSucces(true); setTimeout(()=>setSucces(false),2500);
+                  } catch(e) {
+                    toast.error("Erreur lors de l'envoi");
+                  } finally {
+                    setGroupeEnCours(false);
+                  }
+                }}
+                disabled={groupeEnCours}
+                style={{ width:'100%',background:`linear-gradient(135deg,${C.teal},${C.green})`,border:'none',borderRadius:12,padding:14,color:'#fff',fontSize:15,fontWeight:800,cursor:groupeEnCours?'not-allowed':'pointer',opacity:groupeEnCours?.7:1 }}>
+                {groupeEnCours?'⏳ Envoi en cours…':`📤 Envoyer les ${groupeActif.items.length} résultats`}
+              </button>
             </div>
           ):(
             <div style={{ background:C.input,border:`1px solid ${C.border}`,borderRadius:16,padding:24 }}>
