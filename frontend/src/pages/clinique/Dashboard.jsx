@@ -915,6 +915,7 @@ function PageDossiers() {
   const [showExamen, setShowExamen] = useState(false);
   const [codeRecherche, setCodeRecherche] = useState("");
   const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
+  const [groupeActif, setGroupeActif] = useState(null); // lot d'examens affiche dans le modal de detail
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
   const [erreurRecherche, setErreurRecherche] = useState("");
   const [examenForm, setExamenForm] = useState({ categorie:"laboratoire", types:["NFS"], destinataire_id:"", notes:"" });
@@ -1017,6 +1018,28 @@ function PageDossiers() {
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/examens?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
     const d = await r.json(); return d.data||[];
   }, enabled:!!selected });
+  // Regroupe les examens partageant un meme groupe_id (envoyes ensemble)
+  // en une seule entree -- affichee comme une carte au lieu d'une ligne
+  // par examen, pour ne pas saturer l'espace quand plusieurs types sont
+  // demandes en un seul lot (ex: NFS + Goutte epaisse).
+  const groupesExamens = (() => {
+    const groupes = new Map();
+    const isoles = [];
+    (examens||[]).forEach(e => {
+      if (e.groupe_id) {
+        if (!groupes.has(e.groupe_id)) groupes.set(e.groupe_id, []);
+        groupes.get(e.groupe_id).push(e);
+      } else {
+        isoles.push(e);
+      }
+    });
+    const groupesArr = Array.from(groupes.entries()).map(([id, items]) => ({
+      id: `groupe-${id}`, groupe_id: id, items,
+      created_at: items[0]?.created_at,
+      type_source: items[0]?.type_source,
+    }));
+    return [...isoles, ...groupesArr].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  })();
 
   const patients = (data||[]).filter(p => {
     const q = search.toLowerCase();
@@ -1759,9 +1782,25 @@ function PageDossiers() {
             {activeTab==="examens" && (
               <Panel title="Résultats d'examens et imagerie"
                 actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>{ setShowExamen(true); setPatientCible(selected||null); if(selected) setCodeRecherche(selected.code_secret||""); }}>🔬 Demander un examen</Btn>}>
-                {(examens||[]).length===0
+                {groupesExamens.length===0
                   ? <Empty icon="🔬" title="Aucun résultat" subtitle="Les résultats labo et imagerie apparaîtront ici dès leur saisie"/>
-                  : (examens||[]).map(e=>(
+                  : groupesExamens.map(e=> e.items ? (
+                    <div key={e.id} onClick={()=>setGroupeActif(e)} style={{background:C.hover,borderRadius:10,padding:14,marginBottom:10,display:"flex",gap:14,cursor:"pointer"}}>
+                      <div style={{width:3,background:e.type_source==="labo"?C.purple:C.blue,borderRadius:2,flexShrink:0}}/>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                          <span style={{fontSize:16,fontWeight:700,color:e.type_source==="labo"?C.purple:C.blue}}>
+                            {e.type_source==="labo"?"🔬 Labo":"🩻 Imagerie"} · {e.items.length} examens groupés
+                          </span>
+                          <Badge color={e.items.every(i=>i.statut==="valide")?"green":"amber"}>
+                            {e.items.filter(i=>i.statut==="valide").length}/{e.items.length} traités
+                          </Badge>
+                        </div>
+                        <div style={{fontSize:16,color:C.muted}}>{e.items.map(i=>i.type_analyse||i.type_examen).join(", ")}</div>
+                        <div style={{fontSize:14,color:C.dim,marginTop:4}}>{fmtDate(e.created_at)} · cliquer pour voir le détail</div>
+                      </div>
+                    </div>
+                  ) : (
                     <div key={e.id} style={{background:C.hover,borderRadius:10,padding:14,marginBottom:10,display:"flex",gap:14}}>
                       <div style={{width:3,background:e.type_source==="labo"?C.purple:C.blue,borderRadius:2,flexShrink:0}}/>
                       <div style={{flex:1}}>
@@ -2188,6 +2227,13 @@ function PageDossiers() {
                 // plutot qu'un seul bulletin fourre-tout.
                 setEnvoiMultipleEnCours(true);
                 try {
+                  // Identifiant de lot partage entre tous les examens de cet
+                  // envoi -- permet de les regrouper visuellement (une seule
+                  // carte au lieu d'une ligne par examen). Un envoi a un seul
+                  // type reste isole (pas de groupe_id), comportement inchange.
+                  const groupeId = examenForm.types.length > 1
+                    ? (crypto?.randomUUID ? crypto.randomUUID() : `grp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`)
+                    : undefined;
                   await Promise.all(examenForm.types.map(t => demanderExamen.mutateAsync({
                     type: t,
                     categorie: examenForm.categorie,
@@ -2197,6 +2243,7 @@ function PageDossiers() {
                     notes: examenForm.notes || null,
                     labo_id: examenForm.categorie==="laboratoire" ? examenForm.destinataire_id : undefined,
                     imagerie_id: examenForm.categorie==="imagerie" ? examenForm.destinataire_id : undefined,
+                    groupe_id: groupeId,
                     fichier_prescription_url: prescriptionUrl,
                     fichier_prescription_nom: prescriptionNom,
                   })));
@@ -2214,6 +2261,31 @@ function PageDossiers() {
               }}>{uploadPrescriptionEnCours?'📎 Envoi du fichier…':envoiMultipleEnCours?'📤 Envoi en cours…':`📤 Envoyer ${examenForm.types.length>1?`(${examenForm.types.length})`:"la demande"}`}</Btn>
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal open={!!groupeActif} onClose={()=>setGroupeActif(null)} title="🔬 Détail des examens du lot" width={640}>
+        {groupeActif && (
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead>
+              <tr style={{textAlign:"left",fontSize:12,color:C.muted,textTransform:"uppercase"}}>
+                <th style={{padding:"6px 8px"}}>Examen</th>
+                <th style={{padding:"6px 8px"}}>Statut</th>
+                <th style={{padding:"6px 8px"}}>Résultat</th>
+                <th style={{padding:"6px 8px"}}>Norme</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupeActif.items.map(i=>(
+                <tr key={i.id} style={{borderTop:`1px solid ${C.border}`}}>
+                  <td style={{padding:"8px",fontWeight:700,color:C.text}}>{i.type_analyse||i.type_examen}</td>
+                  <td style={{padding:"8px"}}><Badge color={i.statut==="valide"?"green":i.statut==="en_attente"?"amber":"gray"}>{i.statut||"—"}</Badge></td>
+                  <td style={{padding:"8px",color:C.text}}>{i.interpretation||i.resultat||"—"}</td>
+                  <td style={{padding:"8px",color:C.muted}}>{i.norme||"—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Modal>
     </div>
