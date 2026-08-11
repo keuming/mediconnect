@@ -18,8 +18,8 @@ const ROLES = [
 ];
 
 const C = {
-  bg:'#060C12', card:'#0E1620', input:'#141E2B',
-  border:'#1E2F42', text:'#F0F4F8', muted:'#8BA0B5', dim:'#4E657A',
+  bg:'#FFFFFF', card:'#F7F9FA', input:'#F0F3F5',
+  border:'#E1E7EC', text:'#16211C', muted:'#5B6B78', dim:'#94A3AF',
   green:'#0A8F58',
 };
 
@@ -155,7 +155,7 @@ export default function Register() {
         {/* Barre de progression */}
         <div style={{ display:'flex', gap:4, marginBottom:28 }}>
           {[1,2,3].map(s=>(
-            <div key={s} style={{ flex:1, height:3, borderRadius:2, background:step>=s?C.green:'#1E2F42', transition:'background .2s' }}/>
+            <div key={s} style={{ flex:1, height:3, borderRadius:2, background:step>=s?C.green:'#E1E7EC', transition:'background .2s' }}/>
           ))}
         </div>
 
@@ -186,7 +186,7 @@ export default function Register() {
             <button
               disabled={!role}
               onClick={() => setStep(2)}
-              style={{ width:'100%', background:role?C.green:'#1E2F42', border:'none', borderRadius:12, padding:14, color:'#fff', fontSize:15, fontWeight:700, cursor:role?'pointer':'not-allowed', transition:'background .2s' }}
+              style={{ width:'100%', background:role?C.green:'#E1E7EC', border:'none', borderRadius:12, padding:14, color:'#fff', fontSize:15, fontWeight:700, cursor:role?'pointer':'not-allowed', transition:'background .2s' }}
             >
               Continuer →
             </button>
@@ -352,7 +352,7 @@ export default function Register() {
               <button
                 onClick={handleSubmit}
                 disabled={loading}
-                style={{ flex:2, background:loading?'#1E2F42':C.green, border:'none', borderRadius:12, padding:12, color:'#fff', fontWeight:700, cursor:loading?'not-allowed':'pointer' }}
+                style={{ flex:2, background:loading?'#E1E7EC':C.green, border:'none', borderRadius:12, padding:12, color:'#fff', fontWeight:700, cursor:loading?'not-allowed':'pointer' }}
               >
                 {loading?'Création du compte…':'✅ Créer mon compte'}
               </button>
