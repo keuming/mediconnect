@@ -53,6 +53,11 @@ router.post('/bulletins', auth, async (req, res) => {
     // labo/imagerie uploade plus tard via PUT). Les melanger ferait
     // ecraser la prescription par le resultat au moment de la reponse.
     fichier_prescription_url, fichier_prescription_nom,
+    // Identifiant de lot -- partage par tous les examens d'un meme envoi
+    // (ex: NFS + Goutte epaisse demandes ensemble). Purement declaratif :
+    // aucune logique serveur n'en depend, il sert uniquement au frontend
+    // a regrouper l'affichage. NULL = examen isole, comportement inchange.
+    groupe_id,
   } = req.body;
   if (!type) return res.status(400).json({ success: false, message: 'Type requis' });
   try {
@@ -77,19 +82,19 @@ router.post('/bulletins', auth, async (req, res) => {
     const laboId = req.user?.laboratoire_id || (categorie==='laboratoire' ? (req.body.labo_id||null) : null);
     const imagerieId = req.user?.imagerie_id || (categorie==='imagerie' ? (req.body.imagerie_id||null) : null);
     const r = await db(
-      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,labo_id,imagerie_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, laboId, imagerieId, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statutFinal, fichier_prescription_url||null, fichier_prescription_nom||null]
+      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,labo_id,imagerie_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom,groupe_id) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, laboId, imagerieId, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statutFinal, fichier_prescription_url||null, fichier_prescription_nom||null, groupe_id||null]
     );
     res.status(201).json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 router.put('/bulletins/:id', auth, async (req, res) => {
-  const { statut, rapport, notes, fichier_url, fichier_nom } = req.body;
+  const { statut, rapport, notes, fichier_url, fichier_nom, norme } = req.body;
   try {
     const r = await db(
-      "UPDATE bulletins SET statut=COALESCE($1,statut),rapport=COALESCE($2,rapport),notes=COALESCE($3,notes),fichier_url=COALESCE($4,fichier_url),fichier_nom=COALESCE($5,fichier_nom),updated_at=NOW() WHERE id=$6 RETURNING *",
-      [statut||null, rapport||null, notes||null, fichier_url||null, fichier_nom||null, req.params.id]
+      "UPDATE bulletins SET statut=COALESCE($1,statut),rapport=COALESCE($2,rapport),notes=COALESCE($3,notes),fichier_url=COALESCE($4,fichier_url),fichier_nom=COALESCE($5,fichier_nom),norme=COALESCE($6,norme),updated_at=NOW() WHERE id=$7 RETURNING *",
+      [statut||null, rapport||null, notes||null, fichier_url||null, fichier_nom||null, norme||null, req.params.id]
     );
     res.json({ success: true, data: r.rows[0] });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
