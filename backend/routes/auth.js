@@ -117,7 +117,44 @@ router.post('/register', async (req, res) => {
     let assureur_id = null;
 
     // 2. Créer l'entrée dans la table métier selon le rôle
-    if (roleVal === 'clinique') {
+    // Patient : quel que soit le formulaire d'inscription (site vitrine,
+    // application, mobile), un compte patient cree ici genere TOUJOURS un
+    // dossier patient + une demande de VigieCard avec numero auto-genere
+    // -- meme logique que /register-patient, meme table de destination,
+    // pour ne jamais avoir deux chemins d'inscription divergents.
+    if (roleVal === 'patient') {
+      const patientId = uuid();
+      await db(
+        `INSERT INTO patients (id, user_id, prenom, nom, telephone, email, ville)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [patientId, userId, prenom||'', nom||'', telephone||null, email||null, ville||null]
+      );
+      await db('UPDATE utilisateurs SET patient_id=$1 WHERE id=$2', [patientId, userId]);
+
+      const codeDossier = 'MC-' + ((prenom||'X')[0]+(nom||'X')[0]).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
+      await db('UPDATE patients SET code_secret=$1 WHERE id=$2', [codeDossier, patientId]);
+
+      const pc = pays_code || 'CI';
+      let numeroCarte, attempts = 0;
+      while (attempts < 10) {
+        const count = await db('SELECT COUNT(*) FROM mediconnect_card_requests');
+        const seq = String(parseInt(count.rows[0].count) + 1 + attempts).padStart(6, '0');
+        const candidate = `MC-${pc}-${new Date().getFullYear()}-${seq}`;
+        const existsCarte = await db('SELECT id FROM mediconnect_card_requests WHERE numero_carte=$1', [candidate]);
+        if (!existsCarte.rows.length) { numeroCarte = candidate; break; }
+        attempts++;
+      }
+      if (!numeroCarte) {
+        numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+      }
+
+      await db(
+        `INSERT INTO mediconnect_card_requests
+         (id, numero_carte, prenom, nom, email, telephone, ville, pays_code, statut)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'en_attente')`,
+        [uuid(), numeroCarte, prenom||'', nom||'', email||null, telephone||null, ville||null, pc]
+      );
+    } else if (roleVal === 'clinique') {
       if (clinique_id_existante) {
         // Rattachement : on verifie que la clinique existe reellement avant
         // de lier, pour ne jamais laisser un utilisateur avec un
