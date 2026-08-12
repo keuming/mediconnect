@@ -115,6 +115,8 @@ router.post('/register', async (req, res) => {
     let imagerie_id = null;
     let optique_id = null;
     let assureur_id = null;
+    let patient_id = null;
+    let numero_carte_generee = null;
 
     // 2. Créer l'entrée dans la table métier selon le rôle
     // Patient : quel que soit le formulaire d'inscription (site vitrine,
@@ -123,16 +125,16 @@ router.post('/register', async (req, res) => {
     // -- meme logique que /register-patient, meme table de destination,
     // pour ne jamais avoir deux chemins d'inscription divergents.
     if (roleVal === 'patient') {
-      const patientId = uuid();
+      patient_id = uuid();
       await db(
         `INSERT INTO patients (id, user_id, prenom, nom, telephone, email, ville)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [patientId, userId, prenom||'', nom||'', telephone||null, email||null, ville||null]
+        [patient_id, userId, prenom||'', nom||'', telephone||null, email||null, ville||null]
       );
-      await db('UPDATE utilisateurs SET patient_id=$1 WHERE id=$2', [patientId, userId]);
+      await db('UPDATE utilisateurs SET patient_id=$1 WHERE id=$2', [patient_id, userId]);
 
       const codeDossier = 'MC-' + ((prenom||'X')[0]+(nom||'X')[0]).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
-      await db('UPDATE patients SET code_secret=$1 WHERE id=$2', [codeDossier, patientId]);
+      await db('UPDATE patients SET code_secret=$1 WHERE id=$2', [codeDossier, patient_id]);
 
       const pc = pays_code || 'CI';
       let numeroCarte, attempts = 0;
@@ -147,6 +149,7 @@ router.post('/register', async (req, res) => {
       if (!numeroCarte) {
         numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
       }
+      numero_carte_generee = numeroCarte;
 
       await db(
         `INSERT INTO mediconnect_card_requests
@@ -241,15 +244,20 @@ router.post('/register', async (req, res) => {
     // empechant de fonctionner comme la clinique le fait deja.
     const tokenPayload = {
       id: userId, role: roleVal, clinique_id, pharmacie_id,
-      laboratoire_id: labo_id, imagerie_id, optique_id, assureur_id,
+      laboratoire_id: labo_id, imagerie_id, optique_id, assureur_id, patient_id,
     };
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
 
+    // patient_id vient d'etre affecte APRES la capture initiale de r.rows[0]
+    // (l'insertion utilisateurs a eu lieu avant la creation du dossier
+    // patient) -- on le rafraichit explicitement pour que la reponse
+    // immediate reflete l'etat reel, sans dependre d'un second aller-retour.
     const { password: _, ...u } = r.rows[0];
     res.status(201).json({
       success: true,
       token,
-      user: { ...u, clinique_id },
+      user: { ...u, clinique_id, patient_id },
+      numero_carte: numero_carte_generee,
       message: `Compte ${roleVal} créé avec succès`
     });
   } catch(e) {
