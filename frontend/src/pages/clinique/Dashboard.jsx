@@ -2324,8 +2324,8 @@ function PageMedecins() {
     onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-personnel"]); },
     onError: () => toast.error("Erreur"),
   });
-  const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration" };
-  const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple" };
+  const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration", pharmacien:"Pharmacien" };
+  const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple", pharmacien:"teal" };
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
@@ -4641,6 +4641,7 @@ function PageAdministration() {
     { v:'medecin',        l:'Médecin',            desc:'Consultations, ordonnances, dossiers medicaux' },
     { v:'finance',        l:'Finance',            desc:'Caisse, facturation, comptabilite' },
     { v:'rh',              l:'RH',                 desc:'Gestion du personnel' },
+    { v:'pharmacien',     l:'Pharmacien',         desc:'Stock, ordonnances recues, dispensation' },
   ];
 
   const { data, isLoading } = useQuery({ queryKey:['cl-personnel-admin'], queryFn:()=>cAPI.personnel().then(r=>r.data||[]) });
