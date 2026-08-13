@@ -1120,6 +1120,120 @@ app.put('/api/ordonnances/:id', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// ── Envoi d'une ordonnance vers une pharmacie (interne ou externe) ──
+// Interne : traitee par le pharmacien de LA MEME clinique, stock reel.
+// Externe : reprend la logique deja existante cote patient (pharmacie
+// partenaire), desormais aussi declenchable par le bureau des entrees.
+app.put('/api/ordonnances/:id/envoyer', auth, requireSousRole('bureau_entrees', 'medecin', 'pharmacien'), async (req, res) => {
+  const { destination, pharmacie_id } = req.body;
+  if (!['interne', 'externe'].includes(destination)) {
+    return res.status(400).json({ success:false, message:"destination doit etre 'interne' ou 'externe'" });
+  }
+  if (destination === 'externe' && !pharmacie_id) {
+    return res.status(400).json({ success:false, message:'pharmacie_id requis pour une pharmacie externe' });
+  }
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db(
+      `UPDATE ordonnances SET destination=$1, clinique_id=$2, pharmacie_id=$3, statut='envoyee' WHERE id=$4 RETURNING *`,
+      [destination, destination==='interne' ? cid : null, destination==='externe' ? pharmacie_id : null, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Ordonnance introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Pharmacie interne : ordonnances recues, en attente de devis ─────
+app.get('/api/pharmacie-interne/ordonnances', auth, requireSousRole('pharmacien', 'bureau_entrees', 'finance'), async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db(
+      `SELECT o.*, p.prenom AS patient_prenom, p.nom AS patient_nom, p.telephone AS patient_telephone
+         FROM ordonnances o LEFT JOIN patients p ON p.id = o.patient_id
+        WHERE o.destination='interne' AND o.clinique_id=$1
+        ORDER BY o.created_at DESC LIMIT 100`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// ── Preparer un devis chiffre a partir du vrai stock ─────────────────
+app.post('/api/ordonnances/:id/devis', auth, requireSousRole('pharmacien'), async (req, res) => {
+  const { lignes } = req.body; // [{ stock_id, quantite }]
+  if (!Array.isArray(lignes) || !lignes.length) {
+    return res.status(400).json({ success:false, message:'Au moins une ligne requise' });
+  }
+  try {
+    const cid = req.user?.clinique_id;
+    const ord = await db("SELECT * FROM ordonnances WHERE id=$1 AND destination='interne' AND clinique_id=$2", [req.params.id, cid]);
+    if (!ord.rows.length) return res.status(404).json({ success:false, message:'Ordonnance introuvable dans votre pharmacie' });
+
+    await db('DELETE FROM ordonnance_devis_lignes WHERE ordonnance_id=$1', [req.params.id]);
+
+    let total = 0;
+    for (const l of lignes) {
+      const produit = await db('SELECT * FROM stock WHERE id=$1 AND clinique_id=$2', [l.stock_id, cid]);
+      if (!produit.rows.length) continue;
+      const p = produit.rows[0];
+      const qte = parseInt(l.quantite) || 1;
+      const sousTotal = qte * parseFloat(p.prix_unitaire || 0);
+      total += sousTotal;
+      await db(
+        `INSERT INTO ordonnance_devis_lignes (id, ordonnance_id, stock_id, libelle, quantite, prix_unitaire)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5)`,
+        [req.params.id, p.id, p.nom, qte, p.prix_unitaire || 0]
+      );
+    }
+
+    const r = await db(
+      `UPDATE ordonnances SET devis_montant=$1, devis_prepare_at=NOW(), statut='devis_pret' WHERE id=$2 RETURNING *`,
+      [total, req.params.id]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Dispenser : decremente le stock reel, transactionnel avec verrou
+// anti-survente (meme motif que la vente de medicament depuis la
+// carte patient) -- c'est ICI, et seulement ici, que le stock bouge.
+app.post('/api/ordonnances/:id/dispenser', auth, requireSousRole('pharmacien'), async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const { pool: dbPool } = require('./config/db');
+    const { withTransaction } = require('./helpers/dbIntrospect');
+    const out = await withTransaction(dbPool, async (client) => {
+      const ordR = await client.query("SELECT * FROM ordonnances WHERE id=$1 AND destination='interne' AND clinique_id=$2 AND statut='devis_pret'", [req.params.id, cid]);
+      if (!ordR.rows.length) throw new Error('Ordonnance introuvable ou devis non pret');
+
+      const lignesR = await client.query('SELECT * FROM ordonnance_devis_lignes WHERE ordonnance_id=$1', [req.params.id]);
+      for (const ligne of lignesR.rows) {
+        if (!ligne.stock_id) continue;
+        const stockR = await client.query('SELECT * FROM stock WHERE id=$1 AND clinique_id=$2 FOR UPDATE', [ligne.stock_id, cid]);
+        if (!stockR.rows.length) throw new Error(`Produit "${ligne.libelle}" introuvable dans le stock`);
+        const produit = stockR.rows[0];
+        if (produit.quantite < ligne.quantite) throw new Error(`Stock insuffisant pour "${ligne.libelle}" : ${produit.quantite} ${produit.unite} disponible(s)`);
+        await client.query('UPDATE stock SET quantite = quantite - $1, updated_at = NOW() WHERE id=$2', [ligne.quantite, ligne.stock_id]);
+      }
+
+      const r = await client.query(
+        `UPDATE ordonnances SET statut='dispensee', dispensee_at=NOW(), dispensee_par=$1 WHERE id=$2 RETURNING *`,
+        [req.user.id, req.params.id]
+      );
+      return r.rows[0];
+    });
+    res.json({ success:true, data:out });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Lignes de devis d'une ordonnance (lecture) ───────────────────────
+app.get('/api/ordonnances/:id/devis', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM ordonnance_devis_lignes WHERE ordonnance_id=$1 ORDER BY created_at', [req.params.id]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
 // ── STOCK ─────────────────────────────────────────────────────────
 app.get('/api/stock', auth, async (req, res) => {
   try {
