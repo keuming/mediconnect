@@ -50,6 +50,7 @@ const NAV = {
     { path:'/clinique/stats',        icon:'📈', label:'Statistiques' },
     { path:'/clinique/resultats-examens', icon:'🔬', label:'Résultats d\'examens' },
     { path:'/clinique/actes-tarifs', icon:'🩺', label:'Actes & tarifs' },
+    { path:'/clinique/pharmacie-interne', icon:'💊', label:'Pharmacie interne' },
     { path:'/clinique/administration', icon:'👤', label:'Administration' },
   ],
   pharmacie: [
@@ -183,6 +184,7 @@ export default function AppLayout({ children }) {
     medecin:        ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/consultation', '/clinique/specialites', '/clinique/medecins', '/clinique/stock', '/clinique/stats', '/clinique/resultats-examens'],
     finance:        ['/clinique', '/clinique/caisse', '/clinique/facturation', '/clinique/assurance', '/clinique/dossiers-ass', '/clinique/stats'],
     rh:             ['/clinique', '/clinique/medecins'],
+    pharmacien:     ['/clinique', '/clinique/pharmacie-interne', '/clinique/stock'],
   };
   const navItemsBrutes = NAV[role] || [];
   const navItems = (role === 'clinique' && user.sous_role && VISIBILITE_SOUS_ROLE[user.sous_role])

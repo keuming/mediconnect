@@ -2577,6 +2577,91 @@ function PageMedecins() {
 // ════════════════════════════════════════════════════════════════════
 //  5. PAGE STOCK — FOURNITURES MÉDICALES
 // ════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+//  PHARMACIE INTERNE -- ordonnances recues, devis chiffre depuis le
+//  vrai stock, dispensation (seul moment ou le stock est decremente).
+// ══════════════════════════════════════════════════════════════════
+function PagePharmacieInterne() {
+  const qc = useQueryClient();
+  const [ordonnanceActive, setOrdonnanceActive] = useState(null);
+  const [lignesDevis, setLignesDevis] = useState([]);
+
+  const { data: ordonnances, isLoading } = useQuery({
+    queryKey: ["cl-pharma-interne-ords"],
+    queryFn: () => api.get("/pharmacie-interne/ordonnances").then(r => r.data || []),
+  });
+  const { data: stockDispo } = useQuery({
+    queryKey: ["cl-pharma-interne-stock"],
+    queryFn: () => cAPI.stock().then(r => r.data || []),
+  });
+
+  const devisMut = useMutation({
+    mutationFn: () => api.post(`/ordonnances/${ordonnanceActive.id}/devis`, { lignes: lignesDevis.filter(l=>l.stock_id) }),
+    onSuccess: () => { toast.success("Devis préparé !"); qc.invalidateQueries(["cl-pharma-interne-ords"]); setOrdonnanceActive(null); setLignesDevis([]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const dispenserMut = useMutation({
+    mutationFn: (id) => api.post(`/ordonnances/${id}/dispenser`),
+    onSuccess: () => { toast.success("Ordonnance dispensée, stock mis à jour !"); qc.invalidateQueries(["cl-pharma-interne-ords"]); qc.invalidateQueries(["cl-pharma-interne-stock"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la dispensation"),
+  });
+
+  const ouvrirDevis = (o) => { setOrdonnanceActive(o); setLignesDevis([{ stock_id:"", quantite:1 }]); };
+  const ajouterLigne = () => setLignesDevis(l => [...l, { stock_id:"", quantite:1 }]);
+  const majLigne = (i, k, v) => setLignesDevis(l => l.map((row,j) => j===i ? {...row,[k]:v} : row));
+  const retirerLigne = (i) => setLignesDevis(l => l.filter((_,j) => j!==i));
+
+  const STATUT_ORD = {
+    envoyee:{l:"En attente de devis",c:"amber"}, devis_pret:{l:"Devis prêt",c:"blue"}, dispensee:{l:"Dispensée",c:"green"},
+  };
+
+  return (
+    <div>
+      <PageHeader title="💊 Pharmacie interne" subtitle="Ordonnances reçues, devis et dispensation" />
+      <Panel>
+        {isLoading ? <Loader/> : (ordonnances||[]).length===0
+          ? <Empty icon="💊" title="Aucune ordonnance reçue" subtitle="Les ordonnances envoyées vers la pharmacie interne apparaîtront ici." />
+          : (ordonnances||[]).map(o => {
+            const st = STATUT_ORD[o.statut] || {l:o.statut,c:"muted"};
+            return (
+              <div key={o.id} style={{background:C.hover,borderRadius:10,padding:16,marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontSize:16,fontWeight:700,color:C.text}}>{o.patient_prenom} {o.patient_nom}</div>
+                    <div style={{fontSize:13,color:C.muted}}>{o.patient_telephone} · {fmtDate(o.created_at)}</div>
+                  </div>
+                  <Badge color={st.c}>{st.l}</Badge>
+                </div>
+                <div style={{fontSize:15,color:C.text,marginBottom:4,fontWeight:600}}>{o.medicaments}</div>
+                {o.posologie && <div style={{fontSize:13,color:C.muted}}>Posologie : {o.posologie}</div>}
+                {o.devis_montant && <div style={{fontSize:15,color:C.green,fontWeight:700,marginTop:8}}>Devis : {fmt(o.devis_montant)} F</div>}
+                <div style={{display:"flex",gap:8,marginTop:10}}>
+                  {o.statut==="envoyee" && <Btn style={{padding:"6px 14px",fontSize:14}} onClick={()=>ouvrirDevis(o)}>📋 Préparer le devis</Btn>}
+                  {o.statut==="devis_pret" && <Btn style={{padding:"6px 14px",fontSize:14}} loading={dispenserMut.isPending} onClick={()=>dispenserMut.mutate(o.id)}>✅ Dispenser</Btn>}
+                </div>
+              </div>
+            );
+          })
+        }
+      </Panel>
+
+      <Modal open={!!ordonnanceActive} onClose={()=>{ setOrdonnanceActive(null); setLignesDevis([]); }} title="📋 Préparer le devis" width={560}>
+        <div style={{fontSize:14,color:C.muted,marginBottom:16}}>{ordonnanceActive?.medicaments}</div>
+        {lignesDevis.map((ligne,i) => (
+          <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 0.7fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
+            <Sel label={i===0?"Médicament":""} value={ligne.stock_id} onChange={e=>majLigne(i,"stock_id",e.target.value)}
+              options={[{v:"",l:"— Choisir —"}, ...(stockDispo||[]).filter(s=>s.categorie==="Médicament").map(s=>({v:s.id,l:`${s.nom} — ${fmt(s.prix_unitaire)} F`}))]} />
+            <Inp label={i===0?"Qté":""} type="number" min="1" value={ligne.quantite} onChange={e=>majLigne(i,"quantite",e.target.value)} />
+            <button onClick={()=>retirerLigne(i)} disabled={lignesDevis.length<=1} style={{padding:"11px 10px",borderRadius:8,background:"transparent",border:`1.5px solid ${C.border}`,color:lignesDevis.length<=1?C.dim:C.red,cursor:lignesDevis.length<=1?"not-allowed":"pointer",fontSize:16}}>✕</button>
+          </div>
+        ))}
+        <button onClick={ajouterLigne} style={{width:"100%",marginTop:4,marginBottom:16,padding:8,borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:15,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter une ligne</button>
+        <Btn style={{width:"100%"}} loading={devisMut.isPending} onClick={()=>devisMut.mutate()}>Valider le devis</Btn>
+      </Modal>
+    </div>
+  );
+}
+
 function PageStock() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
@@ -4805,6 +4890,7 @@ export default function Dashboard() {
       <Route path="stats"        element={<PageStats />} />
       <Route path="administration" element={<PageAdministration />} />
       <Route path="actes-tarifs" element={<PanelGestionActes />} />
+      <Route path="pharmacie-interne" element={<PagePharmacieInterne />} />
       <Route path="*"            element={<PageHome />} />
     </Routes>
   );
