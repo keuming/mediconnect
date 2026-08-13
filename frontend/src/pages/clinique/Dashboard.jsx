@@ -912,6 +912,20 @@ function PageDossiers() {
   const [rdvConsult, setRdvConsult] = useState(null); // RDV depuis lequel on ouvre une consultation
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
+  const [showEnvoiOrd, setShowEnvoiOrd] = useState(false);
+  const [ordonnanceAEnvoyer, setOrdonnanceAEnvoyer] = useState(null);
+  const [destinationChoisie, setDestinationChoisie] = useState("interne");
+  const [pharmacieExterneChoisie, setPharmacieExterneChoisie] = useState("");
+  const { data: pharmaciesExternes } = useQuery({ queryKey:["cl-pharmacies-externes"], queryFn:()=>api.get("/public/pharmacies").then(r=>r.data||[]), enabled: showEnvoiOrd });
+  const envoyerOrdMut = useMutation({
+    mutationFn: () => api.put(`/ordonnances/${ordonnanceAEnvoyer.id}/envoyer`, { destination: destinationChoisie, pharmacie_id: destinationChoisie==="externe" ? pharmacieExterneChoisie : undefined }),
+    onSuccess: () => {
+      toast.success("Ordonnance envoyée !");
+      qc.invalidateQueries(["cl-ords", selected?.id]);
+      setShowEnvoiOrd(false); setOrdonnanceAEnvoyer(null); setPharmacieExterneChoisie("");
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'envoi"),
+  });
   const [showExamen, setShowExamen] = useState(false);
   const [codeRecherche, setCodeRecherche] = useState("");
   const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
@@ -1756,14 +1770,21 @@ function PageDossiers() {
                 actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowOrd(true)}>+ Ordonnance</Btn>}>
                 {(ords||[]).length===0
                   ? <Empty icon="💊" title="Aucune ordonnance" />
-                  : (ords||[]).map(o=>(
+                  : (ords||[]).map(o=>{
+                    const STATUT_ORD = {
+                      active:{l:"Active",c:"green"}, envoyee:{l:"Envoyée",c:"blue"},
+                      devis_pret:{l:"Devis prêt",c:"amber"}, dispensee:{l:"Dispensée",c:"green"},
+                    };
+                    const st = STATUT_ORD[o.statut] || STATUT_ORD.active;
+                    return (
                     <div key={o.id} style={{ background:C.hover, borderRadius:10, padding:14, marginBottom:10, display:"flex", gap:14 }}>
                       <div style={{ width:3, background:C.green, borderRadius:2, flexShrink:0 }} />
                       <div style={{ flex:1 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6, flexWrap:"wrap", gap:6 }}>
                           <span style={{ fontSize:16, fontWeight:700, color:C.green }}>Ordonnance du {fmtDate(o.created_at)}</span>
                           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                            <Badge color="green">Active</Badge>
+                            <Badge color={st.c}>{st.l}</Badge>
+                            {!o.destination && <button onClick={()=>{ setOrdonnanceAEnvoyer(o); setShowEnvoiOrd(true); }} style={{padding:"3px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:"#2563EB",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>}
                             <button onClick={()=>imprimerOrdonnance(o)} style={{padding:"3px 10px",background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ Imprimer</button>
                           </div>
                         </div>
@@ -1771,9 +1792,11 @@ function PageDossiers() {
                         {o.posologie && <div style={{ fontSize:16, color:C.muted }}>Posologie : {o.posologie}</div>}
                         {o.duree && <div style={{ fontSize:16, color:C.muted }}>Durée : {o.duree}</div>}
                         {o.notes_ord && <div style={{ fontSize:16, color:C.dim, marginTop:4, fontStyle:"italic" }}>{o.notes_ord}</div>}
+                        {o.destination && <div style={{ fontSize:14, color:C.dim, marginTop:6 }}>→ Envoyée vers pharmacie {o.destination==="interne"?"interne":"externe"}{o.devis_montant?` · Devis : ${fmt(o.devis_montant)} F`:""}</div>}
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 }
               </Panel>
             )}
@@ -2091,6 +2114,27 @@ function PageDossiers() {
             setLignesOrd([{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
           }}>Créer l'ordonnance</Btn>
         </div>
+      </Modal>
+
+      <Modal open={showEnvoiOrd} onClose={()=>{ setShowEnvoiOrd(false); setOrdonnanceAEnvoyer(null); }} title="📤 Envoyer l'ordonnance">
+        <div style={{fontSize:15,color:C.muted,marginBottom:16}}>{ordonnanceAEnvoyer?.medicaments}</div>
+        <div style={{display:"flex",gap:10,marginBottom:16}}>
+          <button onClick={()=>setDestinationChoisie("interne")} style={{flex:1,padding:14,borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:15,
+            background:destinationChoisie==="interne"?"rgba(10,143,88,.12)":C.hover, border:destinationChoisie==="interne"?`1.5px solid ${C.green}`:`1.5px solid ${C.border}`, color:destinationChoisie==="interne"?C.green:C.muted}}>
+            🏥 Pharmacie interne
+          </button>
+          <button onClick={()=>setDestinationChoisie("externe")} style={{flex:1,padding:14,borderRadius:10,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:15,
+            background:destinationChoisie==="externe"?"rgba(37,99,235,.12)":C.hover, border:destinationChoisie==="externe"?"1.5px solid #2563EB":`1.5px solid ${C.border}`, color:destinationChoisie==="externe"?"#2563EB":C.muted}}>
+            🏪 Pharmacie externe
+          </button>
+        </div>
+        {destinationChoisie==="externe" && (
+          <Sel label="Choisir la pharmacie" value={pharmacieExterneChoisie} onChange={e=>setPharmacieExterneChoisie(e.target.value)}
+            options={[{v:"",l:"— Choisir —"}, ...(pharmaciesExternes||[]).map(p=>({v:p.id,l:p.nom}))]} />
+        )}
+        <Btn style={{width:"100%",marginTop:8}} loading={envoyerOrdMut.isPending} disabled={destinationChoisie==="externe" && !pharmacieExterneChoisie} onClick={()=>envoyerOrdMut.mutate()}>
+          Envoyer la demande de devis
+        </Btn>
       </Modal>
 
       <Modal open={showEditConsult} onClose={()=>{ setShowEditConsult(false); setConsultationEnEdition(null); }} title="✏️ Modifier la consultation" width={640}>
