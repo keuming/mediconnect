@@ -951,7 +951,13 @@ app.get('/api/consultations', auth, requireSousRole('medecin'), async (req, res)
   try {
     const { patient_id } = req.query; const cid = req.user?.clinique_id;
     let sql='SELECT * FROM consultations WHERE 1=1'; const p=[];
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
+    if (patient_id) {
+      p.push(patient_id); sql+=` AND patient_id=$${p.length}`;
+      // Confidentialite : une consultation n'est visible pour une AUTRE
+      // clinique que si elle a ete explicitement partagee. La clinique
+      // qui l'a creee voit toujours tout, sans restriction.
+      p.push(cid||null); sql+=` AND (clinique_id=$${p.length} OR partage_reseau=true)`;
+    }
     else if (cid)   { p.push(cid);        sql+=` AND clinique_id=$${p.length}`; }
     sql+=' ORDER BY created_at DESC LIMIT 100';
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
@@ -1094,7 +1100,12 @@ app.get('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) =
   try {
     const { patient_id } = req.query; const cid = req.user?.clinique_id;
     let sql='SELECT *, medicament AS medicaments FROM ordonnances WHERE 1=1'; const p=[];
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
+    if (patient_id) {
+      p.push(patient_id); sql+=` AND patient_id=$${p.length}`;
+      // Confidentialite : une ordonnance n'est visible pour une AUTRE
+      // clinique que si explicitement partagee. Meme regle que consultations.
+      p.push(cid||null); sql+=` AND (clinique_id=$${p.length} OR partage_reseau=true)`;
+    }
     else if (cid)   { p.push(cid);        sql+=` AND clinique_id=$${p.length}`; }
     sql+=' ORDER BY created_at DESC LIMIT 100';
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
@@ -3124,7 +3135,12 @@ app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
     const cid = req.user?.clinique_id;
     const p = [];
     let where = 'WHERE 1=1';
-    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    if (patient_id) {
+      p.push(patient_id); where += ` AND patient_id=$${p.length}`;
+      // Confidentialite : un examen/bulletin n'est visible pour une AUTRE
+      // clinique que si explicitement partage. Meme regle que consultations.
+      p.push(cid||null); where += ` AND (clinique_id=$${p.length} OR partage_reseau=true)`;
+    }
     else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
 
     const [imagerie, labo, bulletinsR] = await Promise.all([
