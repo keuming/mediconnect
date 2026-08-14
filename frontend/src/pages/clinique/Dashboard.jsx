@@ -279,6 +279,8 @@ function PageHome() {
     medecin:        ["planning", "dossiers", "consultation", "stock", "stats", "file-medecin", "resultats-examens"],
     finance:        ["caisse", "facturation", "assurance", "stats", "proprietaire"],
     rh:             ["medecins", "qualite"],
+    laboratoire:    ["resultats-examens"],
+    radiologie:     ["resultats-examens"],
   };
   const modules = (user?.sous_role && MODULES_VISIBLES_PAR_SOUS_ROLE[user.sous_role])
     ? modulesTous.filter(m => MODULES_VISIBLES_PAR_SOUS_ROLE[user.sous_role].includes(m.path))
@@ -2402,8 +2404,8 @@ function PageMedecins() {
     onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-personnel"]); },
     onError: () => toast.error("Erreur"),
   });
-  const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration", pharmacien:"Pharmacien" };
-  const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple", pharmacien:"teal" };
+  const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration", pharmacien:"Pharmacien", laboratoire:"Laboratoire", radiologie:"Radiologie" };
+  const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple", pharmacien:"teal", laboratoire:"purple", radiologie:"blue" };
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
@@ -4805,6 +4807,8 @@ function PageAdministration() {
     { v:'finance',        l:'Finance',            desc:'Caisse, facturation, comptabilite' },
     { v:'rh',              l:'RH',                 desc:'Gestion du personnel' },
     { v:'pharmacien',     l:'Pharmacien',         desc:'Stock, ordonnances recues, dispensation' },
+    { v:'laboratoire',    l:'Laboratoire',        desc:'Consultation et saisie des bulletins labo' },
+    { v:'radiologie',     l:'Radiologie',         desc:'Consultation et saisie des bulletins imagerie' },
   ];
 
   const { data, isLoading } = useQuery({ queryKey:['cl-personnel-admin'], queryFn:()=>cAPI.personnel().then(r=>r.data||[]) });

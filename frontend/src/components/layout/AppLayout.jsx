@@ -185,6 +185,8 @@ export default function AppLayout({ children }) {
     finance:        ['/clinique', '/clinique/caisse', '/clinique/facturation', '/clinique/assurance', '/clinique/dossiers-ass', '/clinique/stats'],
     rh:             ['/clinique', '/clinique/medecins'],
     pharmacien:     ['/clinique', '/clinique/pharmacie-interne', '/clinique/stock'],
+    laboratoire:    ['/clinique', '/clinique/resultats-examens'],
+    radiologie:     ['/clinique', '/clinique/resultats-examens'],
   };
   const navItemsBrutes = NAV[role] || [];
   const navItems = (role === 'clinique' && user.sous_role && VISIBILITE_SOUS_ROLE[user.sous_role])
