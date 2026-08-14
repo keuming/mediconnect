@@ -926,6 +926,16 @@ function PageDossiers() {
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'envoi"),
   });
+  const partagerConsultMut = useMutation({
+    mutationFn: ({id,partage}) => api.put(`/consultations/${id}/partager`, { partage }),
+    onSuccess: () => { toast.success("Statut de partage mis à jour"); qc.invalidateQueries(["cl-consults", selected?.id]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const partagerOrdMut = useMutation({
+    mutationFn: ({id,partage}) => api.put(`/ordonnances/${id}/partager`, { partage }),
+    onSuccess: () => { toast.success("Statut de partage mis à jour"); qc.invalidateQueries(["cl-ords", selected?.id]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
   const [showExamen, setShowExamen] = useState(false);
   const [codeRecherche, setCodeRecherche] = useState("");
   const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
@@ -1745,7 +1755,11 @@ function PageDossiers() {
                         {c.taille && <span>Taille: {c.taille}cm</span>}
                         {c.updated_at && c.updated_at!==c.created_at && <span>· modifiée le {fmtDate(c.updated_at)}</span>}
                       </div>
-                      <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                      <div style={{ display:"flex", gap:8, marginTop:10, alignItems:"center" }}>
+                        <button onClick={()=>partagerConsultMut.mutate({id:c.id, partage:!c.partage_reseau})}
+                          style={{padding:"4px 10px",background:c.partage_reseau?"rgba(37,99,235,.12)":"rgba(255,255,255,.06)",border:c.partage_reseau?"1px solid rgba(37,99,235,.35)":`1px solid ${C.border}`,borderRadius:6,color:c.partage_reseau?"#2563EB":C.muted,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          {c.partage_reseau?"🌐 Partagée":"🔒 Privée"}
+                        </button>
                         <button onClick={()=>{ setConsultationEnLecture(c); setShowDossierMedical(true); }} style={{padding:"4px 10px",background:"rgba(255,255,255,.06)",border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📄 Afficher</button>
                         {c.statut!=="annulee" && (<>
                           <button onClick={()=>{
@@ -1784,6 +1798,10 @@ function PageDossiers() {
                           <span style={{ fontSize:16, fontWeight:700, color:C.green }}>Ordonnance du {fmtDate(o.created_at)}</span>
                           <div style={{display:"flex",gap:8,alignItems:"center"}}>
                             <Badge color={st.c}>{st.l}</Badge>
+                            <button onClick={()=>partagerOrdMut.mutate({id:o.id, partage:!o.partage_reseau})}
+                              style={{padding:"3px 10px",background:o.partage_reseau?"rgba(37,99,235,.12)":"rgba(255,255,255,.06)",border:o.partage_reseau?"1px solid rgba(37,99,235,.35)":`1px solid ${C.border}`,borderRadius:6,color:o.partage_reseau?"#2563EB":C.muted,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                              {o.partage_reseau?"🌐 Partagée":"🔒 Privée"}
+                            </button>
                             {!o.destination && <button onClick={()=>{ setOrdonnanceAEnvoyer(o); setShowEnvoiOrd(true); }} style={{padding:"3px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:"#2563EB",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>}
                             <button onClick={()=>imprimerOrdonnance(o)} style={{padding:"3px 10px",background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ Imprimer</button>
                           </div>
