@@ -936,6 +936,11 @@ function PageDossiers() {
     onSuccess: () => { toast.success("Statut de partage mis à jour"); qc.invalidateQueries(["cl-ords", selected?.id]); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur"),
   });
+  const partagerBulletinMut = useMutation({
+    mutationFn: ({id,partage}) => api.put(`/bulletins/${id}/partager`, { partage }),
+    onSuccess: () => { toast.success("Statut de partage mis à jour"); qc.invalidateQueries(["cl-examens", selected?.id]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
   const [showExamen, setShowExamen] = useState(false);
   const [codeRecherche, setCodeRecherche] = useState("");
   const [patientCible, setPatientCible] = useState(null); // patient trouve par code (peut differer de `selected`)
@@ -2339,6 +2344,7 @@ function PageDossiers() {
                 <th style={{padding:"6px 8px"}}>Statut</th>
                 <th style={{padding:"6px 8px"}}>Résultat</th>
                 <th style={{padding:"6px 8px"}}>Norme</th>
+                <th style={{padding:"6px 8px"}}>Partage</th>
               </tr>
             </thead>
             <tbody>
@@ -2348,6 +2354,12 @@ function PageDossiers() {
                   <td style={{padding:"8px"}}><Badge color={i.statut==="valide"?"green":i.statut==="en_attente"?"amber":"gray"}>{i.statut||"—"}</Badge></td>
                   <td style={{padding:"8px",color:C.text}}>{i.interpretation||i.resultat||"—"}</td>
                   <td style={{padding:"8px",color:C.muted}}>{i.norme||"—"}</td>
+                  <td style={{padding:"8px"}}>
+                    <button onClick={()=>partagerBulletinMut.mutate({id:i.id, partage:!i.partage_reseau})}
+                      style={{padding:"3px 8px",background:i.partage_reseau?"rgba(37,99,235,.12)":"rgba(255,255,255,.06)",border:i.partage_reseau?"1px solid rgba(37,99,235,.35)":`1px solid ${C.border}`,borderRadius:6,color:i.partage_reseau?"#2563EB":C.muted,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      {i.partage_reseau?"🌐":"🔒"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
