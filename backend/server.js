@@ -527,7 +527,7 @@ app.post('/api/patients', auth, async (req, res) => {
 // (pas proprietaire_clinique_id, reserve a la vue financiere du
 // proprietaire) : ainsi les 39+ routes existantes qui filtrent par
 // req.user.clinique_id fonctionnent sans modification.
-const SOUS_ROLES_VALIDES = ['bureau_entrees', 'medecin', 'finance', 'rh'];
+const SOUS_ROLES_VALIDES = ['bureau_entrees', 'medecin', 'finance', 'rh', 'pharmacien', 'laboratoire', 'radiologie'];
 
 function requireSousRole(...autorises) {
   return (req, res, next) => {
