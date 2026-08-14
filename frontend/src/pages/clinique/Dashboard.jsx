@@ -285,17 +285,25 @@ function PageHome() {
   const modules = (user?.sous_role && MODULES_VISIBLES_PAR_SOUS_ROLE[user.sous_role])
     ? modulesTous.filter(m => MODULES_VISIBLES_PAR_SOUS_ROLE[user.sous_role].includes(m.path))
     : modulesTous;
+  // Les compteurs generaux (RDV, stock, medecins, patients) et les
+  // panneaux RDV du jour / Alertes stock exposent des donnees
+  // operationnelles de toute la clinique, sans rapport avec certains
+  // metiers (laboratoire, radiologie, RH) -- moindre privilege.
+  const SOUS_ROLES_SANS_STATS_GENERALES = ['laboratoire', 'radiologie', 'rh'];
+  const afficherStatsGenerales = !user?.sous_role || !SOUS_ROLES_SANS_STATS_GENERALES.includes(user.sous_role);
 
   return (
     <div>
       <PageHeader title={`🏥 Bienvenue, ${user?.nom||"Clinique"}`} subtitle={`${new Date().toLocaleDateString("fr-CI",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`} />
 
+      {afficherStatsGenerales && (
       <Grid cols={4} gap={14} style={{ marginBottom:20 }}>
         <Card label="RDV aujourd'hui"   value={rdvAujourdhui}                    icon="📅" color={C.teal}   sub={`${rdvConfirmes} confirmés`} onClick={()=>nav("planning")} />
         <Card label="Alertes stock"     value={alertesStock.length}              icon="⚠️" color={alertesStock.length>0?C.red:C.green} sub="Ruptures proches" onClick={()=>nav("stock")} />
         <Card label="Médecins actifs"   value={stats?.medecins_actifs||"—"}      icon="👨‍⚕️" color={C.blue}  sub="Disponibles" onClick={()=>nav("medecins")} />
         <Card label="Patients ce mois"  value={stats?.patients_mois||"—"}        icon="👤" color={C.purple} sub="Consultations" onClick={()=>nav("dossiers")} />
       </Grid>
+      )}
 
       {/* Modules grid */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:14, marginBottom:24 }}>
@@ -312,6 +320,7 @@ function PageHome() {
       </div>
 
       {/* RDV du jour + Alertes */}
+      {afficherStatsGenerales && (
       <Grid cols={2} gap={20}>
         <Panel title="📅 RDV du jour" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>nav("planning")}>Tout voir →</Btn>}>
           {rdvs.length===0
@@ -348,6 +357,7 @@ function PageHome() {
           }
         </Panel>
       </Grid>
+      )}
     </div>
   );
 }
