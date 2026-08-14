@@ -1123,6 +1123,38 @@ app.post('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) 
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
+// ── Partage explicite avec le reseau -- seul geste qui rend un
+// rapport visible par une AUTRE clinique via le code secret du
+// patient. Prive par defaut, jamais l'inverse. Seule la clinique
+// proprietaire peut partager son propre rapport.
+app.put('/api/consultations/:id/partager', auth, requireSousRole('medecin', 'bureau_entrees'), async (req, res) => {
+  const { partage } = req.body;
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db('UPDATE consultations SET partage_reseau=$1 WHERE id=$2 AND clinique_id=$3 RETURNING *', [!!partage, req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Consultation introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/bulletins/:id/partager', auth, requireSousRole('medecin', 'bureau_entrees', 'pharmacien'), async (req, res) => {
+  const { partage } = req.body;
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db('UPDATE bulletins SET partage_reseau=$1 WHERE id=$2 AND clinique_id=$3 RETURNING *', [!!partage, req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Bulletin introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/ordonnances/:id/partager', auth, requireSousRole('medecin', 'bureau_entrees', 'pharmacien'), async (req, res) => {
+  const { partage } = req.body;
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db('UPDATE ordonnances SET partage_reseau=$1 WHERE id=$2 AND clinique_id=$3 RETURNING *', [!!partage, req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Ordonnance introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.put('/api/ordonnances/:id', auth, async (req, res) => {
   const { statut } = req.body;
   try {
