@@ -1907,6 +1907,10 @@ function PageDossiers() {
                         <div style={{fontSize:15,fontWeight:700,color:C.text}}>{fmtDate(c.created_at)}{c.medecin_nom?` · ${nomMedecin(c.medecin_nom)}`:""}</div>
                         <div style={{fontSize:14,color:C.dim}}>{c.diagnostic||"—"}</div>
                       </div>
+                      <button onClick={()=>partagerConsultMut.mutate({id:c.id, partage:!c.partage_reseau})}
+                        style={{padding:"5px 10px",background:c.partage_reseau?"rgba(37,99,235,.12)":"rgba(255,255,255,.06)",border:c.partage_reseau?"1px solid rgba(37,99,235,.35)":`1px solid ${C.border}`,borderRadius:6,color:c.partage_reseau?"#2563EB":C.muted,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {c.partage_reseau?"🌐 Partagé":"🔒 Privé"}
+                      </button>
                       <Btn variant="outline" style={{padding:"6px 14px",fontSize:14}} onClick={()=>imprimerRapportConsultation(c)}>🖨️ Générer</Btn>
                     </div>
                   ))
