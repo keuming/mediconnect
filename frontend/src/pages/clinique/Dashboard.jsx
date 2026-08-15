@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import ConsultationWorkflow from "../shared/ConsultationWorkflow";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -362,6 +362,47 @@ function PageHome() {
   );
 }
 
+// ── Recherche patient reutilisable (nom, prenom, telephone ou code
+// secret) -- remplace la saisie manuelle partout ou une action
+// concerne un patient existant. Selectionner un resultat renseigne
+// a la fois patient_id (jamais de doublon) et patient_nom (affichage).
+function RecherchePatient({ value, onSelect, placeholder }) {
+  const [saisie, setSaisie] = useState(value || "");
+  const [ouvert, setOuvert] = useState(false);
+  useEffect(() => { setSaisie(value || ""); }, [value]);
+
+  const { data } = useQuery({
+    queryKey: ["recherche-patient-globale", saisie],
+    queryFn: () => api.get(`/patients?q=${encodeURIComponent(saisie)}`).then(r => r.data || []),
+    enabled: saisie.trim().length >= 2 && ouvert,
+  });
+
+  return (
+    <div style={{ position:"relative" }}>
+      <Inp label="Patient *" required value={saisie}
+        onChange={e => { setSaisie(e.target.value); setOuvert(true); }}
+        onFocus={() => setOuvert(true)}
+        placeholder={placeholder || "Nom, téléphone ou code secret…"} />
+      {ouvert && saisie.trim().length >= 2 && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:20, background:C.input, border:`1.5px solid ${C.border}`, borderRadius:10, marginTop:4, maxHeight:220, overflowY:"auto", boxShadow:"0 8px 24px rgba(0,0,0,.25)" }}>
+          {!data ? (
+            <div style={{ padding:12, fontSize:14, color:C.dim }}>Recherche…</div>
+          ) : data.length === 0 ? (
+            <div style={{ padding:12, fontSize:14, color:C.dim }}>Aucun patient trouvé</div>
+          ) : data.slice(0,8).map(p => (
+            <div key={p.id} onClick={() => { onSelect(p); setSaisie(`${p.prenom} ${p.nom}`); setOuvert(false); }}
+              style={{ padding:"10px 14px", cursor:"pointer", borderBottom:`1px solid ${C.border}` }}
+              onMouseDown={e=>e.preventDefault()}>
+              <div style={{ fontSize:15, fontWeight:700, color:C.text }}>{p.prenom} {p.nom}</div>
+              <div style={{ fontSize:13, color:C.dim }}>{p.telephone||"—"} {p.code_secret?`· ${p.code_secret}`:""}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  2. PAGE PLANNING & RDV
 // ════════════════════════════════════════════════════════════════════
@@ -392,7 +433,7 @@ function PagePlanning() {
   return (
     <div>
       <PageHeader title="📅 Planning & Rendez-vous" subtitle={`${rdvs.length} RDV pour le ${fmtDate(selectedDate)}`}
-        actions={<><Btn onClick={()=>setShowAdd(true)}>+ Nouveau RDV</Btn></>} />
+        actions={<><Btn onClick={()=>{ setForm(prev=>({...prev, date_rdv:selectedDate})); setShowAdd(true); }}>+ Nouveau RDV</Btn></>} />
 
       {/* Sélecteur de date */}
       <div style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
@@ -437,7 +478,7 @@ function PagePlanning() {
 
       <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📅 Nouveau rendez-vous">
         <Grid cols={2} gap={12}>
-          <Inp label="Nom du patient" required value={form.patient_nom} onChange={f("patient_nom")} placeholder="Koné Adjoua" />
+          <RecherchePatient value={form.patient_nom} onSelect={p=>setForm(prev=>({...prev, patient_id:p.id, patient_nom:`${p.prenom} ${p.nom}`}))} />
           <Inp label="Médecin" value={form.medecin_nom} onChange={f("medecin_nom")} placeholder="Dr. Traoré" />
           <Inp label="Date" type="date" required value={form.date_rdv} onChange={f("date_rdv")} />
           <Inp label="Heure" type="time" required value={form.heure_rdv} onChange={f("heure_rdv")} />
