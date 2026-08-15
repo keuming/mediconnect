@@ -3105,7 +3105,7 @@ function PageFacturation() {
       <div class="champ"><span class="label">Patient</span><span class="valeur">${f.patient_nom||'—'}</span></div>
       <div class="champ"><span class="label">Date</span><span class="valeur">${new Date(f.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}</span></div>
       <div class="champ"><span class="label">Statut</span><span class="valeur">${f.statut||'—'}</span></div>
-      <div class="total">${Number(f.montant||0).toLocaleString('fr-CI')} F</div>
+      <div class="total">${Number(f.montant_total||0).toLocaleString('fr-CI')} F</div>
       <div class="note">Résumé de facture — le détail ligne par ligne est disponible depuis Dossiers patients.</div>
       </body></html>
     `);
@@ -3115,8 +3115,8 @@ function PageFacturation() {
   };
   const { data: factData } = useQuery({ queryKey:["cl-factures"], queryFn:()=>cAPI.factures().then(r=>r.data||[]) });
   const factures = factData||[];
-  const totalEncaisse = factures.filter(f=>f.statut==="payee").reduce((s,f)=>s+(+f.montant||0),0);
-  const totalAttente  = factures.filter(f=>f.statut==="en_attente").reduce((s,f)=>s+(+f.montant||0),0);
+  const totalEncaisse = factures.filter(f=>f.statut==="payee").reduce((s,f)=>s+(+f.montant_total||0),0);
+  const totalAttente  = factures.filter(f=>f.statut==="en_attente").reduce((s,f)=>s+(+f.montant_total||0),0);
 
   const FINANCE_TABS = [
     { key:"tableau-bord", label:"Tableau de bord" },
@@ -3184,7 +3184,7 @@ function PageFacturation() {
                       <div style={{fontSize:17,fontWeight:700,color:C.text}}>{f.patient_nom||"Patient"}</div>
                       <div style={{fontSize:14,color:C.muted}}>{fmtDate(f.created_at)}</div>
                     </div>
-                    <span style={{fontWeight:800,color:C.text}}>{fmt(f.montant)} F</span>
+                    <span style={{fontWeight:800,color:C.text}}>{fmt(f.montant_total)} F</span>
                     <Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[f.statut]||"gray"}>{f.statut}</Badge>
                   </div>
                 ))
