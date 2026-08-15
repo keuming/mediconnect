@@ -373,17 +373,15 @@ app.get('/api/public/medecins', async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/medecins', auth, async (req, res) => {
-  // BUG CRITIQUE CORRIGE : la table medecins n'a ni colonne telephone ni
-  // email (contact du medecin porte par son compte utilisateurs lie, pas
-  // par la fiche medecins elle-meme). L'INSERT precedent les visait quand
-  // meme -> "column telephone does not exist" -> creation impossible pour
-  // toute clinique.
-  const { prenom, nom, specialite, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin } = req.body;
+  // La fiche medecins n'a ni colonne telephone ni email -- son contact
+  // est cense etre porte par un compte utilisateurs lie. Ce compte
+  // n'etait auparavant JAMAIS cree : le formulaire "Nouveau medecin"
+  // remplissait la fiche mais le medecin ne pouvait jamais se
+  // connecter. Corrige : si un mot de passe est fourni, le compte de
+  // connexion (sous_role='medecin') est cree dans la meme requete.
+  const { prenom, nom, specialite, tarif, experience_ans, jours_travail, horaires_debut, horaires_fin, email, password, telephone } = req.body;
   if (!prenom||!nom||!specialite) return res.status(400).json({ success:false, message:'Prénom, nom et spécialité requis' });
   try {
-    // jours_travail est un ARRAY Postgres : une chaine brute separee par
-    // virgules ("Lun,Mar,...") produit "malformed array literal" -- il
-    // faut un vrai tableau JS pour que le driver pg le serialise correctement.
     const joursArray = Array.isArray(jours_travail)
       ? jours_travail
       : (jours_travail || 'Lun,Mar,Mer,Jeu,Ven').split(',').map(s => s.trim()).filter(Boolean);
@@ -391,7 +389,28 @@ app.post('/api/medecins', auth, async (req, res) => {
       'INSERT INTO medecins (id,clinique_id,prenom,nom,specialite,tarif,experience_ans,jours_travail,horaires_debut,horaires_fin) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
       [uuid(), req.user?.clinique_id, prenom, nom, specialite, tarif||null, experience_ans||null, joursArray, horaires_debut||'08:00', horaires_fin||'17:00']
     );
-    res.status(201).json({ success:true, data:r.rows[0] });
+    const medecin = r.rows[0];
+
+    let compteCree = false, compteMessage = null;
+    if (email && password) {
+      const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+      if (exists.rows.length) {
+        compteMessage = 'Fiche médecin créée, mais cet email a déjà un compte — compte de connexion non recréé.';
+      } else if (password.length < 6) {
+        compteMessage = 'Fiche médecin créée, mais le mot de passe doit faire au moins 6 caractères — compte de connexion non créé.';
+      } else {
+        const bcrypt = require('bcryptjs');
+        const hash = await bcrypt.hash(password, 10);
+        await db(
+          `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,clinique_id,sous_role,is_active)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,'clinique',$5,$6,'medecin',true)`,
+          [email, hash, prenom, nom, telephone||null, req.user?.clinique_id]
+        );
+        compteCree = true;
+      }
+    }
+
+    res.status(201).json({ success:true, data: medecin, compteCree, compteMessage });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/medecins/:id', auth, async (req, res) => {
