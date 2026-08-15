@@ -1761,6 +1761,55 @@ app.get('/api/public/cliniques/:id/medecins', async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
+// ── Generation automatique des disponibilites d'un medecin, a partir
+// des champs deja renseignes sur sa fiche (horaires_debut, horaires_fin,
+// jours_travail) -- ces informations existent pour la quasi-totalite du
+// reseau, mais n'avaient jamais ete transformees en vraies plages
+// reservables dans "disponibilites". Fenetre de 30 jours, coherente avec
+// celle deja utilisee par la lecture publique.
+const JOURS_INDEX = { 'dim':0, 'lun':1, 'mar':2, 'mer':3, 'jeu':4, 'ven':5, 'sam':6 };
+async function genererDisponibilitesMedecin(medecin) {
+  if (!medecin.horaires_debut || !medecin.horaires_fin || !medecin.jours_travail) return 0;
+  const joursActifs = medecin.jours_travail.split(',').map(j => JOURS_INDEX[j.trim().toLowerCase().slice(0,3)]).filter(j => j !== undefined);
+  if (!joursActifs.length) return 0;
+
+  let cree = 0;
+  for (let i = 0; i < 30; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    if (!joursActifs.includes(d.getDay())) continue;
+    const dateStr = d.toISOString().split('T')[0];
+    const existe = await db('SELECT id FROM disponibilites WHERE medecin_id=$1 AND date=$2', [medecin.id, dateStr]);
+    if (existe.rows.length) continue;
+    await db(
+      `INSERT INTO disponibilites (id, medecin_id, clinique_id, date, heure_debut, heure_fin, statut, recurrent)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'disponible', true)`,
+      [medecin.id, medecin.clinique_id, dateStr, medecin.horaires_debut, medecin.horaires_fin]
+    );
+    cree++;
+  }
+  return cree;
+}
+
+// Generation en masse, reservee a l'administrateur -- a executer une
+// fois pour peupler tout le reseau existant, puis reutilisable si
+// besoin (idempotent : ne recree jamais une ligne deja existante pour
+// une date donnee).
+app.post('/api/admin/generer-disponibilites', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    const medecins = await db("SELECT * FROM medecins WHERE statut IS DISTINCT FROM 'Indisponible'");
+    let totalCree = 0, medecinsTraites = 0;
+    for (const m of medecins.rows) {
+      const n = await genererDisponibilitesMedecin(m);
+      if (n > 0) medecinsTraites++;
+      totalCree += n;
+    }
+    res.json({ success:true, message:`${totalCree} créneaux créés pour ${medecinsTraites} médecins`, totalCree, medecinsTraites });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── Creneaux disponibles d'un medecin (pour le flux public de RDV) ──
 // Genere des creneaux de 30 min a partir de la table disponibilites
 // (creee de longue date mais jamais exploitee par aucune route), en
