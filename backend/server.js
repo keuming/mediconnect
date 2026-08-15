@@ -1815,6 +1815,39 @@ app.post('/api/admin/generer-disponibilites', async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// ── Recherche patient publique, par TELEPHONE EXACT uniquement -- pas
+// de recherche par nom (exposerait des informations sur n'importe qui
+// a n'importe quel visiteur anonyme du site). Seul quelqu'un qui
+// connait deja le numero de telephone du patient peut le retrouver.
+// Champs retournes limites au strict necessaire pour pre-remplir le
+// formulaire de RDV, jamais le code_secret ni le dossier medical.
+app.get('/api/public/patients/recherche-telephone', async (req, res) => {
+  const { telephone, code_secret } = req.query;
+  try {
+    // Code secret : identifiant dedie (VigieCard), exact et sans
+    // ambiguite -- priorite sur le telephone si les deux sont fournis.
+    if (code_secret && code_secret.trim().length >= 4) {
+      const r = await db(
+        `SELECT prenom, nom, telephone, email, ville FROM patients WHERE UPPER(code_secret)=UPPER($1) LIMIT 1`,
+        [code_secret.trim()]
+      );
+      return res.json({ success: true, data: r.rows[0] || null });
+    }
+    if (!telephone || telephone.trim().length < 8) {
+      return res.json({ success: true, data: null });
+    }
+    const norm = telephone.replace(/[^0-9]/g, '').slice(-8);
+    const r = await db(
+      `SELECT prenom, nom, telephone, email, ville
+         FROM patients
+        WHERE RIGHT(REGEXP_REPLACE(telephone, '[^0-9]', '', 'g'), 8) = $1
+        LIMIT 1`,
+      [norm]
+    );
+    res.json({ success: true, data: r.rows[0] || null });
+  } catch(e) { res.json({ success: true, data: null }); }
+});
+
 // ── Creneaux disponibles d'un medecin (pour le flux public de RDV) ──
 // Genere des creneaux de 30 min a partir de la table disponibilites
 // (creee de longue date mais jamais exploitee par aucune route), en
