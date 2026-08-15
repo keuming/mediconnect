@@ -1277,6 +1277,53 @@ app.get('/api/ordonnances/:id/devis', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  HOSPITALISATION -- categories de chambres avec tarif journalier
+//  (VIP, Individuelle, Double, Reanimation, Box...). Meme principe que
+//  categories_actes : entrees globales (clinique_id NULL) + entrees
+//  propres a chaque clinique, deduplication par nom en lecture.
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/categories-chambres', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db(
+      `SELECT DISTINCT ON (nom) * FROM categories_chambres
+        WHERE is_active IS NOT false AND (clinique_id IS NULL OR clinique_id=$1)
+        ORDER BY nom, (clinique_id=$1) DESC NULLS LAST`,
+      [cid||null]
+    );
+    r.rows.sort((a,b) => parseFloat(a.tarif_journalier) - parseFloat(b.tarif_journalier));
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.post('/api/categories-chambres', auth, requireSousRole('bureau_entrees', 'finance'), async (req, res) => {
+  const { nom, tarif_journalier, description } = req.body;
+  if (!nom || tarif_journalier===undefined) return res.status(400).json({ success:false, message:'Nom et tarif journalier requis' });
+  try {
+    const r = await db(
+      `INSERT INTO categories_chambres (id, clinique_id, nom, tarif_journalier, description)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING *`,
+      [req.user?.clinique_id||null, nom, parseFloat(tarif_journalier), description||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/categories-chambres/:id', auth, requireSousRole('bureau_entrees', 'finance'), async (req, res) => {
+  const { nom, tarif_journalier, description, is_active } = req.body;
+  try {
+    const r = await db(
+      `UPDATE categories_chambres SET nom=COALESCE($1,nom), tarif_journalier=COALESCE($2,tarif_journalier),
+         description=COALESCE($3,description), is_active=COALESCE($4,is_active)
+       WHERE id=$5 RETURNING *`,
+      [nom, tarif_journalier!==undefined?parseFloat(tarif_journalier):null, description, is_active, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Catégorie introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── STOCK ─────────────────────────────────────────────────────────
 app.get('/api/stock', auth, async (req, res) => {
   try {
