@@ -3560,6 +3560,24 @@ app.post('/api/prise-en-charge', auth, requireSousRole('medecin', 'finance'), as
 });
 
 // ── Actes d'un patient (pour facturation) ────────────────────────
+// ── Detail ligne par ligne d'UNE facture precise (pas tout l'historique
+// du patient) -- passe par passage_id, commun aux deux tables. Ouverte
+// au bureau des entrees pour l'impression depuis le menu lateral.
+app.get('/api/factures/:id/detail', auth, requireSousRole('medecin', 'finance', 'bureau_entrees'), async (req, res) => {
+  try {
+    const facR = await db('SELECT * FROM factures WHERE id=$1', [req.params.id]);
+    if (!facR.rows.length) return res.status(404).json({ success:false, message:'Facture introuvable' });
+    const facture = facR.rows[0];
+
+    let lignes = [];
+    if (facture.passage_id) {
+      const r = await db('SELECT * FROM prise_en_charge_actes WHERE passage_id=$1 ORDER BY created_at', [facture.passage_id]);
+      lignes = r.rows;
+    }
+    res.json({ success:true, data: { facture, lignes } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/prise-en-charge/:patient_id', auth, requireSousRole('medecin', 'finance'), async (req, res) => {
   try {
     const r = await db(
