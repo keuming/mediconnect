@@ -1770,7 +1770,12 @@ app.get('/api/public/cliniques/:id/medecins', async (req, res) => {
 const JOURS_INDEX = { 'dim':0, 'lun':1, 'mar':2, 'mer':3, 'jeu':4, 'ven':5, 'sam':6 };
 async function genererDisponibilitesMedecin(medecin) {
   if (!medecin.horaires_debut || !medecin.horaires_fin || !medecin.jours_travail) return 0;
-  const joursActifs = medecin.jours_travail.split(',').map(j => JOURS_INDEX[j.trim().toLowerCase().slice(0,3)]).filter(j => j !== undefined);
+  // jours_travail est un ARRAY Postgres natif cote driver (pas une
+  // chaine "Lun,Mar,..."), mais on gere aussi le cas chaine par securite.
+  const listeJours = Array.isArray(medecin.jours_travail)
+    ? medecin.jours_travail
+    : String(medecin.jours_travail).split(',');
+  const joursActifs = listeJours.map(j => JOURS_INDEX[String(j).trim().toLowerCase().slice(0,3)]).filter(j => j !== undefined);
   if (!joursActifs.length) return 0;
 
   let cree = 0;
