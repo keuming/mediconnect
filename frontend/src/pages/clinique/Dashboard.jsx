@@ -965,6 +965,26 @@ function PageDossiers() {
   const [rdvConsult, setRdvConsult] = useState(null); // RDV depuis lequel on ouvre une consultation
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
+  const [showEditPatient, setShowEditPatient] = useState(false);
+  const [editPatientForm, setEditPatientForm] = useState({});
+  const editPatientMut = useMutation({
+    mutationFn: () => api.put(`/patients/${selected.id}`, editPatientForm),
+    onSuccess: () => {
+      toast.success("Patient mis à jour !");
+      qc.invalidateQueries(["cl-patients"]);
+      qc.invalidateQueries(["cl-patient-select", selected?.id]);
+      setShowEditPatient(false);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la mise à jour"),
+  });
+  const ouvrirEditionPatient = () => {
+    setEditPatientForm({
+      prenom: selected.prenom||"", nom: selected.nom||"", telephone: selected.telephone||"",
+      email: selected.email||"", groupe_sanguin: selected.groupe_sanguin||"",
+      allergies: selected.allergies||"", antecedents: selected.antecedents||"",
+    });
+    setShowEditPatient(true);
+  };
   const [showEnvoiOrd, setShowEnvoiOrd] = useState(false);
   const [ordonnanceAEnvoyer, setOrdonnanceAEnvoyer] = useState(null);
   const [destinationChoisie, setDestinationChoisie] = useState("interne");
@@ -1735,7 +1755,10 @@ function PageDossiers() {
             {/* Tab: Infos */}
             {activeTab==="infos" && (
               <>
-              <Panel title="Informations personnelles" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={imprimerRapportMedical}>🖨️ Rapport médical</Btn>}>
+              <Panel title="Informations personnelles" actions={<div style={{display:"flex",gap:8}}>
+                <button onClick={ouvrirEditionPatient} style={{padding:"6px 14px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:8,color:"#2563EB",fontSize:16,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier patient</button>
+                <Btn style={{padding:"6px 14px",fontSize:16}} onClick={imprimerRapportMedical}>🖨️ Rapport médical</Btn>
+              </div>}>
                 <Grid cols={2} gap={12}>
                   {[["Prénom",selected.prenom],["Nom",selected.nom],["Téléphone",selected.telephone],["Email",selected.email],["Date de naissance",fmtDate(selected.date_naissance)],["Groupe sanguin",selected.groupe_sanguin],["Code secret",selected.code_secret]].map(([k,v])=>(
                     <div key={k} style={{ background:C.hover, borderRadius:8, padding:"10px 14px" }}>
@@ -1749,6 +1772,19 @@ function PageDossiers() {
               <div style={{marginTop:16}}><PanelContactsUrgence patient={selected} /></div>
               </>
             )}
+
+            <Modal open={showEditPatient} onClose={()=>setShowEditPatient(false)} title="✏️ Modifier le patient" width={560}>
+              <Grid cols={2} gap={12}>
+                <Inp label="Prénom" value={editPatientForm.prenom} onChange={e=>setEditPatientForm(f=>({...f,prenom:e.target.value}))} />
+                <Inp label="Nom" value={editPatientForm.nom} onChange={e=>setEditPatientForm(f=>({...f,nom:e.target.value}))} />
+                <Inp label="Téléphone" value={editPatientForm.telephone} onChange={e=>setEditPatientForm(f=>({...f,telephone:e.target.value}))} />
+                <Inp label="Email" value={editPatientForm.email} onChange={e=>setEditPatientForm(f=>({...f,email:e.target.value}))} />
+                <Sel label="Groupe sanguin" value={editPatientForm.groupe_sanguin} onChange={e=>setEditPatientForm(f=>({...f,groupe_sanguin:e.target.value}))} options={["",...bloodGroups]} />
+              </Grid>
+              <Inp label="Allergies connues" value={editPatientForm.allergies} onChange={e=>setEditPatientForm(f=>({...f,allergies:e.target.value}))} placeholder="Pénicilline, Aspirine…" />
+              <Inp label="Antécédents médicaux" value={editPatientForm.antecedents} onChange={e=>setEditPatientForm(f=>({...f,antecedents:e.target.value}))} placeholder="Diabète, HTA, Opération…" />
+              <Btn style={{width:"100%",marginTop:8}} loading={editPatientMut.isPending} onClick={()=>editPatientMut.mutate()}>Enregistrer les modifications</Btn>
+            </Modal>
 
             {/* Tab: Consultations */}
             {activeTab==="consultations" && (
