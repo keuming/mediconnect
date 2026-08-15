@@ -431,7 +431,7 @@ app.get('/api/patients', auth, async (req, res) => {
     let sql, params = [];
     if (q) {
       params.push('%'+q.toLowerCase()+'%');
-      sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1)`;
+      sql = `SELECT * FROM patients WHERE (LOWER(prenom) LIKE $1 OR LOWER(nom) LIKE $1 OR telephone LIKE $1 OR LOWER(code_secret) LIKE $1)`;
       if (cid) {
         params.push(cid);
         const n = params.length;
