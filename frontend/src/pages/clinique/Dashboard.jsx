@@ -570,6 +570,7 @@ function PanelCartePatient({ patient }) {
   // Par defaut, coherent avec le statut d'assurance ACTUEL du patient --
   // le bureau des entrees peut toujours decocher pour un acte precis.
   const [estAssure, setEstAssure] = useState(!!patient?.assurance);
+  const [quantiteActe, setQuantiteActe] = useState("1");
   const [editAssurance, setEditAssurance] = useState(false);
   const [assuranceForm, setAssuranceForm] = useState({ est_assure: !!patient?.assurance, assurance: patient?.assurance||"", numero_police: patient?.numero_police||"", assureur_id: patient?.assureur_id||"", formule_assurance_id: patient?.formule_assurance_id||"" });
 
@@ -611,12 +612,13 @@ function PanelCartePatient({ patient }) {
     onError: e => toast.error(e?.response?.data?.message || "Erreur à l'ouverture"),
   });
   const ajouterMut = useMutation({
-    mutationFn: () => cAPI.ajouterActe(passageActif.id, { acte_id: acteChoisi, est_assure: estAssure }),
+    mutationFn: () => cAPI.ajouterActe(passageActif.id, { acte_id: acteChoisi, est_assure: estAssure, quantite: parseInt(quantiteActe)||1 }),
     onSuccess: () => {
       toast.success("Acte ajouté !");
       qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
       qc.invalidateQueries(["cl-passage-actif", patient.id]);
       setActeChoisi("");
+      setQuantiteActe("1");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
   });
@@ -724,11 +726,13 @@ function PanelCartePatient({ patient }) {
         options={[{v:"",l:"— Aucun médecin affecté —"}, ...(medecinsListe||[]).map(m=>({v:m.id, l:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`}))]}
         style={{marginBottom:16}} />
 
-      <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1.8fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1.1fr 1.5fr 0.7fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
         <Sel label="Type d'actes" value={typeActeChoisi} onChange={e=>{ setTypeActeChoisi(e.target.value); setActeChoisi(""); }}
           options={[{v:"",l:"— Choisir un type —"}, ...(categoriesActes||[]).map(c=>({v:c.id, l:c.nom}))]} />
         <Sel label="Acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)} disabled={!typeActeChoisi}
           options={[{v:"",l:typeActeChoisi?"— Choisir un acte —":"Choisir un type d'abord"}, ...(catalogue||[]).filter(a=>a.categorie_id===typeActeChoisi).map(a=>({v:a.id, l:`${a.libelle} — ${fmt(a.tarif_base)} F`}))]} />
+        <Inp label={(catalogue||[]).find(a=>a.id===acteChoisi)?.libelle?.toLowerCase().includes("suture") ? "Nb points" : "Quantité"}
+          type="number" min="1" value={quantiteActe} onChange={e=>setQuantiteActe(e.target.value)} />
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
           <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
         </label>
