@@ -2057,10 +2057,11 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
       blocs.push(`
         SELECT c.id, c.nom, c.ville, c.pays_code, c.adresse, c.telephone, c.email,
                c.latitude, c.longitude, 'clinique' AS type,
-               array_remove(array_agg(DISTINCT sc.nom), NULL) AS specialites,
+               array_remove(array_agg(DISTINCT sc.nom) || array_agg(DISTINCT m.specialite), NULL) AS specialites,
                NULL::text[] AS analyses, NULL::text[] AS equipements
           FROM cliniques c
           LEFT JOIN specialites_clinique sc ON sc.clinique_id = c.id AND sc.disponible IS NOT false
+          LEFT JOIN medecins m ON m.clinique_id = c.id AND m.statut IS DISTINCT FROM 'Indisponible'
          WHERE (c.is_active IS NOT false)
          GROUP BY c.id
       `);
