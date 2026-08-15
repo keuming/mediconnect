@@ -288,16 +288,19 @@ export default function RDV() {
   }, [clinique, specialite]);
 
   // Charger disponibilités quand médecin sélectionné
+  const [chargementDispos, setChargementDispos] = useState(false);
   useEffect(() => {
     if (!medecin) return;
     if (medecin.id.startsWith('md-')) {
       setDispos(genDispo());
       return;
     }
+    setChargementDispos(true);
     fetch(`${API}/public/medecins/${medecin.id}/disponibilites`)
       .then(r => r.json())
-      .then(d => setDispos(d.data || genDispo()))
-      .catch(() => setDispos(genDispo()));
+      .then(d => setDispos((d.data && d.data.length) ? d.data : []))
+      .catch(() => setDispos([]))
+      .finally(() => setChargementDispos(false));
   }, [medecin]);
 
   const submitRDV = async () => {
@@ -482,8 +485,10 @@ export default function RDV() {
                 {medecin?.id === m.id && (
                   <div style={{ background: hexToRgba(V.green, .06), borderRadius: 10, padding: 14, marginTop: 4 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: V.green, marginBottom: 10 }}>📅 Créneaux disponibles</div>
-                    {dispos.length === 0
-                      ? <div style={{ color: V.dim, fontSize: 12 }}>Chargement des disponibilités…</div>
+                    {chargementDispos
+                      ? <div style={{ color: V.dim, fontSize: 12 }}>⏳ Chargement des disponibilités…</div>
+                      : dispos.length === 0
+                      ? <div style={{ color: V.dim, fontSize: 12 }}>Aucun créneau disponible actuellement pour ce médecin — contactez directement la clinique.</div>
                       : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {dispos.slice(0, 16).map(d => (
                             <button key={d} onClick={e => { e.stopPropagation(); setCreneau(d); }}
