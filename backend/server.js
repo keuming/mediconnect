@@ -2141,7 +2141,7 @@ app.get('/api/public/recherche-etablissements', async (req, res) => {
     // est mele a une autre expression dans le meme ORDER BY. Le tri par
     // distance se fait donc en JS ci-dessous, sur un resultat deja borne
     // a 200 lignes : negligeable en cout, et evite le piege Postgres.
-    sql += ' ORDER BY t.nom ASC LIMIT 200';
+    sql += ' ORDER BY t.nom ASC LIMIT 500';
 
     const r = await db(sql, params);
     let rows = r.rows;
