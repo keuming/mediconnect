@@ -289,6 +289,8 @@ export default function RDV() {
 
   // Charger disponibilités quand médecin sélectionné
   const [chargementDispos, setChargementDispos] = useState(false);
+  const [rechercheValeur, setRechercheValeur] = useState('');
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
   useEffect(() => {
     if (!medecin) return;
     if (medecin.id.startsWith('md-')) {
@@ -576,6 +578,37 @@ export default function RDV() {
               <div style={{ fontSize: 13, fontWeight: 700, color: V.green, marginBottom: 14 }}>
                 {statut === 'patient' ? '👤 Vos informations' : '👤 Informations du patient'}
               </div>
+
+              <div style={{ background: hexToRgba(V.text, .03), border: `1px solid ${V.border}`, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: V.text, marginBottom: 8 }}>Déjà patient MediConnect ?</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input value={rechercheValeur} onChange={e => setRechercheValeur(e.target.value)}
+                    placeholder="Téléphone ou code secret (ex: MC-KT-5069)"
+                    style={{ flex: 1, minWidth: 200, padding: '9px 12px', background: V.input, border: `1px solid ${V.border}`, borderRadius: 8, color: V.text, fontSize: 13, outline: 'none' }} />
+                  <button onClick={async () => {
+                      if (!rechercheValeur.trim()) return;
+                      setRechercheEnCours(true);
+                      try {
+                        const estCode = /^MC-/i.test(rechercheValeur.trim());
+                        const param = estCode ? `code_secret=${encodeURIComponent(rechercheValeur.trim())}` : `telephone=${encodeURIComponent(rechercheValeur.trim())}`;
+                        const r = await fetch(`${API}/public/patients/recherche-telephone?${param}`);
+                        const d = await r.json();
+                        if (d.data) {
+                          setPatient(p => ({ ...p, prenom: d.data.prenom || '', nom: d.data.nom || '', telephone: d.data.telephone || '', email: d.data.email || '', ville_residence: d.data.ville || p.ville_residence }));
+                          toast.success('Vos informations ont été retrouvées !');
+                        } else {
+                          toast.error('Aucun patient trouvé — remplissez le formulaire manuellement');
+                        }
+                      } catch (e) { toast.error('Erreur de recherche'); }
+                      setRechercheEnCours(false);
+                    }}
+                    disabled={rechercheEnCours}
+                    style={{ padding: '9px 16px', background: V.green, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    {rechercheEnCours ? 'Recherche…' : '🔎 Me retrouver'}
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {inp('Prénom *', 'prenom', patient, setPatient, { placeholder: 'Prénom du patient' })}
                 {inp('Nom *', 'nom', patient, setPatient, { placeholder: 'Nom du patient' })}
