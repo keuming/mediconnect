@@ -3083,30 +3083,59 @@ function PageFacturation() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("tableau-bord");
 
-  // Impression simple depuis la liste globale des factures -- pas de
-  // detail ligne par ligne disponible ici (aucune route /api/factures/:id
-  // pour l'instant), document volontairement marque comme resume.
-  const imprimerFactureResume = (f) => {
+  // Impression avec le vrai detail ligne par ligne, recupere via
+  // /api/factures/:id/detail (jointure sur passage_id). La fenetre est
+  // ouverte immediatement (evite le blocage popup des navigateurs sur
+  // un appel asynchrone), puis remplie une fois les donnees recues.
+  const imprimerFactureResume = async (f) => {
     const win = window.open('', '_blank');
+    win.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement de la facture…</p>');
+    let lignes = [];
+    try {
+      const r = await api.get(`/factures/${f.id}/detail`);
+      lignes = r.data?.lignes || [];
+    } catch(e) { /* fallback : impression sans detail si la requete echoue */ }
+
+    const lignesHtml = lignes.length
+      ? lignes.map(l => `
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:center;">${l.quantite}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.prix_unitaire).toLocaleString('fr-CI')} F</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.part_patient||0).toLocaleString('fr-CI')} F</td>
+        </tr>`).join('')
+      : `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
+
+    win.document.open();
     win.document.write(`
       <html><head><title>Facture ${f.reference||''}</title>
       <style>
-        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:520px;margin:0 auto;}
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
         h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
         .label{color:#8BA0B5;}
         .valeur{font-weight:700;}
-        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:16px;}
-        .note{font-size:11px;color:#8BA0B5;margin-top:24px;text-align:center;}
+        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
+        th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
+        .totaux{margin-top:16px;}
+        .totaux .champ{font-size:15px;}
+        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
         @media print{button{display:none;}}
       </style></head><body>
-      <h2>📄 Résumé de facture</h2>
+      <h2>📄 Facture</h2>
       <div class="champ"><span class="label">Référence</span><span class="valeur">${f.reference||'—'}</span></div>
       <div class="champ"><span class="label">Patient</span><span class="valeur">${f.patient_nom||'—'}</span></div>
       <div class="champ"><span class="label">Date</span><span class="valeur">${new Date(f.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}</span></div>
       <div class="champ"><span class="label">Statut</span><span class="valeur">${f.statut||'—'}</span></div>
-      <div class="total">${Number(f.montant_total||0).toLocaleString('fr-CI')} F</div>
-      <div class="note">Résumé de facture — le détail ligne par ligne est disponible depuis Dossiers patients.</div>
+      <table>
+        <thead><tr><th>Acte</th><th style="text-align:center;">Qté</th><th style="text-align:right;">Prix unit.</th><th style="text-align:right;">À charge patient</th></tr></thead>
+        <tbody>${lignesHtml}</tbody>
+      </table>
+      <div class="totaux">
+        <div class="champ"><span class="label">Part assurance</span><span class="valeur">${Number(f.montant_assur||0).toLocaleString('fr-CI')} F</span></div>
+        <div class="champ"><span class="label">Ticket modérateur (patient)</span><span class="valeur">${Number(f.ticket_moder||0).toLocaleString('fr-CI')} F</span></div>
+      </div>
+      <div class="total">Total : ${Number(f.montant_total||0).toLocaleString('fr-CI')} F</div>
       </body></html>
     `);
     win.document.close();
