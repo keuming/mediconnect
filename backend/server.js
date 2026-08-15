@@ -1438,7 +1438,7 @@ app.get('/api/caisses', auth, requireSousRole('finance', 'bureau_entrees'), asyn
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.post('/api/caisses', auth, requireSousRole('finance'), async (req, res) => {
+app.post('/api/caisses', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { nom, operateur } = req.body;
   if (!nom) return res.status(400).json({ success:false, message:'Nom de la caisse requis' });
   const cid = req.user?.clinique_id;
