@@ -3079,6 +3079,57 @@ function PanelGestionActes() {
           addMut.mutate();
         }}>Créer</Btn>
       </Modal>
+
+      <PanelGestionChambres />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  HOSPITALISATION -- categories de chambres et leur tarif journalier
+//  (VIP, Individuelle, Double, Reanimation, Box...). Meme principe que
+//  la gestion des actes juste au-dessus.
+// ══════════════════════════════════════════════════════════════════
+function PanelGestionChambres() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ nom:"", tarif_journalier:"", description:"" });
+
+  const { data: chambres, isLoading } = useQuery({ queryKey:["cl-categories-chambres"], queryFn:()=>api.get("/categories-chambres").then(r=>r.data||[]) });
+
+  const addMut = useMutation({
+    mutationFn: () => api.post("/categories-chambres", { ...form, tarif_journalier:parseInt(form.tarif_journalier)||0 }),
+    onSuccess: () => { toast.success("Catégorie de chambre créée !"); qc.invalidateQueries(["cl-categories-chambres"]); setShowAdd(false); setForm({ nom:"", tarif_journalier:"", description:"" }); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+
+  return (
+    <div style={{marginTop:24}}>
+      <Panel title="🏨 Hospitalisation — Catégories de chambres"
+        actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAdd(true)}>+ Nouvelle catégorie</Btn>}>
+        {isLoading ? <Loader/> : (chambres||[]).length===0
+          ? <Empty icon="🏨" title="Aucune catégorie de chambre" />
+          : (chambres||[]).map(c => (
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:600,color:C.text}}>{c.nom}</div>
+                {c.description && <div style={{fontSize:13,color:C.muted}}>{c.description}</div>}
+              </div>
+              <span style={{fontWeight:800,color:C.green,minWidth:110,textAlign:"right"}}>{fmt(c.tarif_journalier)} F/jour</span>
+            </div>
+          ))
+        }
+      </Panel>
+
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🏨 Nouvelle catégorie de chambre">
+        <Inp label="Nom *" required value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Ex: Suite VIP" />
+        <Inp label="Tarif journalier (FCFA) *" required type="number" value={form.tarif_journalier} onChange={e=>setForm(f=>({...f,tarif_journalier:e.target.value}))} />
+        <Inp label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Ex: Chambre individuelle, climatisée…" />
+        <Btn style={{width:"100%"}} loading={addMut.isPending} onClick={()=>{
+          if(!form.nom||!form.tarif_journalier){toast.error("Nom et tarif journalier requis");return;}
+          addMut.mutate();
+        }}>Créer</Btn>
+      </Modal>
     </div>
   );
 }
