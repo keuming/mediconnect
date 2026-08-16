@@ -14,6 +14,7 @@ import DashboardPharmacie        from './pages/pharmacie/Dashboard';
 import DashboardLivreur          from './pages/livreur/Dashboard';
 import DashboardAdmin            from './pages/admin/Dashboard';
 import DashboardOptique          from './pages/optique/Dashboard';
+import DashboardDentaire         from './pages/dentaire/Dashboard';
 import DashboardMinistere        from './pages/admin/DashboardMinistere';
 import DashboardAssureur         from './pages/assureur/Dashboard';
 import DashboardImagerie         from './pages/imagerie/Dashboard';
@@ -77,6 +78,7 @@ const RoleRedirect = () => {
     admin:                '/admin',
     ministere:            '/ministere',
     optique:              '/optique',
+    dentaire:             '/dentaire',
     assureur:             '/assureur',
     imagerie:             '/imagerie',
     laboratoire:          '/laboratoire',
@@ -197,6 +199,13 @@ export default function App() {
             <Route path="/optique/*" element={
               <PrivateRoute roles={['optique','admin']}>
                 <DashboardOptique />
+              </PrivateRoute>
+            } />
+
+            {/* ── Cabinet Dentaire ──────────────────────────────── */}
+            <Route path="/dentaire/*" element={
+              <PrivateRoute roles={['dentaire','admin']}>
+                <DashboardDentaire />
               </PrivateRoute>
             } />
 
