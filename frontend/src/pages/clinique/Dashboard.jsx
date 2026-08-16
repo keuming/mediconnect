@@ -265,7 +265,7 @@ function PageHome() {
     { icon:"👤", label:"Dossiers patients", path:"dossiers",    color:C.blue,   stat:"DME complets" },
     { icon:"🩺", label:"Consultation",      path:"consultation",color:C.green,  stat:"En cours" },
     { icon:"💰", label:"Caisse",            path:"caisse",      color:C.amber,  stat:"Ouverte" },
-    { icon:"📄", label:"Facturation",       path:"facturation", color:C.purple, stat:"États financiers" },
+    { icon:"📄", label:"Gestion financière", path:"facturation", color:C.purple, stat:"États financiers" },
     { icon:"👨‍⚕️", label:"Médecins & RH",   path:"medecins",    color:"#0891B2", stat:"Personnel" },
     { icon:"💊", label:"Stock",             path:"stock",       color:alertesStock.length>0?C.red:C.green, stat:alertesStock.length>0?`${alertesStock.length} alertes`:stock.length+" produits" },
     { icon:"🛡️", label:"Assurances",        path:"assurance",   color:C.teal,   stat:"Tiers-payant" },
