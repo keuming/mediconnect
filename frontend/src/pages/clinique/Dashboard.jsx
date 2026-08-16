@@ -91,6 +91,7 @@ const cAPI = {
   ouvrirCaisse:  (caisseId) => api.post("/caisse/ouvrir", { caisse_id: caisseId }),
   encaisser:     (caisseId, d) => api.post("/caisse/encaisser", { ...d, caisse_id: caisseId }),
   decaisser:     (caisseId, d) => api.post("/caisse/decaisser", { ...d, caisse_id: caisseId }),
+  historiqueCaisse: (caisseId) => api.get(`/caisse/${caisseId}/historique`),
   cloturerCaisse:(caisseId) => api.post("/caisse/cloturer", { caisse_id: caisseId }),
   // Assurances
   dossiers:     () => api.get("/assurances"),
@@ -4163,6 +4164,7 @@ function PageCaisse() {
   const [referenceEncaisse, setReferenceEncaisse] = useState("");
   const [montantDecaisse, setMontantDecaisse] = useState("");
   const [motifDecaisse, setMotifDecaisse] = useState("");
+  const [showHistorique, setShowHistorique] = useState(false);
 
   const { data: caissesData, isLoading: chargementCaisses } = useQuery({
     queryKey: ["cl-caisses"], queryFn: () => cAPI.caisses().then(r => r.data || []),
@@ -4177,6 +4179,40 @@ function PageCaisse() {
 
   const caisseActive = caisses.find(c => c.id === caisseId) || null;
   const sessionOuverte = caisseActive?.statut_session === "ouverte";
+
+  const { data: historiqueData } = useQuery({
+    queryKey: ["cl-caisse-historique", caisseId],
+    queryFn: () => cAPI.historiqueCaisse(caisseId).then(r => r.data.data || []),
+    enabled: !!caisseId && showHistorique,
+  });
+  const historique = historiqueData || [];
+
+  const imprimerHistorique = () => {
+    const w = window.open('', '_blank');
+    const lignes = historique.map(m => `
+      <tr>
+        <td>${new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</td>
+        <td>${m.type === 'encaissement' ? '📥 Encaissement' : '📤 Décaissement'}</td>
+        <td>${m.reference || '—'}</td>
+        <td>${m.mode_paiement || '—'}</td>
+        <td style="text-align:right;color:${m.type==='encaissement'?'#0A8F58':'#D97706'}">${m.type==='encaissement'?'+':'-'}${fmt(m.montant)} F</td>
+      </tr>`).join('');
+    w.document.write(`
+      <html><head><title>Historique caisse</title>
+      <style>
+        body{font-family:sans-serif;padding:32px;color:#16211C}
+        h1{font-size:20px;margin-bottom:4px} p{color:#5B6B78;margin-top:0}
+        table{width:100%;border-collapse:collapse;margin-top:20px}
+        th{text-align:left;padding:8px;border-bottom:2px solid #16211C;font-size:12px;text-transform:uppercase}
+        td{padding:8px;border-bottom:1px solid #E1E7EC;font-size:13px}
+      </style></head><body>
+      <h1>💰 ${caisseActive?.nom || 'Caisse'} — Historique</h1>
+      <p>${new Date().toLocaleDateString('fr-CI',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+      <table><thead><tr><th>Heure</th><th>Type</th><th>Réf. / Motif</th><th>Mode</th><th>Montant</th></tr></thead>
+      <tbody>${lignes || '<tr><td colspan="5" style="text-align:center;padding:24px">Aucun mouvement</td></tr>'}</tbody></table>
+      </body></html>`);
+    w.document.close(); w.print();
+  };
 
   const addCaisseMut = useMutation({
     mutationFn: d => cAPI.addCaisse(d),
@@ -4200,6 +4236,7 @@ function PageCaisse() {
     onSuccess: () => {
       toast.success("Encaissement enregistré !");
       qc.invalidateQueries(["cl-caisses"]);
+      qc.invalidateQueries(["cl-caisse-historique", caisseId]);
       setMontantEncaisse(""); setReferenceEncaisse("");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'encaissement"),
@@ -4210,6 +4247,7 @@ function PageCaisse() {
     onSuccess: () => {
       toast.success("Décaissement enregistré !");
       qc.invalidateQueries(["cl-caisses"]);
+      qc.invalidateQueries(["cl-caisse-historique", caisseId]);
       setMontantDecaisse(""); setMotifDecaisse("");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors du décaissement"),
@@ -4256,11 +4294,57 @@ function PageCaisse() {
             </Panel>
           ) : (
             <>
-              <Grid cols={3} gap={14} style={{marginBottom:20}}>
-                <Card label="Encaissements" value={`${fmt(caisseActive.total_encaisse||0)} F`} icon="✅" color={C.green} />
-                <Card label="Décaissements" value={`${fmt(caisseActive.total_decaisse||0)} F`} icon="📤" color={C.amber} />
-                <Card label="Solde caisse" value={`${fmt((Number(caisseActive.total_encaisse)||0)-(Number(caisseActive.total_decaisse)||0))} F`} icon="💰" color={C.teal} />
-              </Grid>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}}>
+                <div style={{background:"linear-gradient(135deg,rgba(10,143,88,.14),rgba(10,143,88,.04))",border:`1px solid ${C.green}40`,borderRadius:16,padding:20,boxShadow:"0 4px 16px rgba(10,143,88,.08)"}}>
+                  <div style={{fontSize:26,marginBottom:6}}>✅</div>
+                  <div style={{fontSize:24,fontWeight:800,color:C.green}}>{fmt(caisseActive.total_encaisse||0)} F</div>
+                  <div style={{fontSize:13,color:C.muted,marginTop:2}}>Encaissements du jour</div>
+                </div>
+                <div style={{background:"linear-gradient(135deg,rgba(217,119,6,.14),rgba(217,119,6,.04))",border:`1px solid ${C.amber}40`,borderRadius:16,padding:20,boxShadow:"0 4px 16px rgba(217,119,6,.08)"}}>
+                  <div style={{fontSize:26,marginBottom:6}}>📤</div>
+                  <div style={{fontSize:24,fontWeight:800,color:C.amber}}>{fmt(caisseActive.total_decaisse||0)} F</div>
+                  <div style={{fontSize:13,color:C.muted,marginTop:2}}>Décaissements du jour</div>
+                </div>
+                <div style={{background:"linear-gradient(135deg,rgba(13,148,136,.18),rgba(13,148,136,.05))",border:`1.5px solid ${C.teal}`,borderRadius:16,padding:20,boxShadow:"0 6px 20px rgba(13,148,136,.15)"}}>
+                  <div style={{fontSize:26,marginBottom:6}}>💰</div>
+                  <div style={{fontSize:26,fontWeight:800,color:C.teal}}>{fmt((Number(caisseActive.total_encaisse)||0)-(Number(caisseActive.total_decaisse)||0))} F</div>
+                  <div style={{fontSize:13,color:C.muted,marginTop:2}}>Solde en caisse</div>
+                </div>
+              </div>
+
+              <div style={{marginBottom:20}}>
+                <Btn variant="outline" onClick={()=>setShowHistorique(v=>!v)}>
+                  {showHistorique ? "▲ Masquer l'historique" : "▼ Voir l'historique du jour"}
+                </Btn>
+                {showHistorique && (
+                  <Panel style={{marginTop:12}} title="🧾 Mouvements du jour"
+                    actions={<Btn variant="outline" small onClick={imprimerHistorique}>🖨️ Imprimer</Btn>}>
+                    {historique.length === 0
+                      ? <p style={{color:C.dim,textAlign:"center",padding:20}}>Aucun mouvement enregistré aujourd'hui</p>
+                      : (
+                        <div style={{maxHeight:320,overflowY:"auto"}}>
+                          {historique.map(m => (
+                            <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+                              <div>
+                                <div style={{fontSize:13,fontWeight:600,color:C.text}}>
+                                  {m.type==="encaissement" ? "📥" : "📤"} {m.reference || (m.type==="encaissement"?"Encaissement":"Décaissement")}
+                                </div>
+                                <div style={{fontSize:11,color:C.dim}}>
+                                  {new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}
+                                  {m.mode_paiement && ` · ${m.mode_paiement}`}
+                                  {m.utilisateur_nom && ` · ${m.utilisateur_nom}`}
+                                </div>
+                              </div>
+                              <div style={{fontSize:15,fontWeight:800,color:m.type==="encaissement"?C.green:C.amber}}>
+                                {m.type==="encaissement"?"+":"-"}{fmt(m.montant)} F
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </Panel>
+                )}
+              </div>
               <Grid cols={2} gap={20}>
                 <Panel title="📥 Encaissement">
                   <Inp label="Montant (FCFA)" type="number" placeholder="5000" value={montantEncaisse} onChange={e=>setMontantEncaisse(e.target.value)} style={{marginBottom:10}} />
