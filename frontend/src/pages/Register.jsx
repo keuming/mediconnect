@@ -17,6 +17,12 @@ const ROLES = [
   { value: 'ministere',           label: 'Ministère de la Santé', icon: '🏛️', desc: 'Dashboard épidémiologique national' },
 ];
 
+const SERVICES_DISPONIBLES = [
+  'Médecine générale','Cardiologie','Pédiatrie','Gynécologie','Neurologie',
+  'Dermatologie','ORL','Ophtalmologie','Orthopédie','Psychiatrie',
+  'Radiologie','Chirurgie','Dentaire',
+];
+
 const C = {
   bg:'#FFFFFF', card:'#F7F9FA', input:'#F0F3F5',
   border:'#E1E7EC', text:'#16211C', muted:'#5B6B78', dim:'#94A3AF',
@@ -41,6 +47,7 @@ export default function Register() {
   const [cliniquesList, setCliniquesList]   = useState([]);
   const [cliniqueSel, setCliniqueSel]       = useState(null); // {id, nom, ville} ou null
   const [cliniquesLoaded, setCliniquesLoaded] = useState(false);
+  const [servicesOfferts, setServicesOfferts] = useState([]);
   const { register, loading } = useAuthStore();
 
   const chargerCliniques = async () => {
@@ -101,6 +108,7 @@ export default function Register() {
       // prenom/nom a la place (bug source des doublons "Dr X").
       nom_clinique: role === 'clinique' ? (cliniqueSel?.nom || extraForm.nom_etab) : undefined,
       clinique_id_existante: role === 'clinique' ? (cliniqueSel?.id || undefined) : undefined,
+      specialites: role === 'clinique' ? servicesOfferts : undefined,
     };
     delete payload.confirm;
 
@@ -310,6 +318,21 @@ export default function Register() {
                   </select>
                 </div>
                 {extraInp("N° d'agrément", 'agrement', { placeholder:'AGR-2024-001' })}
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:8 }}>Services offerts</label>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:12 }}>
+                    {SERVICES_DISPONIBLES.map(s => (
+                      <label key={s} style={{ display:'flex', alignItems:'center', gap:7, fontSize:12.5, color:C.text, cursor:'pointer' }}>
+                        <input type="checkbox" checked={servicesOfferts.includes(s)}
+                          onChange={e => setServicesOfferts(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))} />
+                        {s}
+                      </label>
+                    ))}
+                  </div>
+                  <p style={{ fontSize:11, color:C.dim, marginTop:6 }}>
+                    Un patient ne verra votre établissement dans une recherche que si le service correspondant est coché ici.
+                  </p>
+                </div>
               </>
             )}
             {role==='pharmacie' && extraInp('Nom de la pharmacie *', 'nom_ph', { placeholder:'Pharmacie Centrale du Plateau' })}
