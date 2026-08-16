@@ -554,11 +554,23 @@ app.post('/api/patients', auth, async (req, res) => {
 // req.user.clinique_id fonctionnent sans modification.
 const SOUS_ROLES_VALIDES = ['bureau_entrees', 'medecin', 'finance', 'rh', 'pharmacien', 'laboratoire', 'radiologie'];
 
+// ── FAILLE CRITIQUE CORRIGEE : "if (!sr) return next()" laissait
+// passer N'IMPORTE QUEL compte sans sous_role -- pense pour les
+// proprietaires de clinique (role='clinique', sous_role NULL = acces
+// complet), mais un PATIENT n'a JAMAIS de sous_role non plus. Un
+// patient passait donc cette verification exactement comme un
+// proprietaire, sur TOUTES les routes protegees par requireSousRole
+// (ordonnances, consultations, prise-en-charge...) -- fuite totale
+// des donnees medicales de tous les patients vers tous les patients.
+// Corrige : le bypass "compte complet" ne s'applique desormais qu'aux
+// vrais comptes clinique (role==='clinique'), jamais aux patients ni
+// a aucun autre role sans sous_role.
 function requireSousRole(...autorises) {
   return (req, res, next) => {
+    const role = req.user?.role;
     const sr = req.user?.sous_role;
-    if (!sr) return next(); // compte complet (proprietaire / historique)
-    if (autorises.includes(sr)) return next();
+    if (role === 'clinique' && !sr) return next(); // proprietaire clinique, acces complet
+    if (sr && autorises.includes(sr)) return next();
     return res.status(403).json({ success:false, message:"Accès refusé pour votre rôle" });
   };
 }
