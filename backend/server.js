@@ -391,6 +391,11 @@ app.post('/api/medecins', auth, async (req, res) => {
     );
     const medecin = r.rows[0];
 
+    // Disponibilites generees immediatement, a partir des horaires deja
+    // saisis dans ce meme formulaire -- le medecin est reservable des sa
+    // creation, sans etape manuelle supplementaire.
+    genererDisponibilitesMedecin(medecin).catch(() => {});
+
     let compteCree = false, compteMessage = null;
     if (email && password) {
       const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
