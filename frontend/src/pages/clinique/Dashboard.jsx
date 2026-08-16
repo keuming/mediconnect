@@ -624,6 +624,7 @@ function PanelCartePatient({ patient }) {
     queryFn: () => cAPI.stock().then(r => r.data || []),
   });
   const [medicamentChoisi, setMedicamentChoisi] = useState("");
+  const [lignesMedicaments, setLignesMedicaments] = useState([{id:1, medicament:"", qte:"1"}]);
   const [quantiteMedicament, setQuantiteMedicament] = useState("1");
 
   const ouvrirMut = useMutation({
@@ -643,7 +644,7 @@ function PanelCartePatient({ patient }) {
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
   });
   const ajouterMedicamentMut = useMutation({
-    mutationFn: () => cAPI.ajouterMedicament(passageActif.id, { stock_id: medicamentChoisi, quantite: parseInt(quantiteMedicament)||1, est_assure: estAssure }),
+    mutationFn: (vars) => cAPI.ajouterMedicament(passageActif.id, vars || { stock_id: medicamentChoisi, quantite: parseInt(quantiteMedicament)||1, est_assure: estAssure }),
     onSuccess: () => {
       toast.success("Médicament facturé !");
       qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
@@ -759,12 +760,34 @@ function PanelCartePatient({ patient }) {
         <Btn loading={ajouterMut.isPending} disabled={!acteChoisi} onClick={()=>ajouterMut.mutate()}>+ Ajouter</Btn>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"2fr 0.6fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
-        <Sel label="Médicament (depuis le stock)" value={medicamentChoisi} onChange={e=>setMedicamentChoisi(e.target.value)}
-          options={[{v:"",l:"— Choisir un médicament —"}, ...(stockDisponible||[]).filter(s=>s.categorie==="Médicament"&&s.quantite>0).map(s=>({v:s.id, l:`${s.nom} — ${fmt(s.prix_unitaire)} F (${s.quantite} ${s.unite} dispo.)`}))]} />
-        <Inp label={`Qté${medicamentChoisi?" ("+((stockDisponible||[]).find(s=>s.id===medicamentChoisi)?.unite||"")+")":""}`} type="number" min="1" value={quantiteMedicament} onChange={e=>setQuantiteMedicament(e.target.value)} />
-        <Btn loading={ajouterMedicamentMut.isPending} disabled={!medicamentChoisi} onClick={()=>ajouterMedicamentMut.mutate()}>+ Facturer</Btn>
-      </div>
+      {/* Lignes de medicaments -- un seul champ ne permettait de facturer
+          qu'un medicament a la fois. Le bouton "+" ajoute une ligne
+          supplementaire ; "Facturer" valide toutes les lignes remplies
+          d'un coup, sequentiellement, en passant des variables
+          explicites a chaque appel (jamais via le state intermediaire). */}
+      {lignesMedicaments.map((ligne,i)=>(
+        <div key={ligne.id} style={{ display:"grid", gridTemplateColumns:"2fr 0.6fr auto", gap:10, marginBottom:10, alignItems:"end" }}>
+          <Sel label={i===0?"Médicament (depuis le stock)":undefined} value={ligne.medicament||""}
+            onChange={e=>{ const val=e.target.value; setLignesMedicaments(prev=>prev.map(l=>l.id===ligne.id?{...l,medicament:val}:l)); }}
+            options={[{v:"",l:"— Choisir un médicament —"}, ...(stockDisponible||[]).filter(s=>s.categorie==="Médicament"&&s.quantite>0).map(s=>({v:s.id, l:`${s.nom} — ${fmt(s.prix_unitaire)} F (${s.quantite} ${s.unite} dispo.)`}))]} />
+          <Inp label={i===0?`Qté${ligne.medicament?" ("+((stockDisponible||[]).find(s=>s.id===ligne.medicament)?.unite||"")+")":""}`:undefined}
+            type="number" min="1" value={ligne.qte||""}
+            onChange={e=>{ const val=e.target.value; setLignesMedicaments(prev=>prev.map(l=>l.id===ligne.id?{...l,qte:val}:l)); }} />
+          {i===0 ? (
+            <Btn variant="outline" onClick={()=>setLignesMedicaments(prev=>[...prev, {id:Date.now(), medicament:"", qte:"1"}])}>+</Btn>
+          ) : (
+            <Btn variant="outline" style={{color:C.red}} onClick={()=>setLignesMedicaments(prev=>prev.filter(l=>l.id!==ligne.id))}>✕</Btn>
+          )}
+        </div>
+      ))}
+      <Btn style={{width:"100%",marginBottom:16}} loading={ajouterMedicamentMut.isPending} onClick={async ()=>{
+          const lignes = lignesMedicaments.filter(l=>l.medicament);
+          if (!lignes.length) { toast.error("Choisissez au moins un médicament"); return; }
+          for (const l of lignes) {
+            await ajouterMedicamentMut.mutateAsync({ stock_id: l.medicament, quantite: parseInt(l.qte)||1, est_assure: estAssure });
+          }
+          setLignesMedicaments([{id:Date.now(), medicament:"", qte:"1"}]);
+        }}>+ Facturer{lignesMedicaments.filter(l=>l.medicament).length > 1 ? ` (${lignesMedicaments.filter(l=>l.medicament).length} médicaments)` : ''}</Btn>
 
       {actes.length===0
         ? <Empty icon="📋" title="Aucun acte ajouté encore" />
