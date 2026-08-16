@@ -416,6 +416,8 @@ function RecherchePatient({ value, onSelect, placeholder }) {
 // ════════════════════════════════════════════════════════════════════
 function PagePlanning() {
   const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [showAdd, setShowAdd] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today());
   const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
@@ -474,7 +476,17 @@ function PagePlanning() {
                   <div style={{display:"flex",gap:6}}>
                     {row.statut==="en_attente" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.green}} onClick={()=>confirmerMut.mutate(id)}>Confirmer</Btn>}
                     {row.statut==="confirme" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.teal}} onClick={()=>updMut.mutate({id,statut:"en_cours"})}>Démarrer</Btn>}
-                    {row.statut==="en_cours" && <Btn style={{padding:"4px 10px",fontSize:14}} onClick={()=>{ setWorkflowRdv(row); setShowWorkflow(true); }}>🩺 Consulter</Btn>}
+                    {row.statut==="en_cours" && <Btn style={{padding:"4px 10px",fontSize:14}} onClick={()=>{
+                      // Bureau des entrees : ouvre Carte patient (infos, carte,
+                      // factures, rapports) avec le patient preselectionne, PAS
+                      // le workflow de consultation medical, strictement reserve
+                      // au medecin.
+                      if (user?.sous_role === "bureau_entrees") {
+                        navigate(`/clinique/dossiers?patient_id=${row.patient_id||''}`);
+                      } else {
+                        setWorkflowRdv(row); setShowWorkflow(true);
+                      }
+                    }}>{user?.sous_role === "bureau_entrees" ? "🗂️ Carte patient" : "🩺 Consulter"}</Btn>}
                     {row.statut==="en_cours" && <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.muted}} onClick={()=>updMut.mutate({id,statut:"termine"})}>Terminer</Btn>}
                     <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.red}} onClick={()=>window.confirm("Supprimer ce RDV ?")&&delMut.mutate(id)}>✕</Btn>
                   </div>
