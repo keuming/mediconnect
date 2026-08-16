@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import ConsultationWorkflow from "../shared/ConsultationWorkflow";
-import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import useAuthStore from "../../context/authStore";
@@ -979,6 +979,7 @@ function PageDossiers() {
   const nomMedecin = (nom) => nom ? (/^dr\.?\s/i.test(nom) ? nom : `Dr ${nom}`) : '';
   const { token, user } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
@@ -1127,6 +1128,17 @@ function PageDossiers() {
   const fmtF = n => Number(n||0).toLocaleString("fr-CI");
 
   const { data, isLoading } = useQuery({ queryKey:["cl-patients"], queryFn:()=>cAPI.patients().then(r=>r.data.data||[]) });
+
+  // Preselection depuis Planning & RDV : le bouton "Carte patient" du
+  // bureau des entrees redirige ici avec ?patient_id=XXX -- des que la
+  // liste est chargee, on selectionne automatiquement ce patient.
+  React.useEffect(() => {
+    const pid = searchParams.get('patient_id');
+    if (pid && data && !selected) {
+      const p = data.find(x => x.id === pid);
+      if (p) setSelected(p);
+    }
+  }, [searchParams, data, selected]);
   const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:async()=>{
     if(!selected) return [];
     const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/consultations?patient_id=${selected.id}`,{headers:{Authorization:`Bearer ${token}`}});
