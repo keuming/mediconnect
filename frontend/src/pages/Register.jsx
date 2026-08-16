@@ -329,8 +329,8 @@ export default function Register() {
                       </label>
                     ))}
                   </div>
-                  <p style={{ fontSize:11, color:C.dim, marginTop:6 }}>
-                    Un patient ne verra votre établissement dans une recherche que si le service correspondant est coché ici.
+                  <p style={{ fontSize:13, fontWeight:800, color:'#DC2626', marginTop:10, padding:'10px 12px', background:'rgba(220,38,38,.08)', border:'1.5px solid rgba(220,38,38,.25)', borderRadius:8 }}>
+                    ⚠️ Un patient ne verra votre établissement dans une recherche que si le service correspondant est coché ici.
                   </p>
                 </div>
               </>
