@@ -247,6 +247,7 @@ app.use('/api/planning',  require('./routes/planning'));
 app.use('/api/ministere', require('./routes/ministere'));
 app.use('/api',           require('./routes/extra'));
 app.use('/api/optique',   require('./routes/optique'));
+app.use('/api/dentaire',  require('./routes/dentaire'));
 app.use('/api/card',      require('./routes/card'));
 
 // ── HEALTH & ROOT ─────────────────────────────────────────────────
