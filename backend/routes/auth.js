@@ -173,11 +173,6 @@ router.post('/register', async (req, res) => {
           return res.status(400).json({ success:false, message:'Nom de la clinique requis' });
         }
         const cid = uuid();
-        // Coordonnees GPS optionnelles, capturees via geolocalisation
-        // navigateur au moment de l'inscription (rdv.mediconnect4africa.cloud
-        // recherche par rayon en depend). Absentes = NULL, pas d'erreur :
-        // la clinique reste utilisable, seulement invisible dans une
-        // recherche par distance tant que la position n'est pas connue.
         const lat = (latitude !== undefined && latitude !== null && latitude !== '') ? parseFloat(latitude) : null;
         const lng = (longitude !== undefined && longitude !== null && longitude !== '') ? parseFloat(longitude) : null;
         await db(
@@ -189,6 +184,26 @@ router.post('/register', async (req, res) => {
         );
         await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [cid, userId]);
         clinique_id = cid;
+      }
+
+      // Services offerts, coches a l'inscription -- alimente
+      // specialites_clinique, la meme table deja utilisee par la
+      // recherche publique par specialite sur rdv.mediconnect4africa.cloud.
+      // Fonctionne aussi bien pour une clinique nouvellement creee que
+      // pour un rattachement a une clinique existante.
+      if (clinique_id && Array.isArray(specialites) && specialites.length) {
+        for (const nomService of specialites) {
+          if (!nomService) continue;
+          const dejaPresent = await db(
+            'SELECT id FROM specialites_clinique WHERE clinique_id=$1 AND nom=$2',
+            [clinique_id, nomService]
+          );
+          if (dejaPresent.rows.length) continue;
+          await db(
+            'INSERT INTO specialites_clinique (id, clinique_id, nom, disponible) VALUES (gen_random_uuid(), $1, $2, true)',
+            [clinique_id, nomService]
+          );
+        }
       }
 
     } else if (roleVal === 'pharmacie') {
