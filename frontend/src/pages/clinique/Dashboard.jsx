@@ -1681,8 +1681,10 @@ function PageDossiers() {
     { key:"factures", label:"Factures", icon:"📄" },
     { key:"rapports", label:"Rapports", icon:"🖨️" },
   ];
+  // "Carte patient" (bureau des entrees) : infos, carte, factures, rapports.
+  // Consultations/ordonnances/examens restent strictement reserves au medecin.
   const TABS = user?.sous_role === "bureau_entrees"
-    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="carte" || t.key==="factures")
+    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="carte" || t.key==="factures" || t.key==="rapports")
     : TABS_TOUTES;
 
   const bloodGroups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
