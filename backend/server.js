@@ -1162,14 +1162,19 @@ app.get('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) =
     const r = await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+// ── BUG CORRIGE : clinique_id n'etait jamais enregistre a la creation
+// d'une ordonnance. La route de liste (GET /api/ordonnances) filtre
+// par clinique_id -- une ligne avec clinique_id=NULL ne matche jamais
+// ce filtre et restait invisible pour toujours, meme pour la clinique
+// qui venait de la creer.
 app.post('/api/ordonnances', auth, requireSousRole('medecin'), async (req, res) => {
   const { patient_id, medicaments, posologie, duree, notes_ord, consultation_id, medecin_nom } = req.body;
   if (!patient_id||!medicaments) return res.status(400).json({ success:false, message:'Patient et médicaments requis' });
   if (!posologie) return res.status(400).json({ success:false, message:'Posologie requise' });
   try {
     const r = await db(
-      'INSERT INTO ordonnances (id,patient_id,medicament,posologie,duree,notes_ord,consultation_id,medecin_id,medecin_nom,pays_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [uuid(),patient_id,medicaments,posologie,duree||null,notes_ord||null,consultation_id||null,req.user?.medecin_id||null,medecin_nom||null,'CI']
+      'INSERT INTO ordonnances (id,patient_id,clinique_id,medicament,posologie,duree,notes_ord,consultation_id,medecin_id,medecin_nom,pays_code) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [uuid(),patient_id,req.user?.clinique_id||null,medicaments,posologie,duree||null,notes_ord||null,consultation_id||null,req.user?.medecin_id||null,medecin_nom||null,'CI']
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
