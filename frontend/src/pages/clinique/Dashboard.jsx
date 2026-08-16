@@ -245,7 +245,14 @@ function PageHome() {
   const { user } = useAuthStore();
   const nav = useNavigate();
   const { data: stats } = useQuery({ queryKey:["cl-stats"], queryFn:()=>cAPI.stats().then(r=>r.data||{}), retry:1 });
-  const { data: rdvsData } = useQuery({ queryKey:["cl-rdvs-today"], queryFn:()=>cAPI.rdvs({ date:today() }).then(r=>r.data.data||[]), retry:1 });
+  // Compteur du dashboard : total des RDV actifs a venir (en_attente ou
+  // confirme, a partir d'aujourd'hui), pas seulement ceux de la date du
+  // jour precis -- un RDV pris pour demain doit deja apparaitre ici.
+  const { data: rdvsData } = useQuery({ queryKey:["cl-rdvs-today"], queryFn:()=>cAPI.rdvs({}).then(r=>{
+    const tous = r.data.data||[];
+    const auj = today();
+    return tous.filter(x => String(x.date_rdv).slice(0,10) >= auj && (x.statut==='en_attente' || x.statut==='confirme'));
+  }), retry:1 });
   const { data: stockData } = useQuery({ queryKey:["cl-stock-alerts"], queryFn:()=>cAPI.stock().then(r=>r.data||[]), retry:1 });
 
   const rdvs = rdvsData||[]; const stock = stockData||[];
@@ -254,7 +261,7 @@ function PageHome() {
   const rdvConfirmes = rdvs.filter(r=>r.statut==="confirme").length;
 
   const modulesTous = [
-    { icon:"📅", label:"Planning & RDV",    path:"planning",    color:C.teal,   stat:`${rdvAujourdhui} RDV aujourd'hui` },
+    { icon:"📅", label:"Planning & RDV",    path:"planning",    color:C.teal,   stat:`${rdvAujourdhui} RDV à venir` },
     { icon:"👤", label:"Dossiers patients", path:"dossiers",    color:C.blue,   stat:"DME complets" },
     { icon:"🩺", label:"Consultation",      path:"consultation",color:C.green,  stat:"En cours" },
     { icon:"💰", label:"Caisse",            path:"caisse",      color:C.amber,  stat:"Ouverte" },
@@ -298,7 +305,7 @@ function PageHome() {
 
       {afficherStatsGenerales && (
       <Grid cols={4} gap={14} style={{ marginBottom:20 }}>
-        <Card label="RDV aujourd'hui"   value={rdvAujourdhui}                    icon="📅" color={C.teal}   sub={`${rdvConfirmes} confirmés`} onClick={()=>nav("planning")} />
+        <Card label="RDV à venir"   value={rdvAujourdhui}                    icon="📅" color={C.teal}   sub={`${rdvConfirmes} confirmés`} onClick={()=>nav("planning")} />
         <Card label="Alertes stock"     value={alertesStock.length}              icon="⚠️" color={alertesStock.length>0?C.red:C.green} sub="Ruptures proches" onClick={()=>nav("stock")} />
         <Card label="Médecins actifs"   value={stats?.medecins_actifs||"—"}      icon="👨‍⚕️" color={C.blue}  sub="Disponibles" onClick={()=>nav("medecins")} />
         <Card label="Patients ce mois"  value={stats?.patients_mois||"—"}        icon="👤" color={C.purple} sub="Consultations" onClick={()=>nav("dossiers")} />
@@ -324,7 +331,7 @@ function PageHome() {
       <Grid cols={2} gap={20}>
         <Panel title="📅 RDV du jour" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>nav("planning")}>Tout voir →</Btn>}>
           {rdvs.length===0
-            ? <Empty icon="📅" title="Aucun RDV aujourd'hui" />
+            ? <Empty icon="📅" title="Aucun RDV à venir" />
             : rdvs.slice(0,5).map(r=>(
               <div key={r.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${C.border}` }}>
                 <div style={{ textAlign:"center", minWidth:48, background:C.hover, borderRadius:8, padding:"4px 8px" }}>
