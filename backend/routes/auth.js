@@ -114,6 +114,7 @@ router.post('/register', async (req, res) => {
     let labo_id = null;
     let imagerie_id = null;
     let optique_id = null;
+    let dentaire_id = null;
     let assureur_id = null;
     let patient_id = null;
     let numero_carte_generee = null;
@@ -242,6 +243,15 @@ router.post('/register', async (req, res) => {
       );
       optique_id = oid;
 
+    } else if (roleVal === 'dentaire') {
+      const did = uuid();
+      await db(
+        `INSERT INTO cabinets_dentaires (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [did, nom||prenom||'Cabinet Dentaire', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      dentaire_id = did;
+
     } else if (roleVal === 'assureur') {
       const aid = uuid();
       await db(
@@ -259,7 +269,7 @@ router.post('/register', async (req, res) => {
     // empechant de fonctionner comme la clinique le fait deja.
     const tokenPayload = {
       id: userId, role: roleVal, clinique_id, pharmacie_id,
-      laboratoire_id: labo_id, imagerie_id, optique_id, assureur_id, patient_id,
+      laboratoire_id: labo_id, imagerie_id, optique_id, dentaire_id, assureur_id, patient_id,
     };
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
 

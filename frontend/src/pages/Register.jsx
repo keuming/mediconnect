@@ -14,6 +14,7 @@ const ROLES = [
   { value: 'imagerie',            label: 'Imagerie Médicale',    icon: '🩻', desc: 'Radiologie, IRM, Scanner' },
   { value: 'laboratoire',         label: 'Laboratoire',          icon: '🧪', desc: 'Analyses biologiques' },
   { value: 'optique',             label: 'Cabinet Optique',       icon: '🔭', desc: 'Gestion stock, ventes, ordonnances optiques' },
+  { value: 'dentaire',            label: 'Cabinet Dentaire',      icon: '🦷', desc: 'Patients, actes, planning, facturation' },
   { value: 'ministere',           label: 'Ministère de la Santé', icon: '🏛️', desc: 'Dashboard épidémiologique national' },
 ];
 
