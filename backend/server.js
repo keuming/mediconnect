@@ -932,11 +932,25 @@ app.put('/api/patients/:id', auth, async (req, res) => {
 });
 
 // ── RENDEZ-VOUS ───────────────────────────────────────────────────
+// ── FAILLE CRITIQUE CORRIGEE : cette route ne filtrait que par
+// clinique_id. Pour un PATIENT (clinique_id toujours null), la
+// condition "if (cid)" etait fausse et AUCUN filtre n'etait applique
+// -- la requete devenait "SELECT * FROM rendez_vous ... LIMIT 200" et
+// retournait les RDV de TOUS les patients de TOUTES les cliniques.
+// Corrige : filtre desormais par patient_id quand l'utilisateur est
+// un patient, et refuse l'acces par defaut (tableau vide) si ni
+// clinique_id ni patient_id ne sont disponibles -- jamais d'acces
+// total implicite.
 app.get('/api/rendez-vous', auth, async (req, res) => {
   try {
-    const { date, statut, medecin_id } = req.query; const cid = req.user?.clinique_id;
+    const { date, statut, medecin_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const pid = req.user?.patient_id;
+    if (!cid && !pid) return res.json({ success:true, data:[] });
+
     let sql = 'SELECT * FROM rendez_vous WHERE 1=1'; const p = [];
     if (cid)       { p.push(cid);       sql+=` AND clinique_id=$${p.length}`; }
+    if (pid)       { p.push(pid);       sql+=` AND patient_id=$${p.length}`; }
     if (date)      { p.push(date);      sql+=` AND date_rdv=$${p.length}`; }
     if (statut)    { p.push(statut);    sql+=` AND statut=$${p.length}`; }
     if (medecin_id){ p.push(medecin_id);sql+=` AND medecin_id=$${p.length}`; }
