@@ -2471,7 +2471,7 @@ function PageMedecins() {
   const [tab, setTab] = useState("medecins");
   const [showAdd, setShowAdd] = useState(false);
   const [showPersonnel, setShowPersonnel] = useState(false);
-  const [form, setForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", tarif:"", experience_ans:"", statut:"Disponible", jours_travail:"Lun,Mar,Mer,Jeu,Ven", horaires_debut:"08:00", horaires_fin:"17:00" });
+  const [form, setForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", password:"", tarif:"", experience_ans:"", statut:"Disponible", jours_travail:"Lun,Mar,Mer,Jeu,Ven", horaires_debut:"08:00", horaires_fin:"17:00" });
   const [pForm, setPForm] = useState({ nom:"", poste:"", contrat:"CDI", salaire:"", date_embauche:"", statut:"Actif" });
   const [compteForm, setCompteForm] = useState({ prenom:"", nom:"", email:"", password:"", telephone:"", sous_role:"bureau_entrees" });
 
@@ -2664,9 +2664,19 @@ function PageMedecins() {
           <Inp label="Heure fin" value={form.horaires_fin} onChange={f("horaires_fin")} type="time" />
         </Grid>
         <Inp label="Jours de travail" value={form.jours_travail} onChange={f("jours_travail")} placeholder="Lun,Mar,Mer,Jeu,Ven" />
+        <div style={{background:C.hover,borderRadius:10,padding:12,marginTop:8}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>🔐 Compte de connexion (facultatif)</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Si renseigné, le médecin pourra se connecter à l'application avec cet email.</div>
+          <Inp label="Mot de passe temporaire" type="password" value={form.password} onChange={f("password")} placeholder="Min. 6 caractères — laisser vide pour ne pas créer de compte" />
+        </div>
         <div style={{display:"flex",gap:10,marginTop:4}}>
           <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
-          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{ if(!form.prenom||!form.nom||!form.specialite){toast.error("Champs requis manquants");return;} addMut.mutate(form); }}>Ajouter le médecin</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
+            if(!form.prenom||!form.nom||!form.specialite){toast.error("Champs requis manquants");return;}
+            if(form.password && form.password.length<6){toast.error("Mot de passe : 6 caractères minimum, ou laissez le champ vide");return;}
+            if(form.password && !form.email){toast.error("Un email est requis pour créer le compte de connexion");return;}
+            addMut.mutate(form);
+          }}>Ajouter le médecin</Btn>
         </div>
       </Modal>
 
