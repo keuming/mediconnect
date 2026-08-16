@@ -318,19 +318,19 @@ export default function Register() {
                   </select>
                 </div>
                 {extraInp("N° d'agrément", 'agrement', { placeholder:'AGR-2024-001' })}
-                <div style={{ marginBottom:14 }}>
-                  <label style={{ display:'block', fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:8 }}>Services offerts</label>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:12 }}>
+                <div style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:10.5, fontWeight:700, color:C.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:6 }}>Services offerts</label>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:5, background:C.input, border:`1.5px solid ${C.border}`, borderRadius:9, padding:8 }}>
                     {SERVICES_DISPONIBLES.map(s => (
-                      <label key={s} style={{ display:'flex', alignItems:'center', gap:7, fontSize:12.5, color:C.text, cursor:'pointer' }}>
+                      <label key={s} style={{ display:'flex', alignItems:'center', gap:5, fontSize:10.5, color:C.text, cursor:'pointer', lineHeight:1.2 }}>
                         <input type="checkbox" checked={servicesOfferts.includes(s)}
                           onChange={e => setServicesOfferts(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))} />
                         {s}
                       </label>
                     ))}
                   </div>
-                  <p style={{ fontSize:13, fontWeight:800, color:'#DC2626', marginTop:10, padding:'10px 12px', background:'rgba(220,38,38,.08)', border:'1.5px solid rgba(220,38,38,.25)', borderRadius:8 }}>
-                    ⚠️ Un patient ne verra votre établissement dans une recherche que si le service correspondant est coché ici.
+                  <p style={{ fontSize:11, fontWeight:800, color:'#DC2626', marginTop:6, padding:'6px 9px', background:'rgba(220,38,38,.08)', border:'1.5px solid rgba(220,38,38,.25)', borderRadius:7, lineHeight:1.3 }}>
+                    ⚠️ Non coché = invisible dans la recherche patient.
                   </p>
                 </div>
               </>
