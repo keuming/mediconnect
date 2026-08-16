@@ -41,7 +41,7 @@ const NAV = {
     { path:'/clinique/dossiers',     icon:'👤', label:'Dossiers patients' },
     { path:'/clinique/consultation', icon:'🩺', label:'Consultation',   badge:'NEW' },
     { path:'/clinique/caisse',       icon:'💰', label:'Caisse',         badge:'NEW' },
-    { path:'/clinique/facturation',  icon:'📄', label:'Facturation' },
+    { path:'/clinique/facturation',  icon:'📄', label:'Gestion financière' },
     { path:'/clinique/specialites',  icon:'🩺', label:'Spécialités',    badge:'NEW' },
     { path:'/clinique/medecins',     icon:'👨‍⚕️', label:'Médecins & RH' },
     { path:'/clinique/stock',        icon:'💊', label:'Stock' },
