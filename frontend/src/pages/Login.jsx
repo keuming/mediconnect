@@ -13,6 +13,7 @@ const DEMOS = [
   { role: 'imagerie',           label: 'Imagerie',       icon: '🩻', email: 'imagerie@demo.ci' },
   { role: 'laboratoire',        label: 'Laboratoire',    icon: '🧪', email: 'laboratoire@demo.ci' },
   { role: 'optique',            label: 'Optique',        icon: '🔭', email: 'optique@demo.ci' },
+  { role: 'dentaire',           label: 'Dentaire',       icon: '🦷', email: 'dentaire@demo.ci' },
   { role: 'ministere',          label: 'Ministère',      icon: '🏛️', email: 'ministere@sante.ci', pwd: 'MinistereCI2024' },
   { role: 'business_developer', label: 'Business Dev',   icon: '💼', email: 'bd@demo.ci' },
 ];
@@ -34,6 +35,7 @@ const ROLE_ROUTES = {
   laboratoire:         '/laboratoire',
   ministere:           '/ministere',
   optique:             '/optique',
+  dentaire:            '/dentaire',
   business_developer:  '/bd',
 };
 
