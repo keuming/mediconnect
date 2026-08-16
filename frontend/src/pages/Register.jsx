@@ -170,24 +170,24 @@ export default function Register() {
         {/* ÉTAPE 1 : Choisir un rôle */}
         {step===1 && (
           <div>
-            <h2 style={{ fontSize:22, fontWeight:800, color:C.text, marginBottom:6 }}>Quel est votre profil ?</h2>
-            <p style={{ color:C.muted, marginBottom:20, fontSize:13 }}>Choisissez le type de compte qui correspond à votre activité.</p>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:24 }}>
+            <h2 style={{ fontSize:19, fontWeight:800, color:C.text, marginBottom:4 }}>Quel est votre profil ?</h2>
+            <p style={{ color:C.muted, marginBottom:12, fontSize:12 }}>Choisissez le type de compte qui correspond à votre activité.</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:7, marginBottom:14 }}>
               {ROLES.map(r => (
                 <button key={r.value}
                   onClick={() => setRole(r.value)}
+                  title={r.desc}
                   style={{
                     background: role===r.value ? 'rgba(10,143,88,.12)' : C.input,
-                    border: `2px solid ${role===r.value ? C.green : C.border}`,
-                    borderRadius:12, padding:'14px 12px', cursor:'pointer',
-                    textAlign:'left', fontFamily:'inherit', transition:'all .15s'
+                    border: `1.5px solid ${role===r.value ? C.green : C.border}`,
+                    borderRadius:9, padding:'8px 6px', cursor:'pointer',
+                    textAlign:'center', fontFamily:'inherit', transition:'all .15s'
                   }}
                   onMouseOver={e=>e.currentTarget.style.borderColor=C.green}
                   onMouseOut={e=>e.currentTarget.style.borderColor=role===r.value?C.green:C.border}
                 >
-                  <div style={{ fontSize:22, marginBottom:6 }}>{r.icon}</div>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:3 }}>{r.label}</div>
-                  <div style={{ fontSize:11, color:C.muted, lineHeight:1.4 }}>{r.desc}</div>
+                  <div style={{ fontSize:16, marginBottom:2 }}>{r.icon}</div>
+                  <div style={{ fontSize:10.5, fontWeight:700, color:C.text, lineHeight:1.2 }}>{r.label}</div>
                 </button>
               ))}
             </div>
