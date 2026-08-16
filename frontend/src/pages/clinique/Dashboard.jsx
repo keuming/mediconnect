@@ -991,6 +991,12 @@ function PageDossiers() {
   const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
+  const [showRapportHosp, setShowRapportHosp] = useState(false);
+  const [rapportHospForm, setRapportHospForm] = useState({
+    medecin_traitant:'', numero_facture:'', date_entree:'', date_sortie:'',
+    adherent:'', beneficiaire:'', societe_assurance:'',
+    motif:'', examen_clinique:'', bilan_paraclinique:'', traitement:'', evolution:'',
+  });
   const [editPatientForm, setEditPatientForm] = useState({});
   const editPatientMut = useMutation({
     mutationFn: () => api.put(`/patients/${selected.id}`, editPatientForm),
@@ -1534,6 +1540,69 @@ function PageDossiers() {
   // Rapport DATE d'UNE consultation precise -- distinct de la synthese
   // complete : chaque consultation realisee genere son propre rapport,
   // remis au patient a la fin de sa visite.
+  // Rapport medical d'hospitalisation, au format exact demande par les
+  // compagnies d'assurance (modele physique fourni par une clinique
+  // partenaire) -- redige pour chaque patient, hospitalise ou non.
+  const imprimerRapportHospitalisation = () => {
+    const f = rapportHospForm;
+    const w = window.open('', '_blank');
+    w.document.write(`
+      <html><head><title>Rapport médical hospitalisation - ${selected?.prenom||''} ${selected?.nom||''}</title><style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:760px;margin:0 auto;font-size:13px;}
+        .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;border-bottom:2px solid #16211C;margin-bottom:16px;}
+        .cn{font-size:16px;font-weight:800;}
+        .ci{font-size:11px;color:#5A7A94;}
+        .meta-box{border:1px solid #16211C;border-radius:6px;padding:10px 14px;font-size:12px;line-height:1.9;}
+        h2{text-align:center;border:1.5px solid #16211C;border-radius:6px;padding:10px;font-size:15px;text-transform:uppercase;letter-spacing:1px;margin:18px 0;}
+        h3{font-size:12px;text-transform:uppercase;text-decoration:underline;font-weight:700;margin:20px 0 8px;}
+        .champ{margin-bottom:6px;}
+        .lbl{font-weight:700;}
+        .zone{min-height:50px;border-bottom:1px solid #e5e7eb;padding-bottom:8px;white-space:pre-wrap;}
+        .footer{margin-top:36px;border-top:1px solid #e5e7eb;padding-top:10px;font-size:9px;color:#8BA0B5;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header">
+        <div>
+          <div class="cn">${cl?.nom||'MediConnect Africa'}</div>
+          <div class="ci">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div class="ci">Tél : ${cl?.telephone||''}</div>
+        </div>
+        <div class="meta-box">
+          <div><span class="lbl">Médecin traitant :</span> ${f.medecin_traitant||'—'}</div>
+          <div><span class="lbl">Numéro de facture :</span> ${f.numero_facture||'—'}</div>
+          <div><span class="lbl">Date d'entrée :</span> ${f.date_entree||'—'}</div>
+          <div><span class="lbl">Date de sortie :</span> ${f.date_sortie||'—'}</div>
+        </div>
+      </div>
+
+      <h2>Rapport médical hospitalisation</h2>
+
+      <h3>Identité du malade</h3>
+      <div class="champ"><span class="lbl">Adhérent :</span> ${f.adherent||(selected?.prenom+' '+selected?.nom)||'—'}</div>
+      <div class="champ"><span class="lbl">Bénéficiaire :</span> ${f.beneficiaire||'—'}</div>
+      <div class="champ"><span class="lbl">Société Assurance :</span> ${f.societe_assurance||selected?.assurance||'—'}</div>
+
+      <h3>Motif</h3>
+      <div class="zone">${f.motif||'—'}</div>
+
+      <h3>Examen clinique</h3>
+      <div class="zone">${f.examen_clinique||'—'}</div>
+
+      <h3>Bilan paraclinique</h3>
+      <div class="zone">${f.bilan_paraclinique||'—'}</div>
+
+      <h3>Traitement</h3>
+      <div class="zone">${f.traitement||'—'}</div>
+
+      <h3>Évolution</h3>
+      <div class="zone">${f.evolution||'—'}</div>
+
+      <div class="footer">Rapport généré le ${new Date().toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})} — ${cl?.nom||'MediConnect Africa'}</div>
+      <script>window.onload=()=>window.print();<\/script>
+      </body></html>`);
+    w.document.close();
+  };
+
   const imprimerRapportConsultation = async (c) => {
     const H = { Authorization:`Bearer ${token}` };
     const clR = await fetch(`https://mediconnect-backend-v2.vercel.app/api/clinique/profil`,{headers:H}).then(r=>r.json()).catch(()=>({data:null}));
@@ -2030,7 +2099,8 @@ function PageDossiers() {
             )}
 
             {activeTab==="rapports" && (
-              <Panel title="Rapports médicaux">
+              <Panel title="Rapports médicaux"
+                actions={<Btn style={{padding:"6px 14px",fontSize:14}} onClick={()=>setShowRapportHosp(true)}>🏥 Rapport d'hospitalisation</Btn>}>
                 {(consults||[]).length===0
                   ? <Empty icon="🖨️" title="Aucun rapport" subtitle="Un rapport peut être généré pour chaque consultation réalisée." />
                   : (consults||[]).map(c=>(
@@ -2052,6 +2122,50 @@ function PageDossiers() {
           </>
         }
       </div>
+
+      {/* Modal: Rapport medical hospitalisation -- meme structure que le
+          modele physique fourni par une clinique partenaire, exige par
+          les compagnies d'assurance. */}
+      <Modal open={showRapportHosp} onClose={()=>setShowRapportHosp(false)} title="🏥 Rapport médical hospitalisation" width={640}>
+        <Grid cols={2} gap={12}>
+          <Inp label="Médecin traitant" value={rapportHospForm.medecin_traitant} onChange={e=>setRapportHospForm(f=>({...f,medecin_traitant:e.target.value}))} placeholder="Dr Nom Prénom" />
+          <Inp label="Numéro de facture" value={rapportHospForm.numero_facture} onChange={e=>setRapportHospForm(f=>({...f,numero_facture:e.target.value}))} />
+          <Inp label="Date d'entrée" type="date" value={rapportHospForm.date_entree} onChange={e=>setRapportHospForm(f=>({...f,date_entree:e.target.value}))} />
+          <Inp label="Date de sortie" type="date" value={rapportHospForm.date_sortie} onChange={e=>setRapportHospForm(f=>({...f,date_sortie:e.target.value}))} />
+        </Grid>
+
+        <div style={{fontSize:14,fontWeight:700,color:C.text,margin:"14px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>Identité du malade</div>
+        <Grid cols={2} gap={12}>
+          <Inp label="Adhérent" value={rapportHospForm.adherent} onChange={e=>setRapportHospForm(f=>({...f,adherent:e.target.value}))} placeholder={selected?`${selected.prenom} ${selected.nom}`:""} />
+          <Inp label="Bénéficiaire" value={rapportHospForm.beneficiaire} onChange={e=>setRapportHospForm(f=>({...f,beneficiaire:e.target.value}))} />
+        </Grid>
+        <Inp label="Société Assurance" value={rapportHospForm.societe_assurance} onChange={e=>setRapportHospForm(f=>({...f,societe_assurance:e.target.value}))} placeholder={selected?.assurance||""} />
+
+        <div style={{fontSize:14,fontWeight:700,color:C.text,margin:"14px 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>Motif</div>
+        <textarea value={rapportHospForm.motif} onChange={e=>setRapportHospForm(f=>({...f,motif:e.target.value}))} rows={2}
+          style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:15,outline:"none",fontFamily:"inherit",resize:"vertical",marginBottom:12}} />
+
+        <div style={{fontSize:14,fontWeight:700,color:C.text,margin:"0 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>Examen clinique</div>
+        <textarea value={rapportHospForm.examen_clinique} onChange={e=>setRapportHospForm(f=>({...f,examen_clinique:e.target.value}))} rows={3}
+          style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:15,outline:"none",fontFamily:"inherit",resize:"vertical",marginBottom:12}} />
+
+        <div style={{fontSize:14,fontWeight:700,color:C.text,margin:"0 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>Bilan paraclinique</div>
+        <textarea value={rapportHospForm.bilan_paraclinique} onChange={e=>setRapportHospForm(f=>({...f,bilan_paraclinique:e.target.value}))} rows={3}
+          style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:15,outline:"none",fontFamily:"inherit",resize:"vertical",marginBottom:12}} />
+
+        <div style={{fontSize:14,fontWeight:700,color:C.text,margin:"0 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>Traitement</div>
+        <textarea value={rapportHospForm.traitement} onChange={e=>setRapportHospForm(f=>({...f,traitement:e.target.value}))} rows={3}
+          style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:15,outline:"none",fontFamily:"inherit",resize:"vertical",marginBottom:12}} />
+
+        <div style={{fontSize:14,fontWeight:700,color:C.text,margin:"0 0 6px",textTransform:"uppercase",letterSpacing:".5px"}}>Évolution</div>
+        <textarea value={rapportHospForm.evolution} onChange={e=>setRapportHospForm(f=>({...f,evolution:e.target.value}))} rows={2}
+          style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 12px",color:C.text,fontSize:15,outline:"none",fontFamily:"inherit",resize:"vertical",marginBottom:14}} />
+
+        <div style={{display:"flex",gap:10}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowRapportHosp(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} onClick={()=>{ imprimerRapportHospitalisation(); setShowRapportHosp(false); }}>🖨️ Générer et imprimer</Btn>
+        </div>
+      </Modal>
 
       {/* Modal: Nouveau patient */}
       <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="👤 Nouveau dossier patient" width={580}>
