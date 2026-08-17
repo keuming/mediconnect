@@ -71,6 +71,7 @@ const cAPI = {
   supprimerContactUrgence:(id) => api.delete(`/contacts-urgence/${id}`),
   addMedecin:   (d) => api.post("/medecins", d),
   updateMedecin:(id,d) => api.put(`/medecins/${id}`, d),
+  deleteMedecin:(id) => api.delete(`/medecins/${id}`),
   personnel:    () => api.get("/clinique/personnel"),
   addPersonnel: (d) => api.post("/clinique/personnel", d),
   updPersonnel: (id,d) => api.put(`/clinique/personnel/${id}`, d),
@@ -2639,12 +2640,17 @@ function PageMedecins() {
   const [form, setForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", password:"", tarif:"", experience_ans:"", statut:"Disponible", jours_travail:"Lun,Mar,Mer,Jeu,Ven", horaires_debut:"08:00", horaires_fin:"17:00" });
   const [pForm, setPForm] = useState({ nom:"", poste:"", contrat:"CDI", salaire:"", date_embauche:"", statut:"Actif" });
   const [compteForm, setCompteForm] = useState({ prenom:"", nom:"", email:"", password:"", telephone:"", sous_role:"bureau_entrees" });
+  const [showEdit, setShowEdit] = useState(false);
+  const [medecinEdit, setMedecinEdit] = useState(null);
+  const [editForm, setEditForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", tarif:"", experience_ans:"", jours_travail:"", horaires_debut:"", horaires_fin:"" });
 
   const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data||[]) });
   const medecins = data||[];
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addMedecin(d), onSuccess:()=>{ toast.success("Médecin ajouté !"); qc.invalidateQueries(["cl-medecins"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
   const updMut = useMutation({ mutationFn:({id,...d})=>cAPI.updateMedecin(id,d), onSuccess:()=>{ toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-medecins"]); }, onError:()=>toast.error("Erreur") });
+  const editMut = useMutation({ mutationFn:({id,...d})=>cAPI.updateMedecin(id,d), onSuccess:()=>{ toast.success("Médecin modifié !"); qc.invalidateQueries(["cl-medecins"]); setShowEdit(false); setMedecinEdit(null); }, onError:()=>toast.error("Erreur lors de la modification") });
+  const deleteMut = useMutation({ mutationFn:id=>cAPI.deleteMedecin(id), onSuccess:()=>{ toast.success("Médecin supprimé"); qc.invalidateQueries(["cl-medecins"]); }, onError:()=>toast.error("Erreur lors de la suppression") });
 
   const { data: personnelData, isLoading: chargementPersonnel } = useQuery({
     queryKey:["cl-personnel"], queryFn:()=>cAPI.personnel().then(r=>r.data||[]),
@@ -2665,6 +2671,12 @@ function PageMedecins() {
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const fp = k => e => setPForm(p=>({...p,[k]:e.target.value}));
+  const fe = k => e => setEditForm(p=>({...p,[k]:e.target.value}));
+  const ouvrirEdition = (m) => {
+    setMedecinEdit(m);
+    setEditForm({ prenom:m.prenom||"", nom:m.nom||"", specialite:m.specialite||"", telephone:m.telephone||"", email:m.email||"", tarif:m.tarif||"", experience_ans:m.experience_ans||"", jours_travail:m.jours_travail||"Lun,Mar,Mer,Jeu,Ven", horaires_debut:m.horaires_debut||"08:00", horaires_fin:m.horaires_fin||"17:00" });
+    setShowEdit(true);
+  };
 
   const SPECS = ["Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Neurologie","Dermatologie","ORL","Ophtalmologie","Orthopédie","Psychiatrie","Radiologie","Chirurgie"];
   const CONTRATS = ["CDI","CDD","Vacation","Libéral","Stage"];
@@ -2744,6 +2756,12 @@ function PageMedecins() {
                     <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.green}} onClick={()=>updMut.mutate({id:m.id,statut:"Disponible"})}>✓ Disponible</Btn>
                     <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.amber}} onClick={()=>updMut.mutate({id:m.id,statut:"En consultation"})}>🩺 Consult.</Btn>
                     <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.red}} onClick={()=>updMut.mutate({id:m.id,statut:"Absent"})}>Absent</Btn>
+                  </div>
+                  <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14}} onClick={()=>ouvrirEdition(m)}>✏️ Modifier</Btn>
+                    <Btn variant="outline" style={{flex:1,padding:"6px",fontSize:14,color:C.red}} loading={deleteMut.isPending} onClick={()=>{
+                      if(window.confirm(`Supprimer Dr. ${m.prenom} ${m.nom} ? Cette action est irréversible.`)) deleteMut.mutate(m.id);
+                    }}>🗑️ Supprimer</Btn>
                   </div>
                 </Panel>
               ))}
@@ -2842,6 +2860,31 @@ function PageMedecins() {
             if(form.password && !form.email){toast.error("Un email est requis pour créer le compte de connexion");return;}
             addMut.mutate(form);
           }}>Ajouter le médecin</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Modifier médecin */}
+      <Modal open={showEdit} onClose={()=>{ setShowEdit(false); setMedecinEdit(null); }} title={`✏️ Modifier — Dr. ${medecinEdit?.prenom||""} ${medecinEdit?.nom||""}`} width={560}>
+        <Grid cols={2} gap={12}>
+          <Inp label="Prénom *" required value={editForm.prenom} onChange={fe("prenom")} placeholder="Amadou" />
+          <Inp label="Nom *" required value={editForm.nom} onChange={fe("nom")} placeholder="Koné" />
+        </Grid>
+        <Sel label="Spécialité *" required value={editForm.specialite} onChange={fe("specialite")} options={["",...SPECS]} />
+        <Grid cols={2} gap={12}>
+          <Inp label="Téléphone" value={editForm.telephone} onChange={fe("telephone")} placeholder="+225 07 00 00 00 00" type="tel" />
+          <Inp label="Email" value={editForm.email} onChange={fe("email")} placeholder="dr@exemple.com" type="email" />
+          <Inp label="Tarif consultation (FCFA)" value={editForm.tarif} onChange={fe("tarif")} placeholder="15000" type="number" />
+          <Inp label="Années d'expérience" value={editForm.experience_ans} onChange={fe("experience_ans")} placeholder="10" type="number" />
+          <Inp label="Heure début" value={editForm.horaires_debut} onChange={fe("horaires_debut")} type="time" />
+          <Inp label="Heure fin" value={editForm.horaires_fin} onChange={fe("horaires_fin")} type="time" />
+        </Grid>
+        <Inp label="Jours de travail" value={editForm.jours_travail} onChange={fe("jours_travail")} placeholder="Lun,Mar,Mer,Jeu,Ven" />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowEdit(false); setMedecinEdit(null); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={editMut.isPending} onClick={()=>{
+            if(!editForm.prenom||!editForm.nom||!editForm.specialite){toast.error("Champs requis manquants");return;}
+            editMut.mutate({ id:medecinEdit.id, ...editForm });
+          }}>Enregistrer les modifications</Btn>
         </div>
       </Modal>
 
