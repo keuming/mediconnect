@@ -545,7 +545,7 @@ function PagePlanning() {
         </Panel>
       )}
 
-      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📅 Nouveau rendez-vous">
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📅 Nouveau rendez-vous" width={640}>
         <Grid cols={2} gap={12}>
           <RecherchePatient value={form.patient_nom} onSelect={p=>setForm(prev=>({...prev, patient_id:p.id, patient_nom:`${p.prenom} ${p.nom}`}))} />
           <Inp label="Médecin" value={form.medecin_nom} onChange={f("medecin_nom")} placeholder="Dr. Traoré" />
