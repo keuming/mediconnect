@@ -1069,6 +1069,10 @@ function PageDossiers() {
     adherent:'', beneficiaire:'', societe_assurance:'',
     motif:'', examen_clinique:'', bilan_paraclinique:'', traitement:'', evolution:'',
   });
+  const { data: medecinsListeRapport } = useQuery({
+    queryKey: ["cl-medecins-rapport"],
+    queryFn: () => cAPI.medecins().then(r => r.data||[]),
+  });
   const [editPatientForm, setEditPatientForm] = useState({});
   const editPatientMut = useMutation({
     mutationFn: () => api.put(`/patients/${selected.id}`, editPatientForm),
@@ -2200,7 +2204,8 @@ function PageDossiers() {
           les compagnies d'assurance. */}
       <Modal open={showRapportHosp} onClose={()=>setShowRapportHosp(false)} title="🏥 Rapport médical hospitalisation" width={640}>
         <Grid cols={2} gap={12}>
-          <Inp label="Médecin traitant" value={rapportHospForm.medecin_traitant} onChange={e=>setRapportHospForm(f=>({...f,medecin_traitant:e.target.value}))} placeholder="Dr Nom Prénom" />
+          <Sel label="Médecin traitant" value={rapportHospForm.medecin_traitant} onChange={e=>setRapportHospForm(f=>({...f,medecin_traitant:e.target.value}))}
+            options={[{v:"",l:"— Choisir un médecin —"}, ...(medecinsListeRapport||[]).map(m=>({v:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`, l:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`}))]} />
           <Inp label="Numéro de facture" value={rapportHospForm.numero_facture} onChange={e=>setRapportHospForm(f=>({...f,numero_facture:e.target.value}))} />
           <Inp label="Date d'entrée" type="date" value={rapportHospForm.date_entree} onChange={e=>setRapportHospForm(f=>({...f,date_entree:e.target.value}))} />
           <Inp label="Date de sortie" type="date" value={rapportHospForm.date_sortie} onChange={e=>setRapportHospForm(f=>({...f,date_sortie:e.target.value}))} />
