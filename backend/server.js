@@ -3836,6 +3836,35 @@ app.get('/api/passages/patient/:patient_id/actif', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:null }); }
 });
 
+// Recherche d'un passage (numero d'entree, ex. PSG-XXXXX) pour le
+// rapport medical hospitalisation -- rassemble en un seul appel le
+// patient, son assurance/police/taux de couverture, les dates
+// d'entree/sortie, et la derniere consultation liee (motif, examen
+// clinique, traitement) pour prerempiler le formulaire.
+app.get('/api/passages/reference/:reference', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const p = await db(
+      `SELECT pp.*, pt.prenom, pt.nom, pt.assurance, pt.numero_police,
+              fa.taux_couverture, fa.nom AS formule_nom
+         FROM passages_patient pp
+         JOIN patients pt ON pt.id = pp.patient_id
+         LEFT JOIN formules_assurance fa ON fa.id = pt.formule_assurance_id
+        WHERE pp.reference ILIKE $1 AND pp.clinique_id=$2
+        LIMIT 1`,
+      [req.params.reference, cid]
+    );
+    if (!p.rows.length) return res.json({ success:true, data:null });
+    const passage = p.rows[0];
+    const c = await db(
+      `SELECT motif, examen_clinique, diagnostic, traitement, medecin_id, medecin_nom
+         FROM consultations WHERE passage_id=$1 ORDER BY created_at DESC LIMIT 1`,
+      [passage.id]
+    );
+    res.json({ success:true, data:{ ...passage, consultation: c.rows[0]||null } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.post('/api/passages', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
   const { patient_id, medecin_id } = req.body;
   const cid = req.user?.clinique_id;
