@@ -1017,7 +1017,7 @@ app.get('/api/consultations', auth, requireSousRole('medecin'), async (req, res)
 app.post('/api/consultations', auth, requireSousRole('medecin'), async (req, res) => {
   const {
     patient_id, diagnostic, traitement, notes, tension_arterielle, temperature, poids, taille,
-    rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom, code_cim10,
+    rdv_id, pathologie, age_patient, sexe_patient, gravite, medecin_nom, code_cim10, passage_id,
     motif, hdm_antecedents, examen_clinique, hypotheses_diagnostiques,
     pouls, imc, pc, fr, tso2, pb, pcui,
     biologie_predefinis, biologie_texte, imagerie_texte, autres_examens,
@@ -1035,8 +1035,8 @@ app.post('/api/consultations', auth, requireSousRole('medecin'), async (req, res
         motif,hdm_antecedents,examen_clinique,hypotheses_diagnostiques,
         pouls,imc,pc,fr,tso2,pb,pcui,
         biologie_predefinis,biologie_texte,imagerie_texte,autres_examens,
-        diagnostic_predefini,traitement_predefini,date_controle
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41)
+        diagnostic_predefini,traitement_predefini,date_controle,passage_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42)
       RETURNING *`,
       [
         uuid(),patient_id,req.user?.clinique_id,mid,diagnostic,traitement||null,notes||null,notes||null,
@@ -1046,7 +1046,7 @@ app.post('/api/consultations', auth, requireSousRole('medecin'), async (req, res
         motif||null,hdm_antecedents||null,examen_clinique||null,hypotheses_diagnostiques||null,
         pouls||null,imcCalc,pc||null,fr||null,tso2||null,pb||null,pcui||null,
         biologie_predefinis||null,biologie_texte||null,imagerie_texte||null,autres_examens||null,
-        diagnostic_predefini||null,traitement_predefini||null,date_controle||null,
+        diagnostic_predefini||null,traitement_predefini||null,date_controle||null,passage_id||null,
       ]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
