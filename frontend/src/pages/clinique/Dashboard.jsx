@@ -4125,6 +4125,13 @@ function PageConsultation() {
       if (e.statut !== 'en_consultation') appellerPatientMut.mutate({ id:e.id, action:'consultation' });
     } catch { toast.error("Erreur lors du chargement du dossier patient"); }
   };
+  // Carte patient (passage) active -- meme logique que ConsultationWorkflow.jsx,
+  // pour que le rapport d'hospitalisation puisse retrouver cette consultation.
+  const { data: passageActifConsult } = useQuery({
+    queryKey: ["consult-page-passage-actif", patient?.id],
+    queryFn: () => api.get(`/passages/patient/${patient.id}/actif`).then(r => r.data || null),
+    enabled: !!patient?.id,
+  });
   const toggleBio = (a) => setBioSel(prev => prev.find(x=>x.code===a.code) ? prev.filter(x=>x.code!==a.code) : [...prev,a]);
   const imcAuto = (form.poids && form.taille) ? (parseFloat(form.poids) / Math.pow(parseFloat(form.taille)/100, 2)).toFixed(1) : "";
 
@@ -4374,7 +4381,7 @@ function PageConsultation() {
               <button disabled={addMut.isPending} onClick={()=>{
                 if(!form.motif||!form.diagnostic){toast.error("Motif et diagnostic requis");return;}
                 addMut.mutate({
-                  patient_id:patient.id, ...form, tension_arterielle:form.ta,
+                  patient_id:patient.id, passage_id: passageActifConsult?.id || null, ...form, tension_arterielle:form.ta,
                   biologie_predefinis: bioSel.map(a=>a.libelle).join(", ")||null,
                 });
               }} style={{flex:2,padding:"10px",borderRadius:9,background:`linear-gradient(135deg,${C.green},${C.teal})`,border:"none",color:"#fff",cursor:addMut.isPending?"not-allowed":"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit",opacity:addMut.isPending?.65:1}}>
