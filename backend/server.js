@@ -2591,14 +2591,18 @@ app.get('/api/file-attente/liste', async (req, res) => {
   try {
     const jwt = require('jsonwebtoken');
     const payload = jwt.verify(auth, process.env.JWT_SECRET || 'mediconnect_dev_secret_2024');
-    const { clinique_id, medecin_id, role } = payload;
+    const { clinique_id, medecin_id, role, sous_role } = payload;
 
     let where = 'WHERE fa.date_scan=CURRENT_DATE';
     const params = [];
     let idx = 1;
 
     if (clinique_id) { where += ` AND fa.clinique_id=$${idx++}`; params.push(clinique_id); }
-    if (medecin_id && role === 'medecin') { where += ` AND fa.medecin_id=$${idx++}`; params.push(medecin_id); }
+    // BUG CORRIGE : role vaut TOUJOURS 'clinique' pour un compte personnel
+    // (medecin salarie, sous_role='medecin'), jamais 'medecin' -- ce filtre
+    // ne s'appliquait donc jamais pour ces comptes, qui voyaient toute la
+    // file d'attente de la clinique au lieu de leurs seuls patients.
+    if (medecin_id && (role === 'medecin' || sous_role === 'medecin')) { where += ` AND fa.medecin_id=$${idx++}`; params.push(medecin_id); }
 
     const { statut } = req.query;
     if (statut) { where += ` AND fa.statut=$${idx++}`; params.push(statut); }
