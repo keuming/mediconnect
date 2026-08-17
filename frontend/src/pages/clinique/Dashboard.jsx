@@ -4103,6 +4103,28 @@ function PageConsultation() {
     const r = await api.get(`/patients/medicaments?search=${encodeURIComponent(searchTrait)}`);
     return r.data||[];
   }});
+  // File d'attente du medecin -- remplace la simple recherche par code
+  // comme point d'entree principal : le medecin voit ses patients du
+  // jour et clique pour ouvrir directement leur consultation.
+  const { data: fileAttente, isLoading: chargementFile } = useQuery({
+    queryKey: ["cons-file-attente"],
+    queryFn: () => api.get(`/file-attente/liste`).then(r => r.data||[]),
+    enabled: !patient,
+    refetchInterval: !patient ? 15000 : false,
+  });
+  const attente = (fileAttente||[]).filter(e=>['en_attente','appele','en_consultation'].includes(e.statut));
+  const appellerPatientMut = useMutation({
+    mutationFn: ({id,action}) => api.put(`/file-attente/${id}/${action}`),
+    onSuccess: () => qc.invalidateQueries(["cons-file-attente"]),
+  });
+  const selectionnerDepuisFile = async (e) => {
+    if (!e.patient_id) { toast.error("Ce patient n'a pas de dossier MediConnect lié"); return; }
+    try {
+      const r = await api.get(`/patients/${e.patient_id}`);
+      setPatient(r.data.data);
+      if (e.statut !== 'en_consultation') appellerPatientMut.mutate({ id:e.id, action:'consultation' });
+    } catch { toast.error("Erreur lors du chargement du dossier patient"); }
+  };
   const toggleBio = (a) => setBioSel(prev => prev.find(x=>x.code===a.code) ? prev.filter(x=>x.code!==a.code) : [...prev,a]);
   const imcAuto = (form.poids && form.taille) ? (parseFloat(form.poids) / Math.pow(parseFloat(form.taille)/100, 2)).toFixed(1) : "";
 
@@ -4136,8 +4158,32 @@ function PageConsultation() {
 
   return (
     <div>
-      <PageHeader title="🩺 Consultation" subtitle="Accès par code patient" />
+      <PageHeader title="🩺 Consultation" subtitle="Vos patients du jour" />
+      {!patient && (
+        <Panel style={{maxWidth:640,margin:"0 auto 20px"}} title="🚶 Salle d'attente">
+          {chargementFile ? <Loader/> : attente.length===0 ? (
+            <Empty icon="✅" title="Aucun patient en attente" subtitle="Les patients affectés depuis le bureau des entrées apparaîtront ici." />
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {attente.map(e=>(
+                <div key={e.id} onClick={()=>selectionnerDepuisFile(e)}
+                  style={{background:C.hover,border:`1.5px solid ${e.statut==='appele'?"#3B82F6":C.border}`,borderRadius:10,padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                  <div style={{width:36,height:36,borderRadius:9,background:"rgba(13,148,136,.15)",border:`1.5px solid ${C.teal}`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,color:C.teal,flexShrink:0}}>{e.rang}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:16,color:C.text}}>{e.patient_nom}</div>
+                    {e.motif && <div style={{fontSize:13,color:C.muted}}>💬 {e.motif}</div>}
+                  </div>
+                  <Badge color={e.statut==='appele'?"blue":e.statut==='en_consultation'?"green":"amber"}>
+                    {e.statut==='appele'?"Appelé":e.statut==='en_consultation'?"En consultation":"En attente"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
       <Panel style={{maxWidth:540,margin:"0 auto 20px"}}>
+        <div style={{fontSize:14,fontWeight:700,color:C.muted,marginBottom:10,textTransform:"uppercase",letterSpacing:".5px"}}>Ou recherche directe par code</div>
         <div style={{marginBottom:18}}>
           <label style={{display:"block",fontSize:14,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Code secret patient</label>
           <div style={{display:"flex",gap:10}}>
