@@ -627,20 +627,41 @@ app.get('/api/clinique/personnel', auth, requireSousRole(), async (req, res) => 
 });
 
 app.put('/api/clinique/personnel/:id', auth, requireSousRole(), async (req, res) => {
-  const { sous_role, is_active } = req.body;
+  const { prenom, nom, email, telephone, sous_role, is_active } = req.body;
   if (sous_role && !SOUS_ROLES_VALIDES.includes(sous_role)) {
     return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES.join(', ')}` });
   }
   const cid = req.user?.clinique_id;
   try {
+    if (email) {
+      const exists = await db('SELECT id FROM utilisateurs WHERE email=$1 AND id<>$2', [email, req.params.id]);
+      if (exists.rows.length) return res.status(409).json({ success:false, message:'Email déjà utilisé par un autre compte' });
+    }
     // On ne modifie jamais un compte d'une AUTRE clinique, meme avec l'id exact.
     const r = await db(
-      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
-        WHERE id=$3 AND clinique_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
-      [sous_role||null, is_active===undefined?null:is_active, req.params.id, cid]
+      `UPDATE utilisateurs SET
+         prenom=COALESCE($1,prenom), nom=COALESCE($2,nom), email=COALESCE($3,email),
+         telephone=COALESCE($4,telephone), sous_role=COALESCE($5,sous_role), is_active=COALESCE($6,is_active)
+        WHERE id=$7 AND clinique_id=$8 AND sous_role IS NOT NULL
+        RETURNING id,email,prenom,nom,telephone,sous_role,is_active`,
+      [prenom||null, nom||null, email||null, telephone||null, sous_role||null, is_active===undefined?null:is_active, req.params.id, cid]
     );
     if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre clinique' });
     res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Suppression definitive d'un compte de personnel de la clinique
+// (jamais un compte d'une AUTRE clinique, meme avec l'id exact).
+app.delete('/api/clinique/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `DELETE FROM utilisateurs WHERE id=$1 AND clinique_id=$2 AND sous_role IS NOT NULL RETURNING id`,
+      [req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre clinique' });
+    res.json({ success:true });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 

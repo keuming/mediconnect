@@ -75,6 +75,7 @@ const cAPI = {
   personnel:    () => api.get("/clinique/personnel"),
   addPersonnel: (d) => api.post("/clinique/personnel", d),
   updPersonnel: (id,d) => api.put(`/clinique/personnel/${id}`, d),
+  deletePersonnel: (id) => api.delete(`/clinique/personnel/${id}`),
   // Finance
   factures:      () => api.get("/factures"),
   caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
@@ -2643,6 +2644,9 @@ function PageMedecins() {
   const [showEdit, setShowEdit] = useState(false);
   const [medecinEdit, setMedecinEdit] = useState(null);
   const [editForm, setEditForm] = useState({ prenom:"", nom:"", specialite:"", telephone:"", email:"", tarif:"", experience_ans:"", jours_travail:"", horaires_debut:"", horaires_fin:"" });
+  const [showEditPersonnel, setShowEditPersonnel] = useState(false);
+  const [personnelEdit, setPersonnelEdit] = useState(null);
+  const [editCompteForm, setEditCompteForm] = useState({ prenom:"", nom:"", email:"", telephone:"", sous_role:"bureau_entrees" });
 
   const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data||[]) });
   const medecins = data||[];
@@ -2666,6 +2670,16 @@ function PageMedecins() {
     onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-personnel"]); },
     onError: () => toast.error("Erreur"),
   });
+  const editPersonnelMut = useMutation({
+    mutationFn: ({id,...d}) => cAPI.updPersonnel(id,d),
+    onSuccess: () => { toast.success("Compte modifié !"); qc.invalidateQueries(["cl-personnel"]); setShowEditPersonnel(false); setPersonnelEdit(null); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la modification"),
+  });
+  const deletePersonnelMut = useMutation({
+    mutationFn: id => cAPI.deletePersonnel(id),
+    onSuccess: () => { toast.success("Compte supprimé"); qc.invalidateQueries(["cl-personnel"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la suppression"),
+  });
   const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration", pharmacien:"Pharmacien", laboratoire:"Laboratoire", radiologie:"Radiologie" };
   const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple", pharmacien:"teal", laboratoire:"purple", radiologie:"blue" };
 
@@ -2676,6 +2690,12 @@ function PageMedecins() {
     setMedecinEdit(m);
     setEditForm({ prenom:m.prenom||"", nom:m.nom||"", specialite:m.specialite||"", telephone:m.telephone||"", email:m.email||"", tarif:m.tarif||"", experience_ans:m.experience_ans||"", jours_travail:m.jours_travail||"Lun,Mar,Mer,Jeu,Ven", horaires_debut:m.horaires_debut||"08:00", horaires_fin:m.horaires_fin||"17:00" });
     setShowEdit(true);
+  };
+  const fep = k => e => setEditCompteForm(p=>({...p,[k]:e.target.value}));
+  const ouvrirEditionPersonnel = (p) => {
+    setPersonnelEdit(p);
+    setEditCompteForm({ prenom:p.prenom||"", nom:p.nom||"", email:p.email||"", telephone:p.telephone||"", sous_role:p.sous_role||"bureau_entrees" });
+    setShowEditPersonnel(true);
   };
 
   const SPECS = ["Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Neurologie","Dermatologie","ORL","Ophtalmologie","Orthopédie","Psychiatrie","Radiologie","Chirurgie"];
@@ -2787,10 +2807,16 @@ function PageMedecins() {
                 { key:"sous_role", label:"Rôle", render:v=><Badge color={COULEUR_SOUS_ROLE[v]||"gray"}>{LABEL_SOUS_ROLE[v]||v}</Badge> },
                 { key:"is_active", label:"Statut", render:v=><Badge color={v?"green":"red"}>{v?"Actif":"Désactivé"}</Badge> },
                 { key:"id", label:"Actions", render:(v,row)=>(
-                  <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}}
-                    onClick={()=>toggleCompteMut.mutate({id:row.id, is_active:!row.is_active})}>
-                    {row.is_active?"Désactiver":"Activer"}
-                  </Btn>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}}
+                      onClick={()=>toggleCompteMut.mutate({id:row.id, is_active:!row.is_active})}>
+                      {row.is_active?"Désactiver":"Activer"}
+                    </Btn>
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>ouvrirEditionPersonnel(row)}>✏️ Modifier</Btn>
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.red}} loading={deletePersonnelMut.isPending} onClick={()=>{
+                      if(window.confirm(`Supprimer le compte de ${row.prenom} ${row.nom} ? Cette action est irréversible.`)) deletePersonnelMut.mutate(row.id);
+                    }}>🗑️ Supprimer</Btn>
+                  </div>
                 )},
               ]} rows={personnel} />
           }
@@ -2913,6 +2939,30 @@ function PageMedecins() {
             if(compteForm.password.length<6){ toast.error("Mot de passe : 6 caractères minimum"); return; }
             addCompteMut.mutate(compteForm);
           }}>Créer le compte</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Modifier personnel */}
+      <Modal open={showEditPersonnel} onClose={()=>{ setShowEditPersonnel(false); setPersonnelEdit(null); }} title={`✏️ Modifier — ${personnelEdit?.prenom||""} ${personnelEdit?.nom||""}`} width={520}>
+        <Grid cols={2} gap={12}>
+          <Inp label="Prénom *" required value={editCompteForm.prenom} onChange={fep("prenom")} placeholder="Adjoua" />
+          <Inp label="Nom *" required value={editCompteForm.nom} onChange={fep("nom")} placeholder="Koné" />
+        </Grid>
+        <Inp label="Email de connexion *" required type="email" value={editCompteForm.email} onChange={fep("email")} placeholder="adjoua.kone@clinique.ci" />
+        <Inp label="Téléphone" value={editCompteForm.telephone} onChange={fep("telephone")} placeholder="+225 07 00 00 00" />
+        <Sel label="Rôle dans la clinique *" value={editCompteForm.sous_role} onChange={fep("sous_role")}
+          options={[
+            {v:"bureau_entrees", l:"🚶 Bureau des entrées — RDV, dossiers, caisse, facturation"},
+            {v:"medecin",        l:"🩺 Médecin — dossier médical complet"},
+            {v:"finance",        l:"💰 Finance — caisse, facturation, assurances"},
+            {v:"rh",             l:"👔 RH / Administration — personnel, contrats"},
+          ]} />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowEditPersonnel(false); setPersonnelEdit(null); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={editPersonnelMut.isPending} onClick={()=>{
+            if(!editCompteForm.prenom||!editCompteForm.nom||!editCompteForm.email){toast.error("Prénom, nom et email requis");return;}
+            editPersonnelMut.mutate({ id:personnelEdit.id, ...editCompteForm });
+          }}>Enregistrer les modifications</Btn>
         </div>
       </Modal>
     </div>
