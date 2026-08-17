@@ -1012,8 +1012,6 @@ function PageDossiers() {
   const [showAdd, setShowAdd] = useState(false);
   const [showConsult, setShowConsult] = useState(false);
   const [newPatient, setNewPatient] = useState(null); // patient créé avec son code
-  const [rdvConsult, setRdvConsult] = useState(null); // RDV depuis lequel on ouvre une consultation
-  const [rdvCForm, setRdvCForm] = useState({diagnostic:'',traitement:'',tension_arterielle:'',temperature:'',poids:'',taille:'',notes:''});
   const [showOrd, setShowOrd] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
   const [showRapportHosp, setShowRapportHosp] = useState(false);
@@ -1255,11 +1253,6 @@ function PageDossiers() {
     toast.success("✅ Patient créé !"); qc.invalidateQueries(["cl-patients"]); setShowAdd(false); setNewPatient(np); setActesSel([]);
   }, onError:()=>toast.error("Erreur") });
   const addCons = useMutation({ mutationFn:d=>cAPI.addConsult({...d,code_cim10:codeCim||null}), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
-  const addConsRdv = useMutation({
-    mutationFn: d => api.post('/consultations/depuis-rdv', d),
-    onSuccess: () => { toast.success("✅ Consultation enregistrée !"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); setRdvConsult(null); },
-    onError: e => toast.error("Erreur: "+(e?.message||"Réessayez")),
-  });
   const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); setConsultationPourOrdonnance(null); }, onError:()=>toast.error("Erreur") });
   const updConsultMut = useMutation({
     mutationFn: d => api.put(`/consultations/${consultationEnEdition.id}`, d),
@@ -2372,46 +2365,6 @@ function PageDossiers() {
         </div>
       </Modal>
 
-      {/* Modal: Consultation depuis RDV */}
-      {rdvConsult&&(
-        <div onClick={()=>setRdvConsult(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'#0E1620',border:'1px solid #1E2F42',borderRadius:16,padding:28,width:540,maxWidth:'95vw',maxHeight:'90vh',overflowY:'auto'}}>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-              <h2 style={{fontSize:22,fontWeight:700,color:'#F0F4F8',margin:0}}>🩺 Consultation — {rdvConsult.patient_nom}</h2>
-              <button onClick={()=>setRdvConsult(null)} style={{background:'none',border:'none',color:'#8BA0B5',cursor:'pointer',fontSize:26}}>✕</button>
-            </div>
-            <div style={{background:'rgba(10,143,88,.08)',border:'1px solid rgba(10,143,88,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:16,color:'#8BA0B5'}}>
-              RDV du {new Date(rdvConsult.date_rdv).toLocaleDateString('fr-CI',{day:'numeric',month:'long'})} · {rdvConsult.heure_rdv?.slice(0,5)} · {rdvConsult.motif||'—'}
-            </div>
-            {[['Diagnostic *','diagnostic','Ex: Hypertension artérielle'],['Traitement prescrit','traitement','Ex: Amlodipine 5mg'],['Notes cliniques','notes','Observations…']].map(([label,key,ph])=>(
-              <div key={key} style={{marginBottom:12}}>
-                <label style={{display:'block',fontSize:14,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
-                {key==='notes'
-                  ? <textarea value={rdvCForm[key]} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} rows={3} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:18,resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
-                  : <input value={rdvCForm[key]} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'10px 14px',color:'#F0F4F8',fontSize:18,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
-                }
-              </div>
-            ))}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:10,marginBottom:16}}>
-              {[['T.A.','tension_arterielle','120/80'],['Temp °C','temperature','37'],['Poids kg','poids','70'],['Taille cm','taille','175']].map(([label,key,ph])=>(
-                <div key={key}>
-                  <label style={{display:'block',fontSize:13,fontWeight:700,color:'#8BA0B5',textTransform:'uppercase',marginBottom:4}}>{label}</label>
-                  <input value={rdvCForm[key]||''} onChange={e=>setRdvCForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} style={{width:'100%',background:'#1A2535',border:'1.5px solid #1E2F42',borderRadius:9,padding:'8px 10px',color:'#F0F4F8',fontSize:17,outline:'none',fontFamily:'inherit',boxSizing:'border-box'}}/>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setRdvConsult(null)} style={{flex:1,padding:'10px',borderRadius:9,background:'transparent',border:'1.5px solid #1E2F42',color:'#8BA0B5',cursor:'pointer',fontSize:17,fontWeight:700,fontFamily:'inherit'}}>Annuler</button>
-              <button disabled={addConsRdv.isPending} onClick={()=>{
-                if(!rdvCForm.diagnostic){toast.error('Diagnostic requis');return;}
-                addConsRdv.mutate({rdv_id:rdvConsult.id,patient_id:rdvConsult.patient_id,motif:rdvConsult.motif||rdvCForm.diagnostic,...rdvCForm});
-              }} style={{flex:2,padding:'10px',borderRadius:9,background:'linear-gradient(135deg,#0A8F58,#0D9488)',border:'none',color:'#fff',cursor:'pointer',fontSize:17,fontWeight:700,fontFamily:'inherit',opacity:addConsRdv.isPending?.65:1}}>
-                {addConsRdv.isPending?'⏳…':'✅ Enregistrer consultation'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal: Ordonnance — plusieurs medicaments, chacun avec sa propre ligne */}
       <Modal open={showOrd} onClose={()=>{ setShowOrd(false); setLignesOrd([{nom:"",qte:"",unite:"",posologie:"",duree:""}]); }} title={`💊 Ordonnance — ${selected?.prenom} ${selected?.nom}`} width={520}>
