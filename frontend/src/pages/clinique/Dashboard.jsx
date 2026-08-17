@@ -377,6 +377,9 @@ function PageHome() {
 function RecherchePatient({ value, onSelect, placeholder }) {
   const [saisie, setSaisie] = useState(value || "");
   const [ouvert, setOuvert] = useState(false);
+  const [showCreer, setShowCreer] = useState(false);
+  const [creerForm, setCreerForm] = useState({ prenom:"", nom:"", telephone:"", email:"" });
+  const qc = useQueryClient();
   useEffect(() => { setSaisie(value || ""); }, [value]);
 
   const { data } = useQuery({
@@ -385,18 +388,46 @@ function RecherchePatient({ value, onSelect, placeholder }) {
     enabled: saisie.trim().length >= 2 && ouvert,
   });
 
+  // Patient introuvable dans MediConnect : creation directe (compte
+  // VigieCard + code secret generes automatiquement par le backend),
+  // au lieu de laisser saisie comme simple texte libre sans patient_id.
+  const creerMut = useMutation({
+    mutationFn: () => api.post("/patients", creerForm),
+    onSuccess: (r) => {
+      const p = r.data.data;
+      toast.success(`Patient créé — code secret ${p.code_secret}`);
+      qc.invalidateQueries(["recherche-patient-globale"]);
+      onSelect(p);
+      setSaisie(`${p.prenom} ${p.nom}`);
+      setShowCreer(false); setOuvert(false);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la création"),
+  });
+
+  const ouvrirCreation = () => {
+    const mots = saisie.trim().split(/\s+/);
+    setCreerForm({ prenom: mots[0]||"", nom: mots.slice(1).join(" ")||"", telephone:"", email:"" });
+    setShowCreer(true);
+  };
+
   return (
     <div style={{ position:"relative" }}>
       <Inp label="Patient *" required value={saisie}
         onChange={e => { setSaisie(e.target.value); setOuvert(true); }}
         onFocus={() => setOuvert(true)}
         placeholder={placeholder || "Nom, téléphone ou code secret…"} />
-      {ouvert && saisie.trim().length >= 2 && (
-        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:20, background:C.input, border:`1.5px solid ${C.border}`, borderRadius:10, marginTop:4, maxHeight:220, overflowY:"auto", boxShadow:"0 8px 24px rgba(0,0,0,.25)" }}>
+      {ouvert && saisie.trim().length >= 2 && !showCreer && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:20, background:C.input, border:`1.5px solid ${C.border}`, borderRadius:10, marginTop:4, maxHeight:260, overflowY:"auto", boxShadow:"0 8px 24px rgba(0,0,0,.25)" }}>
           {!data ? (
             <div style={{ padding:12, fontSize:14, color:C.dim }}>Recherche…</div>
           ) : data.length === 0 ? (
-            <div style={{ padding:12, fontSize:14, color:C.dim }}>Aucun patient trouvé</div>
+            <div style={{ padding:12 }}>
+              <div style={{ fontSize:14, color:C.dim, marginBottom:8 }}>Aucun patient MediConnect trouvé</div>
+              <button onClick={ouvrirCreation} onMouseDown={e=>e.preventDefault()}
+                style={{ width:"100%", padding:"8px 12px", background:"rgba(10,143,88,.12)", border:`1px solid ${C.green}`, borderRadius:7, color:C.green, fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                + Créer "{saisie}" comme nouveau patient
+              </button>
+            </div>
           ) : data.slice(0,8).map(p => (
             <div key={p.id} onClick={() => { onSelect(p); setSaisie(`${p.prenom} ${p.nom}`); setOuvert(false); }}
               style={{ padding:"10px 14px", cursor:"pointer", borderBottom:`1px solid ${C.border}` }}
@@ -405,6 +436,24 @@ function RecherchePatient({ value, onSelect, placeholder }) {
               <div style={{ fontSize:13, color:C.dim }}>{p.telephone||"—"} {p.code_secret?`· ${p.code_secret}`:""}</div>
             </div>
           ))}
+        </div>
+      )}
+      {showCreer && (
+        <div style={{ position:"absolute", top:"100%", left:0, right:0, zIndex:20, background:C.input, border:`1.5px solid ${C.green}`, borderRadius:10, marginTop:4, padding:14, boxShadow:"0 8px 24px rgba(0,0,0,.25)" }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.green, marginBottom:10 }}>🆕 Nouveau patient MediConnect</div>
+          <Grid cols={2} gap={8}>
+            <Inp label="Prénom *" required value={creerForm.prenom} onChange={e=>setCreerForm(f=>({...f,prenom:e.target.value}))} />
+            <Inp label="Nom *" required value={creerForm.nom} onChange={e=>setCreerForm(f=>({...f,nom:e.target.value}))} />
+          </Grid>
+          <Inp label="Téléphone" value={creerForm.telephone} onChange={e=>setCreerForm(f=>({...f,telephone:e.target.value}))} placeholder="+225 07 00 00 00 00" style={{marginTop:8}} />
+          <Inp label="Email" value={creerForm.email} onChange={e=>setCreerForm(f=>({...f,email:e.target.value}))} placeholder="patient@exemple.com" style={{marginTop:8}} />
+          <div style={{ display:"flex", gap:8, marginTop:10 }}>
+            <Btn variant="outline" style={{flex:1}} onClick={()=>setShowCreer(false)}>Annuler</Btn>
+            <Btn style={{flex:2}} loading={creerMut.isPending} onClick={()=>{
+              if (!creerForm.prenom.trim()||!creerForm.nom.trim()) { toast.error("Prénom et nom requis"); return; }
+              creerMut.mutate();
+            }}>Créer et sélectionner</Btn>
+          </div>
         </div>
       )}
     </div>
