@@ -1073,6 +1073,33 @@ function PageDossiers() {
     queryKey: ["cl-medecins-rapport"],
     queryFn: () => cAPI.medecins().then(r => r.data||[]),
   });
+  const [numeroEntreeRecherche, setNumeroEntreeRecherche] = useState('');
+
+  // Recherche par numero d'entree (reference PSG-XXXXX de la Carte
+  // patient) -- rassemble en un seul appel assurance/police/taux de
+  // couverture/dates/derniere consultation liee, pour eviter la
+  // saisie manuelle repetee de donnees deja connues du systeme.
+  const rechercherParReferenceMut = useMutation({
+    mutationFn: () => api.get(`/passages/reference/${encodeURIComponent(numeroEntreeRecherche.trim())}`),
+    onSuccess: (r) => {
+      const d = r.data.data;
+      if (!d) { toast.error("Aucun passage trouvé pour ce numéro d'entrée"); return; }
+      const c = d.consultation || {};
+      setRapportHospForm(f => ({
+        ...f,
+        medecin_traitant: c.medecin_nom ? (/^dr\.?\s/i.test(c.medecin_nom) ? c.medecin_nom : `Dr ${c.medecin_nom}`) : f.medecin_traitant,
+        date_entree: d.created_at ? d.created_at.slice(0,10) : f.date_entree,
+        date_sortie: d.closed_at ? d.closed_at.slice(0,10) : f.date_sortie,
+        adherent: `${d.prenom||''} ${d.nom||''}`.trim() || f.adherent,
+        societe_assurance: d.assurance ? `${d.assurance}${d.numero_police?' — Police '+d.numero_police:''}${d.taux_couverture?' — '+d.taux_couverture+'% couverture':''}` : f.societe_assurance,
+        motif: c.motif || f.motif,
+        examen_clinique: c.examen_clinique || f.examen_clinique,
+        traitement: c.traitement || f.traitement,
+      }));
+      toast.success("Informations pré-remplies depuis le dossier");
+    },
+    onError: () => toast.error("Numéro d'entrée introuvable"),
+  });
   const [editPatientForm, setEditPatientForm] = useState({});
   const editPatientMut = useMutation({
     mutationFn: () => api.put(`/patients/${selected.id}`, editPatientForm),
@@ -2203,6 +2230,13 @@ function PageDossiers() {
           modele physique fourni par une clinique partenaire, exige par
           les compagnies d'assurance. */}
       <Modal open={showRapportHosp} onClose={()=>setShowRapportHosp(false)} title="🏥 Rapport médical hospitalisation" width={640}>
+        <div style={{display:"flex",gap:8,marginBottom:16,padding:12,background:C.hover,borderRadius:10}}>
+          <Inp label="Numéro d'entrée (ex. PSG-XXXXX)" value={numeroEntreeRecherche} onChange={e=>setNumeroEntreeRecherche(e.target.value)}
+            placeholder="Coller le numéro d'entrée du patient" style={{flex:1,marginBottom:0}} />
+          <Btn style={{alignSelf:"flex-end"}} loading={rechercherParReferenceMut.isPending}
+            disabled={!numeroEntreeRecherche.trim()}
+            onClick={()=>rechercherParReferenceMut.mutate()}>🔎 Rechercher</Btn>
+        </div>
         <Grid cols={2} gap={12}>
           <Sel label="Médecin traitant" value={rapportHospForm.medecin_traitant} onChange={e=>setRapportHospForm(f=>({...f,medecin_traitant:e.target.value}))}
             options={[{v:"",l:"— Choisir un médecin —"}, ...(medecinsListeRapport||[]).map(m=>({v:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`, l:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`}))]} />
