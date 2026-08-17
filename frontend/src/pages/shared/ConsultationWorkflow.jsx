@@ -14,7 +14,7 @@
  */
 
 import React, { useState, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 
@@ -187,12 +187,22 @@ export default function ConsultationWorkflow({ open, onClose, rdv, patient, role
   const patientNom = rdv?.patient_nom || patient?.prenom && `${patient.prenom} ${patient.nom}` || "Patient";
   const patientId  = rdv?.patient_id || patient?.id;
 
+  // Carte patient (passage) active du patient -- si elle existe, on la
+  // relie a la consultation pour que le rapport d'hospitalisation puisse
+  // en tirer motif/examen clinique automatiquement.
+  const { data: passageActif } = useQuery({
+    queryKey: ["consult-workflow-passage-actif", patientId],
+    queryFn: () => api.get(`/passages/patient/${patientId}/actif`).then(r => r.data || null),
+    enabled: !!patientId,
+  });
+
   const handleSubmitConsult = () => {
     if (!form.motif) { toast.error("Motif requis"); return; }
     if (!form.diagnostic) { toast.error("Diagnostic requis"); return; }
     consultMut.mutate({
       rdv_id:         rdv?.id || null,
       patient_id:     patientId,
+      passage_id:     passageActif?.id || null,
       motif:          form.motif,
       diagnostic:     form.diagnostic,
       code_cim10:     form.code_cim10 || null,
