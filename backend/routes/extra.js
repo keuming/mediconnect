@@ -207,7 +207,18 @@ router.get('/patients/me', auth, async (req, res) => {
 });
 
 // ── CONSULTATIONS depuis-rdv ────────────────────────────────────
-router.post('/consultations/depuis-rdv', auth, async (req, res) => {
+// Verification de role autonome (equivalente a requireSousRole('medecin')
+// de server.js, mais non exportee donc non importable ici) -- cette
+// route n'avait auparavant AUCUNE restriction de sous_role, n'importe
+// quel compte authentifie (bureau_entrees, finance...) pouvait creer
+// une consultation medicale. Meme regle que la version corrigee :
+// bypass uniquement pour un vrai proprietaire clinique (sous_role NULL).
+router.post('/consultations/depuis-rdv', auth, async (req, res, next) => {
+  const role = req.user?.role, sr = req.user?.sous_role;
+  if (role === 'clinique' && !sr) return next();
+  if (sr === 'medecin') return next();
+  return res.status(403).json({ success:false, message:"Accès refusé pour votre rôle" });
+}, async (req, res) => {
   try {
     const { rdv_id, patient_id, diagnostic, traitement, notes,
             tension_arterielle, temperature, poids, taille,
