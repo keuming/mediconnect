@@ -211,20 +211,22 @@ router.post('/consultations/depuis-rdv', auth, async (req, res) => {
   try {
     const { rdv_id, patient_id, diagnostic, traitement, notes,
             tension_arterielle, temperature, poids, taille,
-            pathologie, age_patient, sexe_patient, gravite, ordonnance } = req.body;
+            pathologie, age_patient, sexe_patient, gravite, ordonnance,
+            motif, examen_clinique, passage_id } = req.body;
     if (!diagnostic) return res.status(400).json({ success: false, message: 'Diagnostic requis' });
     const mid = req.user?.medecin_id || req.user?.id;
     const r = await db(`
       INSERT INTO consultations
         (id,patient_id,medecin_id,rdv_id,diagnostic,traitement,notes,
          tension_arterielle,temperature,poids,taille,pathologie,
-         age_patient,sexe_patient,gravite,pays_code)
-      VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CI')
+         age_patient,sexe_patient,gravite,pays_code,motif,examen_clinique,passage_id)
+      VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CI',$15,$16,$17)
       RETURNING *
     `, [patient_id||null, mid, rdv_id||null, diagnostic,
         traitement||null, notes||null, tension_arterielle||null,
         temperature||null, poids||null, taille||null,
-        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere']);
+        pathologie||null, age_patient||null, sexe_patient||null, gravite||'modere',
+        motif||null, examen_clinique||null, passage_id||null]);
     if (ordonnance?.medicaments) {
       await db(
         'INSERT INTO ordonnances (id,patient_id,medecin_id,consultation_id,medicaments,posologie,duree) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6)',
