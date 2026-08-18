@@ -2758,6 +2758,7 @@ function PageMedecins() {
     { key:"conges", label:"Congés" },
     { key:"evaluations", label:"Évaluations" },
     { key:"formations", label:"Formations" },
+    { key:"profil", label:"Profil & Logo" },
   ];
 
   // Données RH simulées
@@ -2907,6 +2908,9 @@ function PageMedecins() {
           <Empty icon="🎓" title="Module formation" subtitle="Programmes, suivi et certifications — en cours d'implémentation" />
         </Panel>
       )}
+
+      {/* Tab: Profil & Logo (identite visuelle + mon mot de passe) */}
+      {tab==="profil" && <PageProfilLogo />}
 
       {/* Modal: Nouveau médecin */}
       <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="👨‍⚕️ Nouveau médecin" width={560}>
