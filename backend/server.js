@@ -1563,9 +1563,14 @@ app.delete('/api/stock/:id', auth, async (req, res) => {
 app.get('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id; const pid=req.user?.patient_id;
+    const { patient_id } = req.query;
     let sql='SELECT * FROM factures WHERE 1=1'; const p=[];
     if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
     if (pid&&!cid) { p.push(pid); sql+=` AND patient_id=$${p.length}`; }
+    // Filtre explicite par patient (dossier patient cote clinique) --
+    // s'ajoute au scope clinique_id deja applique ci-dessus, jamais un
+    // substitut : un compte clinique ne peut voir que SES patients.
+    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
     sql+=' ORDER BY created_at DESC LIMIT 100';
     const r=await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }

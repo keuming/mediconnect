@@ -81,6 +81,7 @@ const cAPI = {
   // Finance
   factures:      () => api.get("/factures"),
   updateFacture: (id,d) => api.put(`/factures/${id}`, d),
+  facturesPatient: (patientId) => api.get("/factures", { params: { patient_id: patientId } }),
   caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
   actesCatalogue:  () => api.get("/actes"),
   passageActif:    (patientId) => api.get(`/passages/patient/${patientId}/actif`),
@@ -1014,6 +1015,12 @@ function PageDossiers() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [activeTab, setActiveTab] = useState("infos");
+  const { data: facturesPatientData } = useQuery({
+    queryKey: ["cl-factures-patient", selected?.id],
+    queryFn: () => cAPI.facturesPatient(selected.id).then(r => r.data || []),
+    enabled: !!selected,
+  });
+  const facturesPatient = facturesPatientData || [];
   const [showAdd, setShowAdd] = useState(false);
   const [showConsult, setShowConsult] = useState(false);
   const [newPatient, setNewPatient] = useState(null); // patient créé avec son code
@@ -1331,6 +1338,68 @@ function PageDossiers() {
     const d = await r.json();
     if (!r.ok || !d.secure_url) throw new Error(d?.error?.message || "Echec de l'envoi du fichier");
     return d.secure_url;
+  };
+
+  const imprimerFactureEmise = async (f) => {
+    const win = window.open('', '_blank');
+    win.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement de la facture…</p>');
+    let lignes = [];
+    let cl = null;
+    try { const r = await api.get(`/factures/${f.id}/detail`); lignes = r.data?.lignes || []; } catch(e) { /* impression sans detail si echec */ }
+    try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
+    const lignesHtml = lignes.length
+      ? lignes.map(l => `
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:center;">${l.quantite}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.prix_unitaire).toLocaleString('fr-CI')} F</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.part_patient||0).toLocaleString('fr-CI')} F</td>
+        </tr>`).join('')
+      : `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
+    win.document.open();
+    win.document.write(`
+      <html><head><title>Facture ${f.reference||''}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
+        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;}
+        .logo{height:58px;object-fit:contain;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
+        .label{color:#8BA0B5;}
+        .valeur{font-weight:700;}
+        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
+        th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
+        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
+        .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header">
+        ${cl?.logo?`<img src="${cl.logo}" class="logo"/>`:''}
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#065F3C;">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div style="font-size:11px;color:#5A7A94;">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
+        </div>
+      </div>
+      <h2>📄 Facture</h2>
+      <div class="champ"><span class="label">Référence</span><span class="valeur">${f.reference||'—'}</span></div>
+      <div class="champ"><span class="label">Patient</span><span class="valeur">${f.patient_nom||'—'}</span></div>
+      <div class="champ"><span class="label">Date</span><span class="valeur">${new Date(f.created_at).toLocaleDateString('fr-CI',{day:'numeric',month:'long',year:'numeric'})}</span></div>
+      <div class="champ"><span class="label">Statut</span><span class="valeur">${f.statut||'—'}</span></div>
+      <table>
+        <thead><tr><th>Acte</th><th style="text-align:center;">Qté</th><th style="text-align:right;">Prix unit.</th><th style="text-align:right;">À charge patient</th></tr></thead>
+        <tbody>${lignesHtml}</tbody>
+      </table>
+      <div class="total">Total : ${Number(f.montant||0).toLocaleString('fr-CI')} F</div>
+      <div class="footer">
+        <div>${cl?.nom||'MediConnect Africa'}${cl?.site_web?' · '+cl.site_web:''}</div>
+        <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
+      </div>
+      </body></html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(()=>win.print(), 300);
   };
 
   const imprimerFacture = async (arg) => {
@@ -2137,6 +2206,21 @@ function PageDossiers() {
             {activeTab==="carte" && <PanelCartePatient patient={selected} />}
 
             {activeTab==="factures" && (
+              <>
+              {facturesPatient.length>0 && (
+                <Panel title="Factures émises" style={{marginBottom:16}}>
+                  {facturesPatient.map(f=>(
+                    <div key={f.id} style={{background:C.hover,borderRadius:9,padding:"11px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:16,fontWeight:700,color:C.teal,fontFamily:"monospace"}}>{f.reference||"—"}</div>
+                        <div style={{fontSize:13,color:C.dim}}>{fmtDate(f.created_at)} · <Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[f.statut]||"gray"}>{f.statut}</Badge></div>
+                      </div>
+                      <div style={{fontSize:18,fontWeight:800,color:C.green}}>{fmt(f.montant)} F</div>
+                      <Btn variant="outline" style={{padding:"6px 12px",fontSize:14}} onClick={()=>imprimerFactureEmise(f)}>🖨️ PDF</Btn>
+                    </div>
+                  ))}
+                </Panel>
+              )}
               <Panel title="Facturation des actes"
                 actions={(pec?.data||[]).length>0?<Btn style={{padding:"6px 14px",fontSize:16}} onClick={imprimerFacture}>🖨️ Imprimer la facture</Btn>:null}>
                 {(pec?.data||[]).length===0
@@ -2165,6 +2249,7 @@ function PageDossiers() {
                     </>
                 }
               </Panel>
+              </>
             )}
 
             {activeTab==="rapports" && (
