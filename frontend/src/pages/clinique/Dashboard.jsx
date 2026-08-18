@@ -3486,10 +3486,12 @@ function PageFacturation() {
     const win = window.open('', '_blank');
     win.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement de la facture…</p>');
     let lignes = [];
+    let cl = null;
     try {
       const r = await api.get(`/factures/${f.id}/detail`);
       lignes = r.data?.lignes || [];
     } catch(e) { /* fallback : impression sans detail si la requete echoue */ }
+    try { const rp = await api.get('/clinique/profil'); cl = rp.data?.data || null; } catch(e) { /* impression sans en-tete si echec */ }
 
     const lignesHtml = lignes.length
       ? lignes.map(l => `
@@ -3517,6 +3519,14 @@ function PageFacturation() {
         .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
         @media print{button{display:none;}}
       </style></head><body>
+      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;">
+        ${cl?.logo?`<img src="${cl.logo}" style="height:58px;object-fit:contain;"/>`:''}
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#065F3C;">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div style="font-size:11px;color:#5A7A94;">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
+        </div>
+      </div>
       <h2>📄 Facture</h2>
       <div class="champ"><span class="label">Référence</span><span class="valeur">${f.reference||'—'}</span></div>
       <div class="champ"><span class="label">Patient</span><span class="valeur">${f.patient_nom||'—'}</span></div>
@@ -3531,6 +3541,10 @@ function PageFacturation() {
         <div class="champ"><span class="label">Ticket modérateur (patient)</span><span class="valeur">${Number(f.ticket_moder||0).toLocaleString('fr-CI')} F</span></div>
       </div>
       <div class="total">Total : ${Number(f.montant_total||0).toLocaleString('fr-CI')} F</div>
+      <div style="margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;">
+        <div>${cl?.nom||'MediConnect Africa'}${cl?.site_web?' · '+cl.site_web:''}</div>
+        <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
+      </div>
       </body></html>
     `);
     win.document.close();
@@ -4595,8 +4609,11 @@ function PageCaisse() {
   });
   const historique = historiqueData || [];
 
-  const imprimerHistorique = () => {
+  const imprimerHistorique = async () => {
     const w = window.open('', '_blank');
+    w.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement…</p>');
+    let cl = null;
+    try { const r = await api.get('/clinique/profil'); cl = r.data?.data || null; } catch(e) { /* impression sans en-tete si echec */ }
     const lignes = historique.map(m => `
       <tr>
         <td>${new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</td>
@@ -4605,19 +4622,38 @@ function PageCaisse() {
         <td>${m.mode_paiement || '—'}</td>
         <td style="text-align:right;color:${m.type==='encaissement'?'#0A8F58':'#D97706'}">${m.type==='encaissement'?'+':'-'}${fmt(m.montant)} F</td>
       </tr>`).join('');
+    w.document.open();
     w.document.write(`
       <html><head><title>Historique caisse</title>
       <style>
         body{font-family:sans-serif;padding:32px;color:#16211C}
+        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;}
+        .logo{height:58px;object-fit:contain;}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .ci{font-size:11px;color:#5A7A94;}
         h1{font-size:20px;margin-bottom:4px} p{color:#5B6B78;margin-top:0}
         table{width:100%;border-collapse:collapse;margin-top:20px}
         th{text-align:left;padding:8px;border-bottom:2px solid #16211C;font-size:12px;text-transform:uppercase}
         td{padding:8px;border-bottom:1px solid #E1E7EC;font-size:13px}
+        .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
+        @media print{button{display:none;}}
       </style></head><body>
+      <div class="header">
+        ${cl?.logo?`<img src="${cl.logo}" class="logo"/>`:''}
+        <div>
+          <div class="cn">${cl?.nom||'MediConnect Africa'}</div>
+          <div class="ci">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+          <div class="ci">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
+        </div>
+      </div>
       <h1>💰 ${caisseActive?.nom || 'Caisse'} — Historique</h1>
       <p>${new Date().toLocaleDateString('fr-CI',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
       <table><thead><tr><th>Heure</th><th>Type</th><th>Réf. / Motif</th><th>Mode</th><th>Montant</th></tr></thead>
       <tbody>${lignes || '<tr><td colspan="5" style="text-align:center;padding:24px">Aucun mouvement</td></tr>'}</tbody></table>
+      <div class="footer">
+        <div>${cl?.nom||'MediConnect Africa'}${cl?.site_web?' · '+cl.site_web:''}</div>
+        <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
+      </div>
       </body></html>`);
     w.document.close(); w.print();
   };
