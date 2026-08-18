@@ -3605,6 +3605,21 @@ app.post('/api/admin/init-nomenclature', async (req, res) => {
       actif BOOLEAN DEFAULT true,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`);
+    // tarif_base sert de prix "non assuré" (deja scope par clinique_id) --
+    // prix_subventionne est le 2e niveau de tarification par acte.
+    await db(`ALTER TABLE actes_medicaux ADD COLUMN IF NOT EXISTS prix_subventionne DECIMAL(12,2)`);
+    // Tarif negocie par acte, propre a CHAQUE convention (clinique +
+    // assureur) : le 3e niveau ("assure"), variable selon l'assureur.
+    // Repli sur le taux de la convention/formule si aucune ligne ici.
+    await db(`CREATE TABLE IF NOT EXISTS actes_tarifs_convention (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      convention_id UUID NOT NULL REFERENCES conventions(id) ON DELETE CASCADE,
+      acte_id UUID NOT NULL REFERENCES actes_medicaux(id) ON DELETE CASCADE,
+      tarif_negocie DECIMAL(12,2) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(convention_id, acte_id)
+    )`);
     await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
       code VARCHAR(10) PRIMARY KEY,
       libelle VARCHAR(300) NOT NULL,
@@ -3806,7 +3821,7 @@ app.post('/api/actes', auth, async (req, res) => {
 // (clinique_id IS NULL) ni ceux d'une autre clinique : WHERE porte
 // systematiquement sur clinique_id=$X, pas seulement sur id.
 app.put('/api/actes/:id', auth, async (req, res) => {
-  const { libelle, categorie_id, tarif_base, taux_assurance, actif } = req.body;
+  const { libelle, categorie_id, tarif_base, taux_assurance, actif, prix_subventionne } = req.body;
   const cid = req.user?.clinique_id;
   if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
   try {
@@ -3815,12 +3830,64 @@ app.put('/api/actes/:id', auth, async (req, res) => {
          libelle=COALESCE($1,libelle),
          categorie_id=CASE WHEN $2::text IS NULL THEN categorie_id ELSE $2::uuid END,
          tarif_base=COALESCE($3,tarif_base), taux_assurance=COALESCE($4,taux_assurance),
-         actif=COALESCE($5,actif)
-       WHERE id=$6 AND clinique_id=$7 RETURNING *`,
-      [libelle||null, categorie_id===undefined?null:categorie_id, tarif_base??null, taux_assurance??null, actif===undefined?null:actif, req.params.id, cid]
+         actif=COALESCE($5,actif), prix_subventionne=COALESCE($6,prix_subventionne)
+       WHERE id=$7 AND clinique_id=$8 RETURNING *`,
+      [libelle||null, categorie_id===undefined?null:categorie_id, tarif_base??null, taux_assurance??null, actif===undefined?null:actif, prix_subventionne??null, req.params.id, cid]
     );
     if (!r.rows.length) return res.status(404).json({ success:false, message:'Acte introuvable dans votre catalogue (les actes globaux ne sont pas modifiables)' });
     res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  TARIFS NEGOCIES PAR CONVENTION (clinique + assureur) -- 3e niveau
+//  de tarification par acte, au-dela de tarif_base (non assure) et
+//  prix_subventionne. Repli sur le taux de la convention si absent.
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/conventions/:id/tarifs-actes', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    // Verifie que la convention appartient bien a la clinique connectee.
+    const conv = await db('SELECT id FROM conventions WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
+    if (!conv.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    const r = await db(
+      `SELECT t.*, a.code, a.libelle, a.tarif_base, a.prix_subventionne
+         FROM actes_tarifs_convention t
+         JOIN actes_medicaux a ON a.id = t.acte_id
+        WHERE t.convention_id=$1
+        ORDER BY a.libelle`,
+      [req.params.id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.put('/api/conventions/:id/tarifs-actes/:acteId', auth, requireSousRole('finance'), async (req, res) => {
+  const { tarif_negocie } = req.body;
+  const cid = req.user?.clinique_id;
+  if (tarif_negocie===undefined || tarif_negocie===null) return res.status(400).json({ success:false, message:'tarif_negocie requis' });
+  try {
+    const conv = await db('SELECT id FROM conventions WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
+    if (!conv.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    const r = await db(
+      `INSERT INTO actes_tarifs_convention (convention_id, acte_id, tarif_negocie)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (convention_id, acte_id)
+       DO UPDATE SET tarif_negocie=$3, updated_at=NOW()
+       RETURNING *`,
+      [req.params.id, req.params.acteId, tarif_negocie]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.delete('/api/conventions/:id/tarifs-actes/:acteId', auth, requireSousRole('finance'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const conv = await db('SELECT id FROM conventions WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
+    if (!conv.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    await db('DELETE FROM actes_tarifs_convention WHERE convention_id=$1 AND acte_id=$2', [req.params.id, req.params.acteId]);
+    res.json({ success:true, message:'Tarif négocié retiré (repli sur le taux général de la convention)' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.delete('/api/actes/:id', auth, async (req, res) => {
