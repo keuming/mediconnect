@@ -2109,6 +2109,51 @@ app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
+// ── Recherche d'un compte par telephone, pour diagnostic avant
+// reinitialisation (route temporaire, a retirer apres usage) ──
+app.get('/api/admin/compte-par-telephone/:telephone', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    const r = await db(
+      `SELECT u.id, u.email, u.prenom, u.nom, u.role, u.sous_role, u.telephone,
+              u.clinique_id, c.nom AS clinique_nom
+         FROM utilisateurs u
+         LEFT JOIN cliniques c ON c.id = u.clinique_id
+        WHERE u.telephone = $1 OR u.telephone = $2`,
+      [req.params.telephone, req.params.telephone.replace(/^0/, '+225 0')]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── Reinitialisation du mot de passe d'un compte, par id (route
+// temporaire, a retirer apres usage). Le nouveau mot de passe est
+// toujours hashe, jamais stocke en clair. ──
+app.post('/api/admin/reinitialiser-mot-de-passe', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  const { user_id, nouveau_mot_de_passe } = req.body;
+  if (!user_id || !nouveau_mot_de_passe) {
+    return res.status(400).json({ success: false, message: 'user_id et nouveau_mot_de_passe requis' });
+  }
+  if (nouveau_mot_de_passe.length < 6) {
+    return res.status(400).json({ success: false, message: 'Mot de passe : 6 caracteres minimum' });
+  }
+  try {
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(nouveau_mot_de_passe, 10);
+    const r = await db(
+      'UPDATE utilisateurs SET password=$1 WHERE id=$2 RETURNING id,email,prenom,nom',
+      [hash, user_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Compte introuvable' });
+    res.json({ success: true, data: r.rows[0], message: 'Mot de passe reinitialise' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 app.post('/api/admin/patch-patient', async (req, res) => {
   const key = req.headers['x-admin-key'];
   if (key !== 'mediconnect_dev_secret_2024')
