@@ -2160,6 +2160,22 @@ app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
+// ── Diagnostic LECTURE SEULE des colonnes de la table factures
+// (route temporaire, a retirer apres usage) ──
+app.get('/api/admin/diagnostic-colonnes-factures', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    const cols = await db(
+      `SELECT column_name, data_type FROM information_schema.columns
+        WHERE table_name='factures' ORDER BY ordinal_position`
+    );
+    const echantillon = await db(`SELECT * FROM factures ORDER BY created_at DESC LIMIT 3`);
+    res.json({ success: true, colonnes: cols.rows, echantillon: echantillon.rows });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 app.post('/api/admin/patch-patient', async (req, res) => {
   const key = req.headers['x-admin-key'];
   if (key !== 'mediconnect_dev_secret_2024')
