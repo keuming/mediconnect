@@ -1092,7 +1092,7 @@ const CHAMPS_MODIFIABLES_CONSULTATION = [
 // champ reellement change est compare a l'ancienne valeur et journalise
 // avec un horodatage a la seconde (TIMESTAMPTZ) dans
 // consultations_historique, avant que la mise a jour ne soit appliquee.
-app.put('/api/consultations/:id', auth, requireSousRole('medecin'), async (req, res) => {
+app.put('/api/consultations/:id', auth, requireSousRole('medecin', 'bureau_entrees'), async (req, res) => {
   try {
     const ancienne = await db('SELECT * FROM consultations WHERE id=$1', [req.params.id]);
     if (!ancienne.rows.length) return res.status(404).json({ success:false, message:'Consultation introuvable' });
@@ -1233,9 +1233,26 @@ app.put('/api/ordonnances/:id/partager', auth, requireSousRole('medecin', 'burea
 });
 
 app.put('/api/ordonnances/:id', auth, async (req, res) => {
-  const { statut } = req.body;
+  const { statut, medicaments, posologie, duree, notes_ord } = req.body;
+  // Le contenu medical (medicaments/posologie/duree/notes) est reserve au
+  // medecin et au bureau des entrees. Un simple changement de statut
+  // (ex: dispensation mobile pharmacien) reste libre comme avant.
+  const contenuModifie = medicaments!==undefined || posologie!==undefined || duree!==undefined || notes_ord!==undefined;
+  if (contenuModifie) {
+    const role = req.user?.role;
+    const sr = req.user?.sous_role;
+    const autorise = (role==='clinique' && !sr) || (sr && ['medecin','bureau_entrees'].includes(sr));
+    if (!autorise) return res.status(403).json({ success:false, message:"Accès refusé pour votre rôle" });
+  }
   try {
-    const r = await db('UPDATE ordonnances SET statut=COALESCE($1,statut) WHERE id=$2 RETURNING *', [statut, req.params.id]);
+    const r = await db(
+      `UPDATE ordonnances SET
+         statut=COALESCE($1,statut), medicament=COALESCE($2,medicament),
+         posologie=COALESCE($3,posologie), duree=COALESCE($4,duree), notes_ord=COALESCE($5,notes_ord)
+       WHERE id=$6 RETURNING *`,
+      [statut||null, medicaments||null, posologie||null, duree||null, notes_ord||null, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Ordonnance introuvable' });
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
@@ -1533,9 +1550,27 @@ app.post('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), as
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/factures/:id', auth, async (req, res) => {
-  const { statut, mode_paiement } = req.body;
+  const { statut, mode_paiement, montant, patient_nom, assurance } = req.body;
+  // Montant/patient_nom/assurance reserves au medecin et au bureau des
+  // entrees. Un changement de statut/mode_paiement seul (medecin
+  // independant, etc.) reste libre comme avant.
+  const contenuModifie = montant!==undefined || patient_nom!==undefined || assurance!==undefined;
+  if (contenuModifie) {
+    const role = req.user?.role;
+    const sr = req.user?.sous_role;
+    const autorise = (role==='clinique' && !sr) || (sr && ['medecin','bureau_entrees'].includes(sr));
+    if (!autorise) return res.status(403).json({ success:false, message:"Accès refusé pour votre rôle" });
+  }
   try {
-    const r=await db('UPDATE factures SET statut=COALESCE($1,statut),mode_paiement=COALESCE($2,mode_paiement),updated_at=NOW() WHERE id=$3 RETURNING *',[statut,mode_paiement,req.params.id]);
+    const r=await db(
+      `UPDATE factures SET
+         statut=COALESCE($1,statut), mode_paiement=COALESCE($2,mode_paiement),
+         montant=COALESCE($3,montant), patient_nom=COALESCE($4,patient_nom), assurance=COALESCE($5,assurance),
+         updated_at=NOW()
+       WHERE id=$6 RETURNING *`,
+      [statut||null, mode_paiement||null, montant!==undefined?montant:null, patient_nom||null, assurance||null, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Facture introuvable' });
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });

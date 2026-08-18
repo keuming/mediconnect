@@ -53,6 +53,7 @@ const cAPI = {
   addConsult:   (d) => api.post("/consultations", d),
   ordonnances:  (pid) => api.get(`/ordonnances?patient_id=${pid}`),
   addOrdonnance:(d) => api.post("/ordonnances", d),
+  updateOrdonnance:(id,d) => api.put(`/ordonnances/${id}`, d),
   patientParCode:(code) => api.get(`/patients/by-code/${encodeURIComponent(code)}`),
   demanderExamen:(d) => api.post("/bulletins", d),
   // Stock
@@ -78,6 +79,7 @@ const cAPI = {
   deletePersonnel: (id) => api.delete(`/clinique/personnel/${id}`),
   // Finance
   factures:      () => api.get("/factures"),
+  updateFacture: (id,d) => api.put(`/factures/${id}`, d),
   caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
   actesCatalogue:  () => api.get("/actes"),
   passageActif:    (patientId) => api.get(`/passages/patient/${patientId}/actif`),
@@ -1125,6 +1127,15 @@ function PageDossiers() {
   // Consultation ciblee par l'ordonnance en cours de creation (null =
   // ordonnance generique, non liee a une consultation precise).
   const [consultationPourOrdonnance, setConsultationPourOrdonnance] = useState(null);
+  const [showEditOrd, setShowEditOrd] = useState(false);
+  const [ordonnanceEnEdition, setOrdonnanceEnEdition] = useState(null);
+  const [editOrdForm, setEditOrdForm] = useState({ medicaments:"", posologie:"", duree:"", notes_ord:"" });
+  const feOrd = k => e => setEditOrdForm(p=>({...p,[k]:e.target.value}));
+  const ouvrirEditionOrd = (o) => {
+    setOrdonnanceEnEdition(o);
+    setEditOrdForm({ medicaments:o.medicaments||"", posologie:o.posologie||"", duree:o.duree||"", notes_ord:o.notes_ord||"" });
+    setShowEditOrd(true);
+  };
   const [showEditConsult, setShowEditConsult] = useState(false);
   const [consultationEnEdition, setConsultationEnEdition] = useState(null);
   // Tous les champs du vrai formulaire de consultation (memes champs qu'a
@@ -1134,7 +1145,7 @@ function PageDossiers() {
   const EDIT_FORM_VIDE = {
     motif:"", hdm_antecedents:"", examen_clinique:"",
     tension_arterielle:"", temperature:"", pouls:"", poids:"", taille:"", pc:"", fr:"", tso2:"", pb:"", pcui:"",
-    diagnostic:"", diagnostic_predefini:"", hypotheses_diagnostiques:"", code_cim10:"", pathologie:"", gravite:"",
+    diagnostic:"", diagnostic_predefini:"", hypotheses_diagnostiques:"", code_cim10:"", pathologie:"", gravite:"", categorie_maladie:"",
     traitement:"", traitement_predefini:"",
     biologie_predefinis:"", biologie_texte:"", imagerie_texte:"", autres_examens:"",
     notes:"", note_finale:"", date_controle:"",
@@ -1153,7 +1164,7 @@ function PageDossiers() {
     { titre:"Motif & antécédents", champs:[["motif","Motif"],["hdm_antecedents","Antécédents"]] },
     { titre:"Constantes médicales", champs:[["tension_arterielle","Tension artérielle"],["temperature","Température (°C)"],["pouls","Pouls"],["poids","Poids (kg)"],["taille","Taille (cm)"],["pc","Périmètre crânien"],["fr","Fréquence respiratoire"],["tso2","SpO2"],["pb","Périmètre brachial"],["pcui","PC utile"]] },
     { titre:"Examen clinique", champs:[["examen_clinique","Examen clinique"]] },
-    { titre:"Diagnostic", champs:[["diagnostic","Diagnostic"],["diagnostic_predefini","Diagnostic (CIM-10)"],["hypotheses_diagnostiques","Hypothèses diagnostiques"],["code_cim10","Code CIM-10"],["pathologie","Pathologie"],["gravite","Gravité"]] },
+    { titre:"Diagnostic", champs:[["diagnostic","Diagnostic"],["diagnostic_predefini","Diagnostic (CIM-10)"],["hypotheses_diagnostiques","Hypothèses diagnostiques"],["code_cim10","Code CIM-10"],["pathologie","Pathologie"],["gravite","Gravité"],["categorie_maladie","Catégorie de maladie"]] },
     { titre:"Traitement", champs:[["traitement","Traitement"],["traitement_predefini","Traitement type"]] },
     { titre:"Examens complémentaires", champs:[["biologie_predefinis","Biologie (examens)"],["biologie_texte","Biologie (notes)"],["imagerie_texte","Imagerie"],["autres_examens","Autres examens"]] },
     { titre:"Suivi", champs:[["notes","Notes / évolution"],["note_finale","Note finale"],["date_controle","Date de contrôle"]] },
@@ -1256,6 +1267,11 @@ function PageDossiers() {
   }, onError:()=>toast.error("Erreur") });
   const addCons = useMutation({ mutationFn:d=>cAPI.addConsult({...d,code_cim10:codeCim||null}), onSuccess:()=>{ toast.success("Consultation enregistrée !"); qc.invalidateQueries(["cl-consults",selected?.id]); setShowConsult(false); }, onError:()=>toast.error("Erreur") });
   const addOrd = useMutation({ mutationFn:d=>cAPI.addOrdonnance(d), onSuccess:()=>{ toast.success("Ordonnance créée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowOrd(false); setConsultationPourOrdonnance(null); }, onError:()=>toast.error("Erreur") });
+  const editOrdMut = useMutation({
+    mutationFn: d => cAPI.updateOrdonnance(ordonnanceEnEdition.id, d),
+    onSuccess: () => { toast.success("Ordonnance modifiée !"); qc.invalidateQueries(["cl-ords",selected?.id]); setShowEditOrd(false); setOrdonnanceEnEdition(null); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la modification"),
+  });
   const updConsultMut = useMutation({
     mutationFn: d => api.put(`/consultations/${consultationEnEdition.id}`, d),
     onSuccess: (r) => {
@@ -2055,6 +2071,7 @@ function PageDossiers() {
                               {o.partage_reseau?"🌐 Partagée":"🔒 Privée"}
                             </button>
                             {!o.destination && <button onClick={()=>{ setOrdonnanceAEnvoyer(o); setShowEnvoiOrd(true); }} style={{padding:"3px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:"#2563EB",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📤 Envoyer</button>}
+                            <button onClick={()=>ouvrirEditionOrd(o)} style={{padding:"3px 10px",background:"rgba(37,99,235,.12)",border:"1px solid rgba(37,99,235,.3)",borderRadius:6,color:C.blue,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✏️ Modifier</button>
                             <button onClick={()=>imprimerOrdonnance(o)} style={{padding:"3px 10px",background:"rgba(10,143,88,.15)",border:"1px solid rgba(10,143,88,.3)",borderRadius:6,color:C.green,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ Imprimer</button>
                           </div>
                         </div>
@@ -2400,6 +2417,25 @@ function PageDossiers() {
             addOrd.mutate({ medicaments, posologie, duree, notes_ord:oForm.notes_ord, patient_id:selected.id, consultation_id:consultationPourOrdonnance?.id||null });
             setLignesOrd([{nom:"",qte:"",unite:"",posologie:"",duree:""}]);
           }}>Créer l'ordonnance</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Modifier ordonnance */}
+      <Modal open={showEditOrd} onClose={()=>{ setShowEditOrd(false); setOrdonnanceEnEdition(null); }} title="✏️ Modifier l'ordonnance" width={520}>
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:14,fontWeight:700,color:C.muted,display:"block",marginBottom:6}}>Médicaments *</label>
+          <textarea value={editOrdForm.medicaments} onChange={feOrd("medicaments")} rows={4}
+            style={{width:"100%",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:15,fontFamily:"inherit",resize:"vertical"}} />
+        </div>
+        <Inp label="Posologie" value={editOrdForm.posologie} onChange={feOrd("posologie")} placeholder="2x/jour" />
+        <Inp label="Durée" value={editOrdForm.duree} onChange={feOrd("duree")} placeholder="7 jours" />
+        <Inp label="Notes / Instructions" value={editOrdForm.notes_ord} onChange={feOrd("notes_ord")} placeholder="À prendre pendant les repas…" />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowEditOrd(false); setOrdonnanceEnEdition(null); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={editOrdMut.isPending} onClick={()=>{
+            if(!editOrdForm.medicaments.trim()){toast.error("Au moins un médicament requis");return;}
+            editOrdMut.mutate(editOrdForm);
+          }}>Enregistrer les modifications</Btn>
         </div>
       </Modal>
 
@@ -3469,6 +3505,20 @@ function PageFacturation() {
   const factures = factData||[];
   const totalEncaisse = factures.filter(f=>f.statut==="payee").reduce((s,f)=>s+(+f.montant_total||0),0);
   const totalAttente  = factures.filter(f=>f.statut==="en_attente").reduce((s,f)=>s+(+f.montant_total||0),0);
+  const [showEditFacture, setShowEditFacture] = useState(false);
+  const [factureEnEdition, setFactureEnEdition] = useState(null);
+  const [editFactureForm, setEditFactureForm] = useState({ patient_nom:"", montant:"", assurance:"", statut:"en_attente", mode_paiement:"" });
+  const feFact = k => e => setEditFactureForm(p=>({...p,[k]:e.target.value}));
+  const ouvrirEditionFacture = (f) => {
+    setFactureEnEdition(f);
+    setEditFactureForm({ patient_nom:f.patient_nom||"", montant:f.montant||"", assurance:f.assurance||"", statut:f.statut||"en_attente", mode_paiement:f.mode_paiement||"" });
+    setShowEditFacture(true);
+  };
+  const editFactureMut = useMutation({
+    mutationFn: d => cAPI.updateFacture(factureEnEdition.id, d),
+    onSuccess: () => { toast.success("Facture modifiée !"); qc.invalidateQueries(["cl-factures"]); setShowEditFacture(false); setFactureEnEdition(null); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la modification"),
+  });
 
   const FINANCE_TABS = [
     { key:"tableau-bord", label:"Tableau de bord" },
@@ -3556,7 +3606,12 @@ function PageFacturation() {
                 { key:"montant", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
                 { key:"statut", label:"Statut", render:v=><Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[v]||"gray"}>{v}</Badge> },
                 { key:"created_at", label:"Date", render:v=>fmtDate(v) },
-                { key:"id", label:"", render:(_,f)=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>imprimerFactureResume(f)}>PDF</Btn> },
+                { key:"id", label:"", render:(_,f)=>(
+                  <div style={{display:"flex",gap:6}}>
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>imprimerFactureResume(f)}>PDF</Btn>
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>ouvrirEditionFacture(f)}>✏️ Modifier</Btn>
+                  </div>
+                ) },
               ]} rows={factures} />
           }
         </Panel>
@@ -3609,6 +3664,22 @@ function PageFacturation() {
       )}
 
       {tab==="actes" && <PanelGestionActes />}
+
+      {/* Modal: Modifier facture */}
+      <Modal open={showEditFacture} onClose={()=>{ setShowEditFacture(false); setFactureEnEdition(null); }} title={`✏️ Modifier — Facture ${factureEnEdition?.reference||""}`} width={520}>
+        <Inp label="Patient" value={editFactureForm.patient_nom} onChange={feFact("patient_nom")} placeholder="Nom du patient" />
+        <Grid cols={2} gap={12}>
+          <Inp label="Montant (FCFA)" value={editFactureForm.montant} onChange={feFact("montant")} type="number" placeholder="15000" />
+          <Inp label="Mode de paiement" value={editFactureForm.mode_paiement} onChange={feFact("mode_paiement")} placeholder="Espèces" />
+        </Grid>
+        <Inp label="Assurance" value={editFactureForm.assurance} onChange={feFact("assurance")} placeholder="Nom de l'assureur (facultatif)" />
+        <Sel label="Statut" value={editFactureForm.statut} onChange={feFact("statut")}
+          options={[{v:"en_attente",l:"En attente"},{v:"payee",l:"Payée"},{v:"annulee",l:"Annulée"}]} />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowEditFacture(false); setFactureEnEdition(null); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={editFactureMut.isPending} onClick={()=>editFactureMut.mutate(editFactureForm)}>Enregistrer les modifications</Btn>
+        </div>
+      </Modal>
     </div>
   );
 }
