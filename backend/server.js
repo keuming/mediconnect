@@ -1564,14 +1564,18 @@ app.get('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), asy
   try {
     const cid=req.user?.clinique_id; const pid=req.user?.patient_id;
     const { patient_id } = req.query;
-    let sql='SELECT * FROM factures WHERE 1=1'; const p=[];
-    if (cid) { p.push(cid); sql+=` AND clinique_id=$${p.length}`; }
-    if (pid&&!cid) { p.push(pid); sql+=` AND patient_id=$${p.length}`; }
+    // factures n'a pas de colonne patient_nom propre -- recupere via
+    // jointure sur patients, a partir de patient_id.
+    let sql=`SELECT f.*, TRIM(CONCAT(p.prenom,' ',p.nom)) AS patient_nom
+               FROM factures f LEFT JOIN patients p ON p.id=f.patient_id WHERE 1=1`;
+    const p=[];
+    if (cid) { p.push(cid); sql+=` AND f.clinique_id=$${p.length}`; }
+    if (pid&&!cid) { p.push(pid); sql+=` AND f.patient_id=$${p.length}`; }
     // Filtre explicite par patient (dossier patient cote clinique) --
     // s'ajoute au scope clinique_id deja applique ci-dessus, jamais un
     // substitut : un compte clinique ne peut voir que SES patients.
-    if (patient_id) { p.push(patient_id); sql+=` AND patient_id=$${p.length}`; }
-    sql+=' ORDER BY created_at DESC LIMIT 100';
+    if (patient_id) { p.push(patient_id); sql+=` AND f.patient_id=$${p.length}`; }
+    sql+=' ORDER BY f.created_at DESC LIMIT 100';
     const r=await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
@@ -1590,22 +1594,24 @@ app.get('/api/factures/patient', auth, async (req, res) => {
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { patient_nom, patient_id, montant, mode_paiement, statut, assurance } = req.body;
+  const { patient_id, montant_total, montant_assur, ticket_moder, mode_paiement, statut } = req.body;
   try {
     const ref='FAC-'+Date.now().toString(36).toUpperCase();
+    const total = montant_total||0;
+    const assur = montant_assur||0;
     const r=await db(
-      'INSERT INTO factures (id,reference,clinique_id,patient_id,patient_nom,montant,mode_paiement,statut,assurance) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-      [uuid(),ref,req.user?.clinique_id,patient_id||null,patient_nom||null,montant||0,mode_paiement||'Espèces',statut||'en_attente',assurance||null]
+      'INSERT INTO factures (id,reference,clinique_id,patient_id,montant_total,montant_assur,ticket_moder,mode_paiement,statut) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [uuid(),ref,req.user?.clinique_id,patient_id||null,total,assur,ticket_moder!=null?ticket_moder:(total-assur),mode_paiement||'Espèces',statut||'en_attente']
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/factures/:id', auth, async (req, res) => {
-  const { statut, mode_paiement, montant, patient_nom, assurance } = req.body;
-  // Montant/patient_nom/assurance reserves au medecin et au bureau des
-  // entrees. Un changement de statut/mode_paiement seul (medecin
-  // independant, etc.) reste libre comme avant.
-  const contenuModifie = montant!==undefined || patient_nom!==undefined || assurance!==undefined;
+  const { statut, mode_paiement, montant_total, montant_assur, ticket_moder } = req.body;
+  // Montants reserves au medecin et au bureau des entrees. Un changement
+  // de statut/mode_paiement seul (medecin independant, etc.) reste libre
+  // comme avant.
+  const contenuModifie = montant_total!==undefined || montant_assur!==undefined || ticket_moder!==undefined;
   if (contenuModifie) {
     const role = req.user?.role;
     const sr = req.user?.sous_role;
@@ -1616,10 +1622,12 @@ app.put('/api/factures/:id', auth, async (req, res) => {
     const r=await db(
       `UPDATE factures SET
          statut=COALESCE($1,statut), mode_paiement=COALESCE($2,mode_paiement),
-         montant=COALESCE($3,montant), patient_nom=COALESCE($4,patient_nom), assurance=COALESCE($5,assurance),
-         updated_at=NOW()
+         montant_total=COALESCE($3,montant_total), montant_assur=COALESCE($4,montant_assur),
+         ticket_moder=COALESCE($5,ticket_moder)
        WHERE id=$6 RETURNING *`,
-      [statut||null, mode_paiement||null, montant!==undefined?montant:null, patient_nom||null, assurance||null, req.params.id]
+      [statut||null, mode_paiement||null,
+       montant_total!==undefined?montant_total:null, montant_assur!==undefined?montant_assur:null,
+       ticket_moder!==undefined?ticket_moder:null, req.params.id]
     );
     if (!r.rows.length) return res.status(404).json({ success:false, message:'Facture introuvable' });
     res.json({ success:true, data:r.rows[0] });

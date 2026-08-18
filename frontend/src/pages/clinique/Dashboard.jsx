@@ -1390,7 +1390,7 @@ function PageDossiers() {
         <thead><tr><th>Acte</th><th style="text-align:center;">Qté</th><th style="text-align:right;">Prix unit.</th><th style="text-align:right;">À charge patient</th></tr></thead>
         <tbody>${lignesHtml}</tbody>
       </table>
-      <div class="total">Total : ${Number(f.montant||0).toLocaleString('fr-CI')} F</div>
+      <div class="total">Total : ${Number(f.montant_total||0).toLocaleString('fr-CI')} F</div>
       <div class="footer">
         <div>${cl?.nom||'MediConnect Africa'}${cl?.site_web?' · '+cl.site_web:''}</div>
         <div style="text-align:right;">Cachet & signature<br/><br/><br/>_________________</div>
@@ -2215,7 +2215,7 @@ function PageDossiers() {
                         <div style={{fontSize:16,fontWeight:700,color:C.teal,fontFamily:"monospace"}}>{f.reference||"—"}</div>
                         <div style={{fontSize:13,color:C.dim}}>{fmtDate(f.created_at)} · <Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[f.statut]||"gray"}>{f.statut}</Badge></div>
                       </div>
-                      <div style={{fontSize:18,fontWeight:800,color:C.green}}>{fmt(f.montant)} F</div>
+                      <div style={{fontSize:18,fontWeight:800,color:C.green}}>{fmt(f.montant_total)} F</div>
                       <Btn variant="outline" style={{padding:"6px 12px",fontSize:14}} onClick={()=>imprimerFactureEmise(f)}>🖨️ PDF</Btn>
                     </div>
                   ))}
@@ -3642,11 +3642,11 @@ function PageFacturation() {
   const totalAttente  = factures.filter(f=>f.statut==="en_attente").reduce((s,f)=>s+(+f.montant_total||0),0);
   const [showEditFacture, setShowEditFacture] = useState(false);
   const [factureEnEdition, setFactureEnEdition] = useState(null);
-  const [editFactureForm, setEditFactureForm] = useState({ patient_nom:"", montant:"", assurance:"", statut:"en_attente", mode_paiement:"" });
+  const [editFactureForm, setEditFactureForm] = useState({ montant_total:"", statut:"en_attente", mode_paiement:"" });
   const feFact = k => e => setEditFactureForm(p=>({...p,[k]:e.target.value}));
   const ouvrirEditionFacture = (f) => {
     setFactureEnEdition(f);
-    setEditFactureForm({ patient_nom:f.patient_nom||"", montant:f.montant||"", assurance:f.assurance||"", statut:f.statut||"en_attente", mode_paiement:f.mode_paiement||"" });
+    setEditFactureForm({ montant_total:f.montant_total||"", statut:f.statut||"en_attente", mode_paiement:f.mode_paiement||"" });
     setShowEditFacture(true);
   };
   const editFactureMut = useMutation({
@@ -3738,7 +3738,7 @@ function PageFacturation() {
             : <Table columns={[
                 { key:"reference", label:"Référence", render:v=><span style={{fontFamily:"monospace",fontSize:16,color:C.teal}}>{v||"—"}</span> },
                 { key:"patient_nom", label:"Patient", render:v=><span style={{fontWeight:700}}>{v||"—"}</span> },
-                { key:"montant", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
+                { key:"montant_total", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
                 { key:"statut", label:"Statut", render:v=><Badge color={{payee:"green",en_attente:"amber",annulee:"red"}[v]||"gray"}>{v}</Badge> },
                 { key:"created_at", label:"Date", render:v=>fmtDate(v) },
                 { key:"id", label:"", render:(_,f)=>(
@@ -3802,12 +3802,13 @@ function PageFacturation() {
 
       {/* Modal: Modifier facture */}
       <Modal open={showEditFacture} onClose={()=>{ setShowEditFacture(false); setFactureEnEdition(null); }} title={`✏️ Modifier — Facture ${factureEnEdition?.reference||""}`} width={520}>
-        <Inp label="Patient" value={editFactureForm.patient_nom} onChange={feFact("patient_nom")} placeholder="Nom du patient" />
+        <div style={{background:C.hover,borderRadius:8,padding:"10px 12px",marginBottom:14,fontSize:15,color:C.muted}}>
+          Patient : <strong style={{color:C.text}}>{factureEnEdition?.patient_nom||"—"}</strong>
+        </div>
         <Grid cols={2} gap={12}>
-          <Inp label="Montant (FCFA)" value={editFactureForm.montant} onChange={feFact("montant")} type="number" placeholder="15000" />
+          <Inp label="Montant total (FCFA)" value={editFactureForm.montant_total} onChange={feFact("montant_total")} type="number" placeholder="15000" />
           <Inp label="Mode de paiement" value={editFactureForm.mode_paiement} onChange={feFact("mode_paiement")} placeholder="Espèces" />
         </Grid>
-        <Inp label="Assurance" value={editFactureForm.assurance} onChange={feFact("assurance")} placeholder="Nom de l'assureur (facultatif)" />
         <Sel label="Statut" value={editFactureForm.statut} onChange={feFact("statut")}
           options={[{v:"en_attente",l:"En attente"},{v:"payee",l:"Payée"},{v:"annulee",l:"Annulée"}]} />
         <div style={{display:"flex",gap:10,marginTop:14}}>
