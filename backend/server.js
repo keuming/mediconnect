@@ -665,6 +665,52 @@ app.delete('/api/clinique/personnel/:id', auth, requireSousRole(), async (req, r
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// Reinitialisation du mot de passe d'un membre du personnel par
+// l'administrateur de la clinique (proprietaire, sous_role NULL) --
+// n'exige PAS l'ancien mot de passe, mais reste scope a SA clinique.
+app.put('/api/clinique/personnel/:id/mot-de-passe', auth, requireSousRole(), async (req, res) => {
+  const { nouveau_mot_de_passe } = req.body;
+  if (!nouveau_mot_de_passe || nouveau_mot_de_passe.length < 6) {
+    return res.status(400).json({ success:false, message:'Mot de passe : 6 caractères minimum' });
+  }
+  const cid = req.user?.clinique_id;
+  try {
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(nouveau_mot_de_passe, 10);
+    const r = await db(
+      `UPDATE utilisateurs SET password=$1
+        WHERE id=$2 AND clinique_id=$3 AND sous_role IS NOT NULL
+        RETURNING id,email,prenom,nom`,
+      [hash, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0], message:'Mot de passe réinitialisé' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Changement du mot de passe par l'utilisateur connecte lui-meme --
+// exige l'ancien mot de passe (verifie par bcrypt.compare), pour tous
+// profils confondus (clinique, medecin, bureau_entrees, etc.).
+app.put('/api/mon-compte/mot-de-passe', auth, async (req, res) => {
+  const { ancien_mot_de_passe, nouveau_mot_de_passe } = req.body;
+  if (!ancien_mot_de_passe || !nouveau_mot_de_passe) {
+    return res.status(400).json({ success:false, message:'Ancien et nouveau mot de passe requis' });
+  }
+  if (nouveau_mot_de_passe.length < 6) {
+    return res.status(400).json({ success:false, message:'Nouveau mot de passe : 6 caractères minimum' });
+  }
+  try {
+    const bcrypt = require('bcryptjs');
+    const r = await db('SELECT password FROM utilisateurs WHERE id=$1', [req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable' });
+    const ok = await bcrypt.compare(ancien_mot_de_passe, r.rows[0].password);
+    if (!ok) return res.status(401).json({ success:false, message:'Ancien mot de passe incorrect' });
+    const hash = await bcrypt.hash(nouveau_mot_de_passe, 10);
+    await db('UPDATE utilisateurs SET password=$1 WHERE id=$2', [hash, req.user.id]);
+    res.json({ success:true, message:'Mot de passe mis à jour' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ══════════════════════════════════════════════════════════════════
 //  ADMINISTRATION LABORATOIRE (Phase 3) -- meme schema que clinique,
 //  scope sur laboratoire_id (Phase 2) au lieu de clinique_id.

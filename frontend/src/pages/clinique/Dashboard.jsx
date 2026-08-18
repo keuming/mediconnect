@@ -77,6 +77,7 @@ const cAPI = {
   addPersonnel: (d) => api.post("/clinique/personnel", d),
   updPersonnel: (id,d) => api.put(`/clinique/personnel/${id}`, d),
   deletePersonnel: (id) => api.delete(`/clinique/personnel/${id}`),
+  resetPasswordPersonnel: (id,d) => api.put(`/clinique/personnel/${id}/mot-de-passe`, d),
   // Finance
   factures:      () => api.get("/factures"),
   updateFacture: (id,d) => api.put(`/factures/${id}`, d),
@@ -2683,6 +2684,9 @@ function PageMedecins() {
   const [showEditPersonnel, setShowEditPersonnel] = useState(false);
   const [personnelEdit, setPersonnelEdit] = useState(null);
   const [editCompteForm, setEditCompteForm] = useState({ prenom:"", nom:"", email:"", telephone:"", sous_role:"bureau_entrees" });
+  const [showResetPwd, setShowResetPwd] = useState(false);
+  const [personnelResetPwd, setPersonnelResetPwd] = useState(null);
+  const [newPwdForm, setNewPwdForm] = useState({ nouveau_mot_de_passe:"", confirmation:"" });
 
   const { data, isLoading } = useQuery({ queryKey:["cl-medecins"], queryFn:()=>cAPI.medecins().then(r=>r.data||[]) });
   const medecins = data||[];
@@ -2716,6 +2720,11 @@ function PageMedecins() {
     onSuccess: () => { toast.success("Compte supprimé"); qc.invalidateQueries(["cl-personnel"]); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la suppression"),
   });
+  const resetPwdMut = useMutation({
+    mutationFn: d => cAPI.resetPasswordPersonnel(personnelResetPwd.id, d),
+    onSuccess: () => { toast.success("Mot de passe réinitialisé !"); setShowResetPwd(false); setPersonnelResetPwd(null); setNewPwdForm({ nouveau_mot_de_passe:"", confirmation:"" }); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la réinitialisation"),
+  });
   const LABEL_SOUS_ROLE = { bureau_entrees:"Bureau des entrées", medecin:"Médecin", finance:"Finance / Caisse", rh:"RH / Administration", pharmacien:"Pharmacien", laboratoire:"Laboratoire", radiologie:"Radiologie" };
   const COULEUR_SOUS_ROLE = { bureau_entrees:"blue", medecin:"green", finance:"amber", rh:"purple", pharmacien:"teal", laboratoire:"purple", radiologie:"blue" };
 
@@ -2732,6 +2741,11 @@ function PageMedecins() {
     setPersonnelEdit(p);
     setEditCompteForm({ prenom:p.prenom||"", nom:p.nom||"", email:p.email||"", telephone:p.telephone||"", sous_role:p.sous_role||"bureau_entrees" });
     setShowEditPersonnel(true);
+  };
+  const ouvrirResetPwd = (p) => {
+    setPersonnelResetPwd(p);
+    setNewPwdForm({ nouveau_mot_de_passe:"", confirmation:"" });
+    setShowResetPwd(true);
   };
 
   const SPECS = ["Médecine générale","Cardiologie","Pédiatrie","Gynécologie","Neurologie","Dermatologie","ORL","Ophtalmologie","Orthopédie","Psychiatrie","Radiologie","Chirurgie"];
@@ -2849,6 +2863,7 @@ function PageMedecins() {
                       {row.is_active?"Désactiver":"Activer"}
                     </Btn>
                     <Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>ouvrirEditionPersonnel(row)}>✏️ Modifier</Btn>
+                    <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.amber}} onClick={()=>ouvrirResetPwd(row)}>🔑 Mot de passe</Btn>
                     <Btn variant="outline" style={{padding:"4px 10px",fontSize:14,color:C.red}} loading={deletePersonnelMut.isPending} onClick={()=>{
                       if(window.confirm(`Supprimer le compte de ${row.prenom} ${row.nom} ? Cette action est irréversible.`)) deletePersonnelMut.mutate(row.id);
                     }}>🗑️ Supprimer</Btn>
@@ -2999,6 +3014,23 @@ function PageMedecins() {
             if(!editCompteForm.prenom||!editCompteForm.nom||!editCompteForm.email){toast.error("Prénom, nom et email requis");return;}
             editPersonnelMut.mutate({ id:personnelEdit.id, ...editCompteForm });
           }}>Enregistrer les modifications</Btn>
+        </div>
+      </Modal>
+
+      {/* Modal: Réinitialiser mot de passe (admin, sans ancien mdp) */}
+      <Modal open={showResetPwd} onClose={()=>{ setShowResetPwd(false); setPersonnelResetPwd(null); }} title={`🔑 Réinitialiser le mot de passe — ${personnelResetPwd?.prenom||""} ${personnelResetPwd?.nom||""}`} width={480}>
+        <div style={{background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.25)",borderRadius:9,padding:"10px 14px",marginBottom:16,fontSize:15,color:C.muted}}>
+          Le nouveau mot de passe prend effet immédiatement. Communiquez-le à la personne concernée en toute sécurité.
+        </div>
+        <Inp label="Nouveau mot de passe *" type="password" value={newPwdForm.nouveau_mot_de_passe} onChange={e=>setNewPwdForm(p=>({...p,nouveau_mot_de_passe:e.target.value}))} placeholder="Min. 6 caractères" />
+        <Inp label="Confirmer le mot de passe *" type="password" value={newPwdForm.confirmation} onChange={e=>setNewPwdForm(p=>({...p,confirmation:e.target.value}))} placeholder="Retaper le mot de passe" />
+        <div style={{display:"flex",gap:10,marginTop:14}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>{ setShowResetPwd(false); setPersonnelResetPwd(null); }}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={resetPwdMut.isPending} onClick={()=>{
+            if(!newPwdForm.nouveau_mot_de_passe||newPwdForm.nouveau_mot_de_passe.length<6){toast.error("Mot de passe : 6 caractères minimum");return;}
+            if(newPwdForm.nouveau_mot_de_passe!==newPwdForm.confirmation){toast.error("Les deux mots de passe ne correspondent pas");return;}
+            resetPwdMut.mutate({ nouveau_mot_de_passe:newPwdForm.nouveau_mot_de_passe });
+          }}>Réinitialiser</Btn>
         </div>
       </Modal>
     </div>
@@ -5247,6 +5279,27 @@ function PageProfilLogo(){
   const [preview, setPreview] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState('');
+  const [pwdForm, setPwdForm] = React.useState({ ancien_mot_de_passe:'', nouveau_mot_de_passe:'', confirmation:'' });
+  const [pwdSaving, setPwdSaving] = React.useState(false);
+  const [pwdMsg, setPwdMsg] = React.useState('');
+  const handleChangePwd = async () => {
+    setPwdMsg('');
+    if (!pwdForm.ancien_mot_de_passe || !pwdForm.nouveau_mot_de_passe) { setPwdMsg('Ancien et nouveau mot de passe requis'); return; }
+    if (pwdForm.nouveau_mot_de_passe.length < 6) { setPwdMsg('Nouveau mot de passe : 6 caractères minimum'); return; }
+    if (pwdForm.nouveau_mot_de_passe !== pwdForm.confirmation) { setPwdMsg('Les deux mots de passe ne correspondent pas'); return; }
+    setPwdSaving(true);
+    try {
+      const r = await fetch('https://mediconnect-backend-v2.vercel.app/api/mon-compte/mot-de-passe', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ancien_mot_de_passe: pwdForm.ancien_mot_de_passe, nouveau_mot_de_passe: pwdForm.nouveau_mot_de_passe })
+      });
+      const d = await r.json();
+      setPwdMsg(d.message || (d.success ? 'Mot de passe mis à jour' : 'Erreur'));
+      if (d.success) setPwdForm({ ancien_mot_de_passe:'', nouveau_mot_de_passe:'', confirmation:'' });
+    } catch(e) { setPwdMsg('Erreur réseau'); }
+    setPwdSaving(false);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['clinique-profil'],
@@ -5341,6 +5394,28 @@ function PageProfilLogo(){
             {msg&&<div style={{padding:'10px 14px',borderRadius:8,background:'rgba(10,143,88,.1)',color:C.green,fontSize:17,marginBottom:14}}>{msg}</div>}
             <button onClick={handleSave} disabled={saving} style={{width:'100%',padding:'12px',background:C.green,border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:18,cursor:'pointer',fontFamily:'inherit'}}>
               {saving?'Enregistrement...':'Enregistrer le profil'}
+            </button>
+          </div>
+          <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24,gridColumn:'1 / -1',maxWidth:480}}>
+            <h3 style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:16}}>🔑 Changer mon mot de passe</h3>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:14,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>ANCIEN MOT DE PASSE</label>
+              <input type="password" value={pwdForm.ancien_mot_de_passe} onChange={e=>setPwdForm(p=>({...p,ancien_mot_de_passe:e.target.value}))}
+                style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:17,outline:'none',boxSizing:'border-box'}}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:14,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>NOUVEAU MOT DE PASSE</label>
+              <input type="password" value={pwdForm.nouveau_mot_de_passe} onChange={e=>setPwdForm(p=>({...p,nouveau_mot_de_passe:e.target.value}))} placeholder="Min. 6 caractères"
+                style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:17,outline:'none',boxSizing:'border-box'}}/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:14,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>CONFIRMER LE NOUVEAU MOT DE PASSE</label>
+              <input type="password" value={pwdForm.confirmation} onChange={e=>setPwdForm(p=>({...p,confirmation:e.target.value}))}
+                style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:17,outline:'none',boxSizing:'border-box'}}/>
+            </div>
+            {pwdMsg&&<div style={{padding:'10px 14px',borderRadius:8,background:'rgba(37,99,235,.1)',color:C.blue,fontSize:17,marginBottom:14}}>{pwdMsg}</div>}
+            <button onClick={handleChangePwd} disabled={pwdSaving} style={{width:'100%',padding:'12px',background:C.blue||'#2563EB',border:'none',borderRadius:10,color:'#fff',fontWeight:700,fontSize:18,cursor:'pointer',fontFamily:'inherit'}}>
+              {pwdSaving?'Mise à jour...':'Changer le mot de passe'}
             </button>
           </div>
         </div>
