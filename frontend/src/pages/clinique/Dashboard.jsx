@@ -5278,7 +5278,7 @@ function PageProprietaire(){
 function PageProfilLogo(){
   const { token } = useAuthStore();
   const queryClient = useQueryClient();
-  const [form, setForm] = React.useState({ slogan:'', adresse_complete:'', horaires:'', site_web:'' });
+  const [form, setForm] = React.useState({ slogan:'', adresse_complete:'', horaires:'', site_web:'', telephone:'', adresse:'', ville:'' });
   const [logo, setLogo] = React.useState(null);
   const [preview, setPreview] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -5318,7 +5318,7 @@ function PageProfilLogo(){
   React.useEffect(() => {
     if (data?.data) {
       const d = data.data;
-      setForm({ slogan:d.slogan||'', adresse_complete:d.adresse_complete||'', horaires:d.horaires||'', site_web:d.site_web||'' });
+      setForm({ slogan:d.slogan||'', adresse_complete:d.adresse_complete||'', horaires:d.horaires||'', site_web:d.site_web||'', telephone:d.telephone||'', adresse:d.adresse||'', ville:d.ville||'' });
       if (d.logo) setPreview(d.logo);
     }
   }, [data]);
@@ -5338,7 +5338,7 @@ function PageProfilLogo(){
       const r = await fetch('https://mediconnect-backend-v2.vercel.app/api/clinique/logo', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logo: logo||preview, ...form })
+        body: JSON.stringify({ logo: logo||null, ...form })
       });
       const d = await r.json();
       setMsg(d.success ? 'Profil mis a jour avec succes' : d.message);
@@ -5384,8 +5384,11 @@ function PageProfilLogo(){
           <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24}}>
             <h3 style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:16}}>Informations affichees</h3>
             {[
+              {label:'Téléphone',key:'telephone',ph:'Ex: 27 22 47 55 57'},
+              {label:'Ville',key:'ville',ph:'Ex: Abidjan'},
+              {label:'Adresse (courte)',key:'adresse',ph:'Ex: Cocody Riviera 2'},
               {label:'Slogan',key:'slogan',ph:'Ex: Votre sante, notre priorite'},
-              {label:'Adresse complete',key:'adresse_complete',ph:'Ex: Cocody Riviera 2'},
+              {label:'Adresse complete',key:'adresse_complete',ph:'Ex: Cocody Riviera 2, 09 BP 2640 Abidjan 09'},
               {label:'Horaires',key:'horaires',ph:'Ex: Lun-Sam 7h-20h'},
               {label:'Site web',key:'site_web',ph:'https://www.maclinique.ci'},
             ].map(f=>(

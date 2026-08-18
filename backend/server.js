@@ -3232,21 +3232,28 @@ app.post('/api/admin/init-logo-clinique', async (req, res) => {
 // ── Upload logo clinique (base64) ─────────────────────────────────
 app.post('/api/clinique/logo', auth, async (req, res) => {
   try {
-    const { logo, slogan, adresse_complete, horaires, site_web } = req.body;
+    const { logo, slogan, adresse_complete, horaires, site_web, telephone, adresse, ville } = req.body;
     const cid = req.user?.clinique_id;
     if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
-    if (!logo) return res.status(400).json({ success: false, message: 'Logo requis (base64)' });
 
-    // Valider taille (max 2MB base64 ≈ 2.7MB)
-    if (logo.length > 3000000)
+    // Le logo est desormais optionnel a la sauvegarde : si absent, on
+    // conserve celui deja enregistre (permet de mettre a jour les
+    // coordonnees seules, sans re-uploader une image a chaque fois).
+    if (logo && logo.length > 3000000)
       return res.status(400).json({ success: false, message: 'Logo trop volumineux (max 2MB)' });
 
     const r = await db(
-      `UPDATE cliniques SET logo=$1, slogan=$2, adresse_complete=$3, horaires=$4, site_web=$5
-       WHERE id=$6 RETURNING id, nom, logo, slogan, adresse_complete, horaires, site_web`,
-      [logo, slogan||null, adresse_complete||null, horaires||null, site_web||null, cid]
+      `UPDATE cliniques SET
+         logo=COALESCE($1,logo), slogan=COALESCE($2,slogan),
+         adresse_complete=COALESCE($3,adresse_complete), horaires=COALESCE($4,horaires),
+         site_web=COALESCE($5,site_web), telephone=COALESCE($6,telephone),
+         adresse=COALESCE($7,adresse), ville=COALESCE($8,ville)
+       WHERE id=$9
+       RETURNING id, nom, logo, slogan, adresse_complete, horaires, site_web, telephone, adresse, ville`,
+      [logo||null, slogan||null, adresse_complete||null, horaires||null, site_web||null,
+       telephone||null, adresse||null, ville||null, cid]
     );
-    res.json({ success: true, data: r.rows[0], message: 'Logo mis à jour avec succès' });
+    res.json({ success: true, data: r.rows[0], message: 'Profil mis à jour avec succès' });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
