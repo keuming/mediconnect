@@ -5636,7 +5636,6 @@ export default function Dashboard() {
       <Route path="consultation" element={<PageConsultation />} />
       <Route path="caisse"       element={<PageCaisse />} />
       <Route path="facturation"  element={<PageFacturation />} />
-      <Route path="medecins"     element={<PageMedecins />} />
       <Route path="stock"        element={<PageStock />} />
       <Route path="assurance"    element={<PageAssurance />} />
       <Route path="dossiers-ass" element={<PageAssurance />} />
@@ -5647,7 +5646,7 @@ export default function Dashboard() {
       <Route path="profil-logo"   element={<PageProfilLogo />} />
       <Route path="qualite"      element={<PageQualite />} />
       <Route path="stats"        element={<PageStats />} />
-      <Route path="administration" element={<PageAdministration />} />
+      <Route path="administration" element={<PageMedecins />} />
       <Route path="actes-tarifs" element={<PanelGestionActes />} />
       <Route path="pharmacie-interne" element={<PagePharmacieInterne />} />
       <Route path="*"            element={<PageHome />} />

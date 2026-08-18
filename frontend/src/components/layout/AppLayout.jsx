@@ -43,7 +43,6 @@ const NAV = {
     { path:'/clinique/caisse',       icon:'💰', label:'Caisse',         badge:'NEW' },
     { path:'/clinique/facturation',  icon:'📄', label:'Gestion financière' },
     { path:'/clinique/specialites',  icon:'🩺', label:'Spécialités',    badge:'NEW' },
-    { path:'/clinique/medecins',     icon:'👨‍⚕️', label:'Médecins & RH' },
     { path:'/clinique/stock',        icon:'💊', label:'Stock' },
     { path:'/clinique/assurance',    icon:'🛡️', label:'Assurances' },
     { path:'/clinique/dossiers-ass', icon:'📋', label:'Dossiers assurance' },
@@ -181,9 +180,9 @@ export default function AppLayout({ children }) {
   // pour tous les autres roles systeme (labo, imagerie, patient...).
   const VISIBILITE_SOUS_ROLE = {
     bureau_entrees: ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/caisse', '/clinique/facturation', '/clinique/specialites', '/clinique/stock', '/clinique/resultats-examens'],
-    medecin:        ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/consultation', '/clinique/specialites', '/clinique/medecins', '/clinique/stock', '/clinique/stats', '/clinique/resultats-examens'],
+    medecin:        ['/clinique', '/clinique/planning', '/clinique/dossiers', '/clinique/consultation', '/clinique/specialites', '/clinique/administration', '/clinique/stock', '/clinique/stats', '/clinique/resultats-examens'],
     finance:        ['/clinique', '/clinique/caisse', '/clinique/facturation', '/clinique/assurance', '/clinique/dossiers-ass', '/clinique/stats'],
-    rh:             ['/clinique', '/clinique/medecins'],
+    rh:             ['/clinique', '/clinique/administration'],
     pharmacien:     ['/clinique', '/clinique/pharmacie-interne', '/clinique/stock'],
     laboratoire:    ['/clinique', '/clinique/resultats-examens'],
     radiologie:     ['/clinique', '/clinique/resultats-examens'],
