@@ -2155,29 +2155,6 @@ app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
-// ── Correction ponctuelle des coordonnees d'une clinique (route
-// temporaire, a retirer apres usage) ──
-app.post('/api/admin/corriger-coordonnees-clinique', async (req, res) => {
-  const key = req.headers['x-admin-key'];
-  if (key !== 'mediconnect_dev_secret_2024')
-    return res.status(403).json({ success: false, message: 'Non autorise' });
-  const { clinique_id, telephone, adresse, adresse_complete, ville } = req.body;
-  if (!clinique_id) {
-    return res.status(400).json({ success: false, message: 'clinique_id requis' });
-  }
-  try {
-    const r = await db(
-      `UPDATE cliniques SET
-         telephone=COALESCE($1,telephone), adresse=COALESCE($2,adresse),
-         adresse_complete=COALESCE($3,adresse_complete), ville=COALESCE($4,ville)
-       WHERE id=$5 RETURNING id,nom,telephone,adresse,adresse_complete,ville`,
-      [telephone||null, adresse||null, adresse_complete||null, ville||null, clinique_id]
-    );
-    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Clinique introuvable' });
-    res.json({ success: true, data: r.rows[0] });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
 app.post('/api/admin/patch-patient', async (req, res) => {
   const key = req.headers['x-admin-key'];
   if (key !== 'mediconnect_dev_secret_2024')
