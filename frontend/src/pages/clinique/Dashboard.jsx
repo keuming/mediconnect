@@ -3491,7 +3491,7 @@ function PageFacturation() {
       const r = await api.get(`/factures/${f.id}/detail`);
       lignes = r.data?.lignes || [];
     } catch(e) { /* fallback : impression sans detail si la requete echoue */ }
-    try { const rp = await api.get('/clinique/profil'); cl = rp.data?.data || null; } catch(e) { /* impression sans en-tete si echec */ }
+    try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
 
     const lignesHtml = lignes.length
       ? lignes.map(l => `
@@ -4604,7 +4604,7 @@ function PageCaisse() {
 
   const { data: historiqueData } = useQuery({
     queryKey: ["cl-caisse-historique", caisseId],
-    queryFn: () => cAPI.historiqueCaisse(caisseId).then(r => r.data.data || []),
+    queryFn: () => cAPI.historiqueCaisse(caisseId).then(r => r.data || []),
     enabled: !!caisseId && showHistorique,
   });
   const historique = historiqueData || [];
@@ -4613,7 +4613,7 @@ function PageCaisse() {
     const w = window.open('', '_blank');
     w.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement…</p>');
     let cl = null;
-    try { const r = await api.get('/clinique/profil'); cl = r.data?.data || null; } catch(e) { /* impression sans en-tete si echec */ }
+    try { const r = await api.get('/clinique/profil'); cl = r.data || null; } catch(e) { /* impression sans en-tete si echec */ }
     const lignes = historique.map(m => `
       <tr>
         <td>${new Date(m.created_at).toLocaleTimeString('fr-CI',{hour:'2-digit',minute:'2-digit'})}</td>
