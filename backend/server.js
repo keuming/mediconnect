@@ -1530,17 +1530,66 @@ app.post('/api/stock', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.put('/api/stock/:id', auth, async (req, res) => {
-  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, fournisseur_id, date_expiration } = req.body;
+  const { nom, categorie, quantite, unite, seuil_alerte, prix_unitaire, fournisseur, fournisseur_id, date_expiration, prix_subventionne } = req.body;
   try {
     const r = await db(
       `UPDATE stock SET nom=COALESCE($1,nom),categorie=COALESCE($2,categorie),quantite=COALESCE($3,quantite),
          unite=COALESCE($4,unite),seuil_alerte=COALESCE($5,seuil_alerte),prix_unitaire=COALESCE($6,prix_unitaire),
          fournisseur=COALESCE($7,fournisseur),
          fournisseur_id=CASE WHEN $8::text IS NULL THEN fournisseur_id WHEN $8='' THEN NULL ELSE $8::uuid END,
-         date_expiration=COALESCE($9,date_expiration),updated_at=NOW() WHERE id=$10 RETURNING *`,
-      [nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,fournisseur_id===undefined?null:fournisseur_id,vd(date_expiration),req.params.id]
+         date_expiration=COALESCE($9,date_expiration),prix_subventionne=COALESCE($10,prix_subventionne),updated_at=NOW() WHERE id=$11 RETURNING *`,
+      [nom,categorie,quantite,unite,seuil_alerte,prix_unitaire,fournisseur,fournisseur_id===undefined?null:fournisseur_id,vd(date_expiration),prix_subventionne??null,req.params.id]
     );
     res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  TARIFS NEGOCIES MEDICAMENTS PAR CONVENTION
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/conventions/:id/tarifs-medicaments', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const conv = await db('SELECT id FROM conventions WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
+    if (!conv.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    const r = await db(
+      `SELECT t.*, s.nom, s.prix_unitaire, s.prix_subventionne, s.unite
+         FROM stock_tarifs_convention t
+         JOIN stock s ON s.id = t.stock_id
+        WHERE t.convention_id=$1
+        ORDER BY s.nom`,
+      [req.params.id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.put('/api/conventions/:id/tarifs-medicaments/:stockId', auth, requireSousRole('finance'), async (req, res) => {
+  const { tarif_negocie } = req.body;
+  const cid = req.user?.clinique_id;
+  if (tarif_negocie===undefined || tarif_negocie===null) return res.status(400).json({ success:false, message:'tarif_negocie requis' });
+  try {
+    const conv = await db('SELECT id FROM conventions WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
+    if (!conv.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    const r = await db(
+      `INSERT INTO stock_tarifs_convention (convention_id, stock_id, tarif_negocie)
+       VALUES ($1,$2,$3)
+       ON CONFLICT (convention_id, stock_id)
+       DO UPDATE SET tarif_negocie=$3, updated_at=NOW()
+       RETURNING *`,
+      [req.params.id, req.params.stockId, tarif_negocie]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.delete('/api/conventions/:id/tarifs-medicaments/:stockId', auth, requireSousRole('finance'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const conv = await db('SELECT id FROM conventions WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
+    if (!conv.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    await db('DELETE FROM stock_tarifs_convention WHERE convention_id=$1 AND stock_id=$2', [req.params.id, req.params.stockId]);
+    res.json({ success:true, message:'Tarif négocié retiré' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 // FAILLE CORRIGEE : aucune verification de clinique proprietaire --
@@ -3654,6 +3703,19 @@ app.post('/api/admin/init-nomenclature', async (req, res) => {
       updated_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(convention_id, acte_id)
     )`);
+    // Meme principe pour les medicaments : prix_unitaire (stock) sert
+    // de prix "non assure", prix_subventionne est le 2e niveau, et
+    // stock_tarifs_convention porte le tarif negocie par assureur.
+    await db(`ALTER TABLE stock ADD COLUMN IF NOT EXISTS prix_subventionne DECIMAL(12,2)`);
+    await db(`CREATE TABLE IF NOT EXISTS stock_tarifs_convention (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      convention_id UUID NOT NULL REFERENCES conventions(id) ON DELETE CASCADE,
+      stock_id UUID NOT NULL REFERENCES stock(id) ON DELETE CASCADE,
+      tarif_negocie DECIMAL(12,2) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(convention_id, stock_id)
+    )`);
     await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
       code VARCHAR(10) PRIMARY KEY,
       libelle VARCHAR(300) NOT NULL,
@@ -4250,17 +4312,33 @@ app.post('/api/passages/:id/medicament', auth, requireSousRole('bureau_entrees',
 
       await client.query('UPDATE stock SET quantite = quantite - $1, updated_at = NOW() WHERE id=$2', [qte, stock_id]);
 
-      const pu = parseFloat(produit.prix_unitaire || 0);
-      const total = qte * pu;
+      // Tarif negocie par convention (clinique + assureur du patient) --
+      // remplace le prix de base si une ligne existe pour ce produit
+      // dans la convention active, meme principe que pour les actes.
+      let puEffectif = parseFloat(produit.prix_unitaire || 0);
       let taux = 0;
       if (est_assure) {
-        const patientR = await client.query('SELECT formule_assurance_id FROM patients WHERE id=$1', [passage.patient_id]);
+        const patientR = await client.query('SELECT formule_assurance_id, assureur_id FROM patients WHERE id=$1', [passage.patient_id]);
         const formuleId = patientR.rows[0]?.formule_assurance_id;
+        const assureurId = patientR.rows[0]?.assureur_id;
         if (formuleId) {
           const f = await client.query('SELECT taux_couverture FROM formules_assurance WHERE id=$1 AND is_active IS NOT false', [formuleId]);
           taux = f.rows[0]?.taux_couverture ?? 0;
         }
+        if (assureurId) {
+          const conv = await client.query(
+            `SELECT id FROM conventions WHERE clinique_id=$1 AND assureur_id=$2 AND is_active IS NOT false
+               AND (date_fin IS NULL OR date_fin >= CURRENT_DATE) ORDER BY date_debut DESC LIMIT 1`,
+            [passage.clinique_id, assureurId]
+          );
+          if (conv.rows.length) {
+            const tn = await client.query('SELECT tarif_negocie FROM stock_tarifs_convention WHERE convention_id=$1 AND stock_id=$2', [conv.rows[0].id, stock_id]);
+            if (tn.rows.length) puEffectif = parseFloat(tn.rows[0].tarif_negocie);
+          }
+        }
       }
+      const pu = puEffectif;
+      const total = qte * pu;
       const partAss = Math.round(total * taux / 100);
       const partPat = total - partAss;
 
