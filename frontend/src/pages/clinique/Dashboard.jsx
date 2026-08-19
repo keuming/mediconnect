@@ -3349,7 +3349,7 @@ function PageStock() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [tab, setTab] = useState("inventaire");
-  const [form, setForm] = useState({ nom:"", categorie:"Médicament", quantite:"", unite:"boite", seuil_alerte:"", prix_unitaire:"", fournisseur:"", date_expiration:"" });
+  const [form, setForm] = useState({ nom:"", categorie:"Médicament", quantite:"", unite:"boite", seuil_alerte:"", prix_unitaire:"", prix_subventionne:"", fournisseur:"", date_expiration:"" });
 
   const { data, isLoading } = useQuery({ queryKey:["cl-stock"], queryFn:()=>cAPI.stock().then(r=>r.data||[]) });
   const stock = data||[];
@@ -3429,11 +3429,14 @@ function PageStock() {
                   )},
                   { key:"id", label:"", render:(id,r)=>(
                     editantStock===id ? (
-                      <div style={{display:"flex",gap:6}}>
-                        <input type="number" defaultValue={r.prix_unitaire} id={`px-${id}`} style={{width:80,padding:"5px 7px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:13}} />
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <input type="number" defaultValue={r.prix_unitaire} id={`px-${id}`} placeholder="Non assuré" style={{width:75,padding:"5px 7px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:13}} />
+                        <input type="number" defaultValue={r.prix_subventionne||""} id={`pxsub-${id}`} placeholder="Subventionné" style={{width:80,padding:"5px 7px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:13}} />
                         <button onClick={()=>{
                           const prix_unitaire = parseFloat(document.getElementById(`px-${id}`).value);
-                          editStockMut.mutate({ id, d:{ prix_unitaire } });
+                          const subvBrut = document.getElementById(`pxsub-${id}`).value;
+                          const prix_subventionne = subvBrut ? parseFloat(subvBrut) : null;
+                          editStockMut.mutate({ id, d:{ prix_unitaire, prix_subventionne } });
                         }} style={{background:C.green,border:"none",borderRadius:6,padding:"5px 9px",color:"#fff",cursor:"pointer",fontSize:12}}>✓</button>
                       </div>
                     ) : (
@@ -3509,7 +3512,8 @@ function PageStock() {
           <Sel label="Unité" value={form.unite} onChange={f("unite")} options={UNITES} />
           <Inp label="Quantité *" required value={form.quantite} onChange={f("quantite")} type="number" placeholder="100" />
           <Inp label="Seuil d'alerte" value={form.seuil_alerte} onChange={f("seuil_alerte")} type="number" placeholder="20" />
-          <Inp label="Prix unitaire (FCFA)" value={form.prix_unitaire} onChange={f("prix_unitaire")} type="number" placeholder="500" />
+          <Inp label="Prix non assuré (FCFA)" value={form.prix_unitaire} onChange={f("prix_unitaire")} type="number" placeholder="500" />
+          <Inp label="Prix subventionné (FCFA)" value={form.prix_subventionne} onChange={f("prix_subventionne")} type="number" placeholder="Facultatif" />
           <Inp label="Date d'expiration" value={form.date_expiration} onChange={f("date_expiration")} type="date" />
         </Grid>
         <Sel label="Fournisseur" value={form.fournisseur_id||""} onChange={e=>{
