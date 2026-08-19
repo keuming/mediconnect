@@ -35,6 +35,33 @@ const UNITES_MEDICAMENT = ["boite","flacon","sachet","ampoule","comprimé","litr
 const today = () => new Date().toISOString().split("T")[0];
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-CI",{day:"numeric",month:"short",year:"numeric"}) : "—";
 
+// Regroupe les lignes d'une facture par type d'acte (categorie_nom),
+// avec un titre de section sur fond colore. TODO : la couleur est
+// actuellement fixe (vert de marque) -- a remplacer par la couleur du
+// logo de la clinique une fois l'outil de gestion des couleurs
+// d'impression construit.
+const COULEUR_SECTION_FACTURE = "#0A8F58";
+const genererLignesFactureHtml = (lignes) => {
+  if (!lignes || !lignes.length) return `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
+  const groupes = {};
+  const ordreGroupes = [];
+  lignes.forEach(l => {
+    const cat = l.categorie_nom || "Autres";
+    if (!groupes[cat]) { groupes[cat] = []; ordreGroupes.push(cat); }
+    groupes[cat].push(l);
+  });
+  return ordreGroupes.map(cat => `
+    <tr><td colspan="4" style="padding:8px 10px;background:${COULEUR_SECTION_FACTURE};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;">${cat}</td></tr>
+    ${groupes[cat].map(l => `
+      <tr>
+        <td style="padding:8px 0 8px 10px;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:center;">${l.quantite}</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.prix_unitaire).toLocaleString('fr-CI')} F</td>
+        <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.part_patient||0).toLocaleString('fr-CI')} F</td>
+      </tr>`).join('')}
+  `).join('');
+};
+
 // ── API calls ─────────────────────────────────────────────────────
 const cAPI = {
   // Dashboard
@@ -1411,15 +1438,7 @@ function PageDossiers() {
     let cl = null;
     try { const r = await api.get(`/factures/${f.id}/detail`); lignes = r.data?.lignes || []; } catch(e) { /* impression sans detail si echec */ }
     try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
-    const lignesHtml = lignes.length
-      ? lignes.map(l => `
-        <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:center;">${l.quantite}</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.prix_unitaire).toLocaleString('fr-CI')} F</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.part_patient||0).toLocaleString('fr-CI')} F</td>
-        </tr>`).join('')
-      : `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
+    const lignesHtml = genererLignesFactureHtml(lignes);
     win.document.open();
     win.document.write(`
       <html><head><title>Facture ${f.reference||''}</title>
@@ -3765,15 +3784,7 @@ function PageFacturation() {
     } catch(e) { /* fallback : impression sans detail si la requete echoue */ }
     try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
 
-    const lignesHtml = lignes.length
-      ? lignes.map(l => `
-        <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:center;">${l.quantite}</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.prix_unitaire).toLocaleString('fr-CI')} F</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(l.part_patient||0).toLocaleString('fr-CI')} F</td>
-        </tr>`).join('')
-      : `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
+    const lignesHtml = genererLignesFactureHtml(lignes);
 
     win.document.open();
     win.document.write(`

@@ -4010,7 +4010,17 @@ app.get('/api/factures/:id/detail', auth, requireSousRole('medecin', 'finance', 
 
     let lignes = [];
     if (facture.passage_id) {
-      const r = await db('SELECT * FROM prise_en_charge_actes WHERE passage_id=$1 ORDER BY created_at', [facture.passage_id]);
+      // Jointure jusqu'a categories_actes pour regrouper les lignes par
+      // type d'acte a l'impression (Consultation, Examens, Imagerie...).
+      const r = await db(
+        `SELECT p.*, c.nom AS categorie_nom, COALESCE(c.ordre,999) AS categorie_ordre
+           FROM prise_en_charge_actes p
+           LEFT JOIN actes_medicaux a ON a.id = p.acte_id
+           LEFT JOIN categories_actes c ON c.id = a.categorie_id
+          WHERE p.passage_id=$1
+          ORDER BY categorie_ordre, p.created_at`,
+        [facture.passage_id]
+      );
       lignes = r.rows;
     }
     res.json({ success:true, data: { facture, lignes } });
