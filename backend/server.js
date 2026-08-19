@@ -2168,53 +2168,6 @@ app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
-// ── Diagnostic LECTURE SEULE des colonnes d'une table (route
-// temporaire, a retirer apres usage). Whitelist stricte : jamais de
-// nom de table libre injecte dans le SQL. ──
-const TABLES_DIAGNOSTIC_AUTORISEES = [
-  'factures', 'assureurs', 'formules_assurance', 'conventions',
-  'actes_tarifs_convention', 'patients', 'actes_medicaux', 'prise_en_charge_actes',
-  'categories_actes',
-];
-app.get('/api/admin/diagnostic-colonnes/:table', async (req, res) => {
-  const key = req.headers['x-admin-key'];
-  if (key !== 'mediconnect_dev_secret_2024')
-    return res.status(403).json({ success: false, message: 'Non autorise' });
-  const table = req.params.table;
-  if (!TABLES_DIAGNOSTIC_AUTORISEES.includes(table)) {
-    return res.status(400).json({ success: false, message: `Table non autorisee. Autorisees : ${TABLES_DIAGNOSTIC_AUTORISEES.join(', ')}` });
-  }
-  try {
-    const cols = await db(
-      `SELECT column_name, data_type FROM information_schema.columns
-        WHERE table_name=$1 ORDER BY ordinal_position`,
-      [table]
-    );
-    const echantillon = await db(`SELECT * FROM "${table}" ORDER BY created_at DESC NULLS LAST LIMIT 3`).catch(async () => await db(`SELECT * FROM "${table}" LIMIT 3`));
-    res.json({ success: true, table, colonnes: cols.rows, echantillon: echantillon.rows });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
-// ── Diagnostic LECTURE SEULE : reproduit la jointure categorie pour
-// un passage donne (route temporaire, a retirer apres usage) ──
-app.get('/api/admin/diagnostic-jointure-categorie/:passageId', async (req, res) => {
-  const key = req.headers['x-admin-key'];
-  if (key !== 'mediconnect_dev_secret_2024')
-    return res.status(403).json({ success: false, message: 'Non autorise' });
-  try {
-    const r = await db(
-      `SELECT p.id, p.acte_id, p.libelle_acte, a.id AS acte_medicaux_id, a.categorie_id,
-              c.id AS categorie_actes_id, c.nom AS categorie_nom
-         FROM prise_en_charge_actes p
-         LEFT JOIN actes_medicaux a ON a.id = p.acte_id
-         LEFT JOIN categories_actes c ON c.id = a.categorie_id
-        WHERE p.passage_id = $1`,
-      [req.params.passageId]
-    );
-    res.json({ success: true, data: r.rows });
-  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
 app.post('/api/admin/patch-patient', async (req, res) => {
   const key = req.headers['x-admin-key'];
   if (key !== 'mediconnect_dev_secret_2024')
