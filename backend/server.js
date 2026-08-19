@@ -4121,7 +4121,7 @@ app.get('/api/passages/:id', auth, async (req, res) => {
 // ouvert -- reprend le tarif et le taux d'assurance du catalogue, sauf
 // surcharge explicite.
 app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
-  const { acte_id, quantite, est_assure, prix_unitaire: prixSurcharge } = req.body;
+  const { acte_id, quantite, est_assure, prix_unitaire: prixSurcharge, libelle_override } = req.body;
   if (!acte_id) return res.status(400).json({ success:false, message:'acte_id requis' });
   try {
     const passage = await db("SELECT * FROM passages_patient WHERE id=$1 AND statut IN ('ouvert','ferme_temporaire')", [req.params.id]);
@@ -4160,7 +4160,7 @@ app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'med
         quantite,prix_unitaire,taux_assurance,part_assurance,part_patient,statut)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'a_facturer') RETURNING *`,
       [passage.rows[0].patient_id, passage.rows[0].clinique_id, req.params.id,
-       acte_id, a.code, a.libelle, qte, pu, taux, partAss, partPat]
+       acte_id, a.code, libelle_override||a.libelle, qte, pu, taux, partAss, partPat]
     );
     // Ajouter un acte reactive automatiquement une carte en pause.
     await db("UPDATE passages_patient SET statut='ouvert', updated_at=NOW() WHERE id=$1 AND statut='ferme_temporaire'", [req.params.id]);

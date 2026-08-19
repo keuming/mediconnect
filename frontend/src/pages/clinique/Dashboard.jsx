@@ -601,6 +601,8 @@ function PanelCartePatient({ patient }) {
   const qc = useQueryClient();
   const [acteChoisi, setActeChoisi] = useState("");
   const [typeActeChoisi, setTypeActeChoisi] = useState("");
+  const [ongletCarte, setOngletCarte] = useState("consultation");
+  const [chambreChoisie, setChambreChoisie] = useState("");
   // Par defaut, coherent avec le statut d'assurance ACTUEL du patient --
   // le bureau des entrees peut toujours decocher pour un acte precis.
   const [estAssure, setEstAssure] = useState(!!patient?.assurance);
@@ -637,6 +639,10 @@ function PanelCartePatient({ patient }) {
     queryKey: ["cl-stock-carte"],
     queryFn: () => cAPI.stock().then(r => r.data || []),
   });
+  const { data: chambresDisponibles } = useQuery({
+    queryKey: ["cl-chambres-carte"],
+    queryFn: () => api.get("/categories-chambres").then(r => r.data || []),
+  });
   const [medicamentChoisi, setMedicamentChoisi] = useState("");
   const [lignesMedicaments, setLignesMedicaments] = useState([{id:1, medicament:"", qte:"1"}]);
   const [quantiteMedicament, setQuantiteMedicament] = useState("1");
@@ -647,13 +653,25 @@ function PanelCartePatient({ patient }) {
     onError: e => toast.error(e?.response?.data?.message || "Erreur à l'ouverture"),
   });
   const ajouterMut = useMutation({
-    mutationFn: () => cAPI.ajouterActe(passageActif.id, { acte_id: acteChoisi, est_assure: estAssure, quantite: parseInt(quantiteActe)||1 }),
+    mutationFn: () => {
+      if (ongletCarte==="hospitalisation") {
+        const chambre = (chambresDisponibles||[]).find(c=>c.id===chambreChoisie);
+        const acte = (catalogue||[]).find(a=>a.id===acteChoisi);
+        return cAPI.ajouterActe(passageActif.id, {
+          acte_id: acteChoisi, est_assure: estAssure, quantite: parseInt(quantiteActe)||1,
+          prix_unitaire: chambre?.tarif_journalier,
+          libelle_override: `${acte?.libelle||"Hospitalisation"} — Chambre ${chambre?.nom||""}`,
+        });
+      }
+      return cAPI.ajouterActe(passageActif.id, { acte_id: acteChoisi, est_assure: estAssure, quantite: parseInt(quantiteActe)||1 });
+    },
     onSuccess: () => {
       toast.success("Acte ajouté !");
       qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
       qc.invalidateQueries(["cl-passage-actif", patient.id]);
       setActeChoisi("");
       setQuantiteActe("1");
+      setChambreChoisie("");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'ajout"),
   });
@@ -708,6 +726,22 @@ function PanelCartePatient({ patient }) {
     onError: () => toast.error("Erreur lors de l'affectation"),
   });
 
+  const ONGLETS_CARTE = [
+    { key:"consultation", label:"Consultation", icon:"🩺", categorieNom:"Consultation" },
+    { key:"examens", label:"Examens", icon:"🔬", categorieNom:"Examens" },
+    { key:"imagerie", label:"Imagerie", icon:"🩻", categorieNom:"Radiologie" },
+    { key:"chirurgie", label:"Chirurgie", icon:"🔪", categorieNom:"Chirurgie" },
+    { key:"hospitalisation", label:"Hospitalisation", icon:"🏥", categorieNom:"Hospitalisation" },
+    { key:"pharmacie", label:"Pharmacie", icon:"💊", categorieNom:null },
+    { key:"autres", label:"Autres", icon:"📋", categorieNom:null },
+  ];
+  const NOMS_ONGLETS_DEDIES = ["Consultation","Examens","Radiologie","Chirurgie","Hospitalisation"];
+  const ongletActif = ONGLETS_CARTE.find(o=>o.key===ongletCarte);
+  const nomCategorie = (a) => (categoriesActes||[]).find(c=>c.id===a.categorie_id)?.nom;
+  const actesDuOnglet = ongletCarte==="autres"
+    ? (catalogue||[]).filter(a => !NOMS_ONGLETS_DEDIES.includes(nomCategorie(a)))
+    : (catalogue||[]).filter(a => nomCategorie(a) === ongletActif?.categorieNom);
+
   if (chargementActif) return <Panel title="🗂️ Carte patient"><div style={{textAlign:"center",padding:30,color:C.muted}}>Chargement…</div></Panel>;
 
   if (!passageActif) {
@@ -761,47 +795,71 @@ function PanelCartePatient({ patient }) {
         options={[{v:"",l:"— Aucun médecin affecté —"}, ...(medecinsListe||[]).map(m=>({v:m.id, l:`Dr ${m.prenom} ${m.nom}${m.specialite?' — '+m.specialite:''}`}))]}
         style={{marginBottom:16}} />
 
-      <div style={{ display:"grid", gridTemplateColumns:"1.1fr 1.5fr 0.7fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
-        <Sel label="Type d'actes" value={typeActeChoisi} onChange={e=>{ setTypeActeChoisi(e.target.value); setActeChoisi(""); }}
-          options={[{v:"",l:"— Choisir un type —"}, ...(categoriesActes||[]).map(c=>({v:c.id, l:c.nom}))]} />
-        <Sel label="Acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)} disabled={!typeActeChoisi}
-          options={[{v:"",l:typeActeChoisi?"— Choisir un acte —":"Choisir un type d'abord"}, ...(catalogue||[]).filter(a=>a.categorie_id===typeActeChoisi).map(a=>({v:a.id, l:`${a.libelle} — ${fmt(a.tarif_base)} F`}))]} />
-        <Inp label={(catalogue||[]).find(a=>a.id===acteChoisi)?.libelle?.toLowerCase().includes("suture") ? "Nb points" : "Quantité"}
-          type="number" min="1" value={quantiteActe} onChange={e=>setQuantiteActe(e.target.value)} />
-        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
-          <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
-        </label>
-        <Btn loading={ajouterMut.isPending} disabled={!acteChoisi} onClick={()=>ajouterMut.mutate()}>+ Ajouter</Btn>
+      {/* Parcours de soin -- chaque onglet ne montre que les actes de
+          sa categorie, sans avoir a chercher dans un menu deroulant
+          unique melangeant tout. Hospitalisation et Pharmacie ont leur
+          propre logique de saisie (chambre×jours, stock). */}
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        {ONGLETS_CARTE.map(o=>(
+          <button key={o.key} onClick={()=>{ setOngletCarte(o.key); setActeChoisi(""); setChambreChoisie(""); }}
+            style={{padding:"7px 12px",borderRadius:8,border:`1.5px solid ${ongletCarte===o.key?C.green:C.border}`,
+              background:ongletCarte===o.key?"rgba(10,143,88,.12)":"transparent",
+              color:ongletCarte===o.key?C.green:C.muted,fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+            {o.icon} {o.label}
+          </button>
+        ))}
       </div>
 
-      {/* Lignes de medicaments -- un seul champ ne permettait de facturer
-          qu'un medicament a la fois. Le bouton "+" ajoute une ligne
-          supplementaire ; "Facturer" valide toutes les lignes remplies
-          d'un coup, sequentiellement, en passant des variables
-          explicites a chaque appel (jamais via le state intermediaire). */}
-      {lignesMedicaments.map((ligne,i)=>(
-        <div key={ligne.id} style={{ display:"grid", gridTemplateColumns:"2fr 0.6fr auto", gap:10, marginBottom:10, alignItems:"end" }}>
-          <Sel label={i===0?"Médicament (depuis le stock)":undefined} value={ligne.medicament||""}
-            onChange={e=>{ const val=e.target.value; setLignesMedicaments(prev=>prev.map(l=>l.id===ligne.id?{...l,medicament:val}:l)); }}
-            options={[{v:"",l:"— Choisir un médicament —"}, ...(stockDisponible||[]).filter(s=>s.categorie==="Médicament"&&s.quantite>0).map(s=>({v:s.id, l:`${s.nom} — ${fmt(s.prix_unitaire)} F (${s.quantite} ${s.unite} dispo.)`}))]} />
-          <Inp label={i===0?`Qté${ligne.medicament?" ("+((stockDisponible||[]).find(s=>s.id===ligne.medicament)?.unite||"")+")":""}`:undefined}
-            type="number" min="1" value={ligne.qte||""}
-            onChange={e=>{ const val=e.target.value; setLignesMedicaments(prev=>prev.map(l=>l.id===ligne.id?{...l,qte:val}:l)); }} />
-          {i===0 ? (
-            <Btn variant="outline" onClick={()=>setLignesMedicaments(prev=>[...prev, {id:Date.now(), medicament:"", qte:"1"}])}>+</Btn>
-          ) : (
-            <Btn variant="outline" style={{color:C.red}} onClick={()=>setLignesMedicaments(prev=>prev.filter(l=>l.id!==ligne.id))}>✕</Btn>
-          )}
+      {ongletCarte==="hospitalisation" ? (
+        <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1.2fr 0.7fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
+          <Sel label="Acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)}
+            options={[{v:"",l:"— Choisir —"}, ...actesDuOnglet.map(a=>({v:a.id, l:a.libelle}))]} />
+          <Sel label="Chambre" value={chambreChoisie} onChange={e=>setChambreChoisie(e.target.value)}
+            options={[{v:"",l:"— Choisir une chambre —"}, ...(chambresDisponibles||[]).map(c=>({v:c.id, l:`${c.nom} — ${fmt(c.tarif_journalier)} F/jour`}))]} />
+          <Inp label="Nb jours" type="number" min="1" value={quantiteActe} onChange={e=>setQuantiteActe(e.target.value)} />
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
+            <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
+          </label>
+          <Btn loading={ajouterMut.isPending} disabled={!acteChoisi||!chambreChoisie} onClick={()=>ajouterMut.mutate()}>+ Ajouter</Btn>
         </div>
-      ))}
-      <Btn style={{width:"100%",marginBottom:16}} loading={ajouterMedicamentMut.isPending} onClick={async ()=>{
-          const lignes = lignesMedicaments.filter(l=>l.medicament);
-          if (!lignes.length) { toast.error("Choisissez au moins un médicament"); return; }
-          for (const l of lignes) {
-            await ajouterMedicamentMut.mutateAsync({ stock_id: l.medicament, quantite: parseInt(l.qte)||1, est_assure: estAssure });
-          }
-          setLignesMedicaments([{id:Date.now(), medicament:"", qte:"1"}]);
-        }}>+ Facturer{lignesMedicaments.filter(l=>l.medicament).length > 1 ? ` (${lignesMedicaments.filter(l=>l.medicament).length} médicaments)` : ''}</Btn>
+      ) : ongletCarte==="pharmacie" ? (
+        <>
+          {lignesMedicaments.map((ligne,i)=>(
+            <div key={ligne.id} style={{ display:"grid", gridTemplateColumns:"2fr 0.6fr auto", gap:10, marginBottom:10, alignItems:"end" }}>
+              <Sel label={i===0?"Médicament (depuis le stock)":undefined} value={ligne.medicament||""}
+                onChange={e=>{ const val=e.target.value; setLignesMedicaments(prev=>prev.map(l=>l.id===ligne.id?{...l,medicament:val}:l)); }}
+                options={[{v:"",l:"— Choisir un médicament —"}, ...(stockDisponible||[]).filter(s=>s.categorie==="Médicament"&&s.quantite>0).map(s=>({v:s.id, l:`${s.nom} — ${fmt(s.prix_unitaire)} F (${s.quantite} ${s.unite} dispo.)`}))]} />
+              <Inp label={i===0?`Qté${ligne.medicament?" ("+((stockDisponible||[]).find(s=>s.id===ligne.medicament)?.unite||"")+")":""}`:undefined}
+                type="number" min="1" value={ligne.qte||""}
+                onChange={e=>{ const val=e.target.value; setLignesMedicaments(prev=>prev.map(l=>l.id===ligne.id?{...l,qte:val}:l)); }} />
+              {i===0 ? (
+                <Btn variant="outline" onClick={()=>setLignesMedicaments(prev=>[...prev, {id:Date.now(), medicament:"", qte:"1"}])}>+</Btn>
+              ) : (
+                <Btn variant="outline" style={{color:C.red}} onClick={()=>setLignesMedicaments(prev=>prev.filter(l=>l.id!==ligne.id))}>✕</Btn>
+              )}
+            </div>
+          ))}
+          <Btn style={{width:"100%",marginBottom:16}} loading={ajouterMedicamentMut.isPending} onClick={async ()=>{
+              const lignes = lignesMedicaments.filter(l=>l.medicament);
+              if (!lignes.length) { toast.error("Choisissez au moins un médicament"); return; }
+              for (const l of lignes) {
+                await ajouterMedicamentMut.mutateAsync({ stock_id: l.medicament, quantite: parseInt(l.qte)||1, est_assure: estAssure });
+              }
+              setLignesMedicaments([{id:Date.now(), medicament:"", qte:"1"}]);
+            }}>+ Facturer{lignesMedicaments.filter(l=>l.medicament).length > 1 ? ` (${lignesMedicaments.filter(l=>l.medicament).length} médicaments)` : ''}</Btn>
+        </>
+      ) : (
+        <div style={{ display:"grid", gridTemplateColumns:"2fr 0.7fr 1fr auto", gap:10, marginBottom:16, alignItems:"end" }}>
+          <Sel label="Acte" value={acteChoisi} onChange={e=>setActeChoisi(e.target.value)}
+            options={[{v:"",l:actesDuOnglet.length?"— Choisir un acte —":"Aucun acte dans cette catégorie"}, ...actesDuOnglet.map(a=>({v:a.id, l:`${a.libelle} — ${fmt(a.tarif_base)} F`}))]} />
+          <Inp label={(catalogue||[]).find(a=>a.id===acteChoisi)?.libelle?.toLowerCase().includes("suture") ? "Nb points" : "Quantité"}
+            type="number" min="1" value={quantiteActe} onChange={e=>setQuantiteActe(e.target.value)} />
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:14,color:C.muted,marginBottom:10}}>
+            <input type="checkbox" checked={estAssure} onChange={e=>setEstAssure(e.target.checked)} /> Assuré
+          </label>
+          <Btn loading={ajouterMut.isPending} disabled={!acteChoisi} onClick={()=>ajouterMut.mutate()}>+ Ajouter</Btn>
+        </div>
+      )}
 
       {actes.length===0
         ? <Empty icon="📋" title="Aucun acte ajouté encore" />
