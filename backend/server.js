@@ -2168,6 +2168,56 @@ app.use("/api/cards-admin", require("./routes/cards_admin"));
 
 
 // ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
+// Modifier une ligne d'acte deja ajoutee a un passage, avant validation
+// (jamais une ligne deja facturee -- statut='a_facturer' uniquement).
+// Le taux et la ventilation assurance/patient sont recalcules comme a
+// l'ajout initial (formule du patient, repli sur le taux de l'acte).
+app.put('/api/passages/:id/actes/:ligneId', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  const { quantite, prix_unitaire: prixSurcharge, est_assure } = req.body;
+  try {
+    const passage = await db("SELECT * FROM passages_patient WHERE id=$1 AND statut IN ('ouvert','ferme_temporaire')", [req.params.id]);
+    if (!passage.rows.length) return res.status(404).json({ success:false, message:'Passage introuvable ou déjà validé' });
+    const ligneR = await db("SELECT * FROM prise_en_charge_actes WHERE id=$1 AND passage_id=$2 AND statut='a_facturer'", [req.params.ligneId, req.params.id]);
+    if (!ligneR.rows.length) return res.status(404).json({ success:false, message:'Ligne introuvable ou déjà facturée' });
+    const l = ligneR.rows[0];
+    const qte = quantite!=null ? parseInt(quantite) : l.quantite;
+    const pu = prixSurcharge!=null ? parseFloat(prixSurcharge) : parseFloat(l.prix_unitaire);
+    const assure = est_assure!=null ? !!est_assure : (parseInt(l.taux_assurance)>0);
+    const total = qte * pu;
+    let taux = 0;
+    if (assure) {
+      const patientRow = await db('SELECT formule_assurance_id FROM patients WHERE id=$1', [passage.rows[0].patient_id]);
+      const formuleId = patientRow.rows[0]?.formule_assurance_id;
+      let formule = null;
+      if (formuleId) {
+        const f = await db('SELECT taux_couverture FROM formules_assurance WHERE id=$1 AND is_active IS NOT false', [formuleId]);
+        formule = f.rows[0] || null;
+      }
+      const acteRow = await db('SELECT taux_assurance FROM actes_medicaux WHERE id=$1', [l.acte_id]);
+      taux = formule ? formule.taux_couverture : parseInt(acteRow.rows[0]?.taux_assurance ?? 70);
+    }
+    const partAss = Math.round(total * taux / 100);
+    const partPat = total - partAss;
+    const r = await db(
+      `UPDATE prise_en_charge_actes SET quantite=$1, prix_unitaire=$2, taux_assurance=$3, part_assurance=$4, part_patient=$5
+       WHERE id=$6 RETURNING *`,
+      [qte, pu, taux, partAss, partPat, req.params.ligneId]
+    );
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Retirer une ligne d'acte d'un passage, avant validation.
+app.delete('/api/passages/:id/actes/:ligneId', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
+  try {
+    const passage = await db("SELECT id FROM passages_patient WHERE id=$1 AND statut IN ('ouvert','ferme_temporaire')", [req.params.id]);
+    if (!passage.rows.length) return res.status(404).json({ success:false, message:'Passage introuvable ou déjà validé' });
+    const r = await db("DELETE FROM prise_en_charge_actes WHERE id=$1 AND passage_id=$2 AND statut='a_facturer' RETURNING id", [req.params.ligneId, req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Ligne introuvable ou déjà facturée' });
+    res.json({ success:true });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.post('/api/admin/patch-patient', async (req, res) => {
   const key = req.headers['x-admin-key'];
   if (key !== 'mediconnect_dev_secret_2024')

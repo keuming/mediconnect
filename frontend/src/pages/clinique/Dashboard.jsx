@@ -630,6 +630,7 @@ function PanelCartePatient({ patient }) {
   const [typeActeChoisi, setTypeActeChoisi] = useState("");
   const [ongletCarte, setOngletCarte] = useState("consultation");
   const [chambreChoisie, setChambreChoisie] = useState("");
+  const [ligneEnEdition, setLigneEnEdition] = useState(null);
   // Par defaut, coherent avec le statut d'assurance ACTUEL du patient --
   // le bureau des entrees peut toujours decocher pour un acte precis.
   const [estAssure, setEstAssure] = useState(!!patient?.assurance);
@@ -732,6 +733,25 @@ function PanelCartePatient({ patient }) {
       qc.invalidateQueries(["cl-factures"]);
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la validation"),
+  });
+  const modifierLigneMut = useMutation({
+    mutationFn: ({ligneId, ...d}) => api.put(`/passages/${passageActif.id}/actes/${ligneId}`, d),
+    onSuccess: () => {
+      toast.success("Acte modifié");
+      qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
+      qc.invalidateQueries(["cl-passage-actif", patient.id]);
+      setLigneEnEdition(null);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la modification"),
+  });
+  const supprimerLigneMut = useMutation({
+    mutationFn: (ligneId) => api.delete(`/passages/${passageActif.id}/actes/${ligneId}`),
+    onSuccess: () => {
+      toast.success("Acte retiré");
+      qc.invalidateQueries(["cl-passage-detail", passageActif.id]);
+      qc.invalidateQueries(["cl-passage-actif", patient.id]);
+    },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la suppression"),
   });
   const assuranceMut = useMutation({
     mutationFn: () => cAPI.updatePatient(patient.id, {
@@ -890,15 +910,43 @@ function PanelCartePatient({ patient }) {
 
       {actes.length===0
         ? <Empty icon="📋" title="Aucun acte ajouté encore" />
-        : actes.map(a=>(
-          <div key={a.id} style={{background:C.hover,borderRadius:9,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
+        : actes.map(a=>{
+          const enEditionLigne = ligneEnEdition===a.id;
+          return (
+          <div key={a.id} style={{background:C.hover,borderRadius:9,padding:"10px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+            <div style={{flex:1}}>
               <div style={{fontSize:15,fontWeight:600,color:C.text}}>{a.libelle_acte}</div>
-              <div style={{fontSize:13,color:C.dim}}>{a.code_acte} · {a.quantite} × {fmt(a.prix_unitaire)} F</div>
+              {enEditionLigne ? (
+                <div style={{display:"flex",gap:8,marginTop:6,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:C.dim}}>{a.code_acte} ·</span>
+                  <input type="number" min="1" defaultValue={a.quantite} id={`qte-ligne-${a.id}`} style={{width:60,padding:"4px 6px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:13}} />
+                  <span style={{fontSize:13,color:C.dim}}>×</span>
+                  <input type="number" min="0" defaultValue={a.prix_unitaire} id={`pu-ligne-${a.id}`} style={{width:100,padding:"4px 6px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:13}} />
+                  <span style={{fontSize:13,color:C.dim}}>F</span>
+                </div>
+              ) : (
+                <div style={{fontSize:13,color:C.dim}}>{a.code_acte} · {a.quantite} × {fmt(a.prix_unitaire)} F</div>
+              )}
             </div>
-            <div style={{fontWeight:800,color:C.green}}>{fmt(a.prix_unitaire*a.quantite)} F</div>
+            {enEditionLigne ? (
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>{
+                  const qte = parseInt(document.getElementById(`qte-ligne-${a.id}`).value)||1;
+                  const pu = parseFloat(document.getElementById(`pu-ligne-${a.id}`).value)||0;
+                  modifierLigneMut.mutate({ ligneId:a.id, quantite:qte, prix_unitaire:pu });
+                }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✓</button>
+                <button onClick={()=>setLigneEnEdition(null)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",color:C.muted,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button>
+              </div>
+            ) : (
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{fontWeight:800,color:C.green}}>{fmt(a.prix_unitaire*a.quantite)} F</div>
+                <button onClick={()=>setLigneEnEdition(a.id)} style={{background:"transparent",border:"none",color:C.blue,cursor:"pointer",fontSize:15}}>✏️</button>
+                <button onClick={()=>{ if(window.confirm("Retirer cet acte de la carte ?")) supprimerLigneMut.mutate(a.id); }} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>
+              </div>
+            )}
           </div>
-        ))
+          );
+        })
       }
 
       {actes.length>0 && (
