@@ -4124,6 +4124,7 @@ function PanelCompagniesFormules() {
   const [showAddCompagnie, setShowAddCompagnie] = useState(false);
   const [showAddFormule, setShowAddFormule] = useState(false);
   const [nouvelleCompagnie, setNouvelleCompagnie] = useState({ nom:"", email:"", telephone:"", numero_agrement:"" });
+  const [formulesInitiales, setFormulesInitiales] = useState([{ nom:"", taux_couverture:"", prime_mensuelle:"" }]);
   const [nouvelleFormule, setNouvelleFormule] = useState({ nom:"", prime_mensuelle:"", taux_couverture:"" });
 
   const { data: compagnies, isLoading } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
@@ -4134,10 +4135,31 @@ function PanelCompagniesFormules() {
   });
 
   const addCompagnieMut = useMutation({
-    mutationFn: () => api.post("/assureurs", nouvelleCompagnie),
-    onSuccess: () => { toast.success("Compagnie ajoutée !"); qc.invalidateQueries(["cl-assureurs-liste"]); setShowAddCompagnie(false); setNouvelleCompagnie({ nom:"", email:"", telephone:"", numero_agrement:"" }); },
+    mutationFn: async () => {
+      const r = await api.post("/assureurs", nouvelleCompagnie);
+      const compagnie = r.data;
+      const formulesValides = formulesInitiales.filter(f=>f.nom.trim() && f.taux_couverture!=="");
+      for (const f of formulesValides) {
+        await api.post("/formules-assurance", {
+          assureur_id: compagnie.id, nom: f.nom,
+          taux_couverture: parseInt(f.taux_couverture),
+          prime_mensuelle: f.prime_mensuelle ? parseInt(f.prime_mensuelle) : null,
+        });
+      }
+      return { compagnie, nbFormules: formulesValides.length };
+    },
+    onSuccess: ({ nbFormules }) => {
+      toast.success(nbFormules>0 ? `Compagnie ajoutée avec ${nbFormules} formule${nbFormules>1?'s':''} !` : "Compagnie ajoutée !");
+      qc.invalidateQueries(["cl-assureurs-liste"]);
+      setShowAddCompagnie(false);
+      setNouvelleCompagnie({ nom:"", email:"", telephone:"", numero_agrement:"" });
+      setFormulesInitiales([{ nom:"", taux_couverture:"", prime_mensuelle:"" }]);
+    },
     onError: () => toast.error("Erreur"),
   });
+  const ajouterLigneFormuleInitiale = () => setFormulesInitiales(l => [...l, { nom:"", taux_couverture:"", prime_mensuelle:"" }]);
+  const majLigneFormuleInitiale = (i, k, v) => setFormulesInitiales(l => l.map((row,j) => j===i ? {...row,[k]:v} : row));
+  const retirerLigneFormuleInitiale = (i) => setFormulesInitiales(l => l.filter((_,j) => j!==i));
   const addFormuleMut = useMutation({
     mutationFn: () => api.post("/formules-assurance", { ...nouvelleFormule, assureur_id: compagnieOuverte }),
     onSuccess: () => { toast.success("Formule ajoutée !"); qc.invalidateQueries(["cl-formules", compagnieOuverte]); setShowAddFormule(false); setNouvelleFormule({ nom:"", prime_mensuelle:"", taux_couverture:"" }); },
@@ -4203,8 +4225,24 @@ function PanelCompagniesFormules() {
           <Inp label="Email" value={nouvelleCompagnie.email} onChange={e=>setNouvelleCompagnie(f=>({...f,email:e.target.value}))} />
           <Inp label="Téléphone" value={nouvelleCompagnie.telephone} onChange={e=>setNouvelleCompagnie(f=>({...f,telephone:e.target.value}))} />
         </Grid>
+        <div style={{marginTop:6,marginBottom:4,fontSize:14,fontWeight:700,color:C.dim,textTransform:"uppercase"}}>Formules & taux de couverture</div>
+        <div style={{fontSize:13,color:C.dim,marginBottom:10}}>Optionnel — les taux autorisés par cette compagnie. Vous pourrez en ajouter d'autres plus tard.</div>
+        {formulesInitiales.map((f,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1.6fr 0.9fr 1fr auto",gap:8,marginBottom:8,alignItems:"end"}}>
+            <Inp label={i===0?"Nom de la formule":""} value={f.nom} onChange={e=>majLigneFormuleInitiale(i,"nom",e.target.value)} placeholder="Ex: Essentielle" />
+            <Inp label={i===0?"Taux (%)":""} type="number" min="0" max="100" value={f.taux_couverture} onChange={e=>majLigneFormuleInitiale(i,"taux_couverture",e.target.value)} placeholder="70" />
+            <Inp label={i===0?"Prime/mois (FCFA)":""} type="number" value={f.prime_mensuelle} onChange={e=>majLigneFormuleInitiale(i,"prime_mensuelle",e.target.value)} placeholder="Facultatif" />
+            <button onClick={()=>retirerLigneFormuleInitiale(i)} disabled={formulesInitiales.length<=1}
+              style={{padding:"11px 10px",borderRadius:8,background:"transparent",border:`1.5px solid ${C.border}`,color:formulesInitiales.length<=1?C.dim:C.red,cursor:formulesInitiales.length<=1?"not-allowed":"pointer",fontSize:17,fontWeight:700,fontFamily:"inherit"}}>
+              {formulesInitiales.length>1?"✕":"—"}
+            </button>
+          </div>
+        ))}
+        <button onClick={ajouterLigneFormuleInitiale} style={{width:"100%",marginBottom:14,padding:"8px",borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:16,fontWeight:700,fontFamily:"inherit"}}>+ Nouvelle formule</button>
         <Btn style={{width:"100%"}} loading={addCompagnieMut.isPending} onClick={()=>{
           if(!nouvelleCompagnie.nom){toast.error("Nom requis");return;}
+          const incomplet = formulesInitiales.some(f=>(f.nom.trim() && f.taux_couverture==="") || (!f.nom.trim() && f.taux_couverture!==""));
+          if(incomplet){toast.error("Chaque formule doit avoir un nom ET un taux, ou être laissée vide");return;}
           addCompagnieMut.mutate();
         }}>Créer</Btn>
       </Modal>
