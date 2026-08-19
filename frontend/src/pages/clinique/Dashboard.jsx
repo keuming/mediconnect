@@ -65,6 +65,12 @@ const cAPI = {
   updatePatient: (id,d) => api.put(`/patients/${id}`, d),
   affecterMedecinPassage: (passageId,medecinId) => api.put(`/passages/${passageId}/medecin`, { medecin_id:medecinId }),
   assureursListe:  () => api.get("/assureurs"),
+  conventions:     () => api.get("/conventions"),
+  addConvention:   (d) => api.post("/conventions", d),
+  updateConvention:(id,d) => api.put(`/conventions/${id}`, d),
+  tarifsConvention:(conventionId) => api.get(`/conventions/${conventionId}/tarifs-actes`),
+  setTarifNegocie: (conventionId,acteId,tarif_negocie) => api.put(`/conventions/${conventionId}/tarifs-actes/${acteId}`, { tarif_negocie }),
+  retirerTarifNegocie:(conventionId,acteId) => api.delete(`/conventions/${conventionId}/tarifs-actes/${acteId}`),
   formulesParAssureur: (assureurId) => api.get("/formules-assurance", { params:{ assureur_id:assureurId } }),
   contactsUrgence:       (patientId) => api.get(`/patients/${patientId}/contacts-urgence`),
   ajouterContactUrgence: (patientId,d) => api.post(`/patients/${patientId}/contacts-urgence`, d),
@@ -3403,7 +3409,7 @@ function PanelGestionActes() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [editant, setEditant] = useState(null);
-  const [form, setForm] = useState({ code:"", libelle:"", categorie_id:"", tarif_base:"", taux_assurance:"70" });
+  const [form, setForm] = useState({ code:"", libelle:"", categorie_id:"", tarif_base:"", taux_assurance:"70", prix_subventionne:"" });
 
   const { data: actes, isLoading } = useQuery({ queryKey:["cl-actes-gestion"], queryFn:()=>cAPI.actesCatalogue().then(r=>r.data||[]) });
   const { data: categories } = useQuery({ queryKey:["cl-categories-actes"], queryFn:()=>api.get("/categories-actes").then(r=>r.data||[]) });
@@ -3412,7 +3418,7 @@ function PanelGestionActes() {
   const actesGlobaux = (actes||[]).filter(a=>!a.clinique_id);
 
   const addMut = useMutation({
-    mutationFn: () => api.post("/actes", { ...form, tarif_base:parseInt(form.tarif_base)||0, taux_assurance:parseInt(form.taux_assurance)||70 }),
+    mutationFn: () => api.post("/actes", { ...form, tarif_base:parseInt(form.tarif_base)||0, taux_assurance:parseInt(form.taux_assurance)||70, prix_subventionne:form.prix_subventionne?parseInt(form.prix_subventionne):null }),
     onSuccess: () => { toast.success("Acte créé !"); qc.invalidateQueries(["cl-actes-gestion"]); setShowAdd(false); setForm({ code:"", libelle:"", categorie_id:"", tarif_base:"", taux_assurance:"70" }); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur"),
   });
@@ -3428,8 +3434,47 @@ function PanelGestionActes() {
   });
   const personnaliserMut = useMutation({
     mutationFn: (d) => api.post("/actes", d),
-    onSuccess: () => { toast.success("Tarif personnalisé !"); qc.invalidateQueries(["cl-actes-gestion"]); },
+    onSuccess: () => { toast.success("Tarif personnalisé !"); qc.invalidateQueries(["cl-actes-gestion"]); setPersonnaliserCible(null); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const [personnaliserCible, setPersonnaliserCible] = useState(null);
+  const [personnaliserForm, setPersonnaliserForm] = useState({ tarif_base:"", prix_subventionne:"", taux_assurance:70 });
+
+  // ── Conventions (clinique + assureur) et tarifs negocies par acte ──
+  const [showAddConvention, setShowAddConvention] = useState(false);
+  const [conventionForm, setConventionForm] = useState({ assureur_id:"", taux:"70", plafond_acte:"" });
+  const [conventionOuverte, setConventionOuverte] = useState(null);
+  const [rechercheActeConv, setRechercheActeConv] = useState("");
+
+  const { data: conventionsData } = useQuery({ queryKey:["cl-conventions"], queryFn:()=>cAPI.conventions().then(r=>r.data||[]) });
+  const conventions = conventionsData||[];
+  const { data: assureursConv } = useQuery({ queryKey:["cl-assureurs-conv"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const { data: tarifsConventionData } = useQuery({
+    queryKey:["cl-tarifs-convention", conventionOuverte],
+    queryFn:()=>cAPI.tarifsConvention(conventionOuverte).then(r=>r.data||[]),
+    enabled: !!conventionOuverte,
+  });
+  const tarifsNegocies = tarifsConventionData||[];
+
+  const addConventionMut = useMutation({
+    mutationFn: () => cAPI.addConvention({ assureur_id:conventionForm.assureur_id, taux:parseInt(conventionForm.taux)||0, plafond_acte:conventionForm.plafond_acte?parseInt(conventionForm.plafond_acte):null }),
+    onSuccess: () => { toast.success("Convention créée !"); qc.invalidateQueries(["cl-conventions"]); setShowAddConvention(false); setConventionForm({ assureur_id:"", taux:"70", plafond_acte:"" }); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const toggleConventionMut = useMutation({
+    mutationFn: ({id,is_active}) => cAPI.updateConvention(id,{is_active}),
+    onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-conventions"]); },
+    onError: () => toast.error("Erreur"),
+  });
+  const setTarifNegocieMut = useMutation({
+    mutationFn: ({acteId, tarif}) => cAPI.setTarifNegocie(conventionOuverte, acteId, tarif),
+    onSuccess: () => { toast.success("Tarif négocié enregistré"); qc.invalidateQueries(["cl-tarifs-convention", conventionOuverte]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const retirerTarifNegocieMut = useMutation({
+    mutationFn: (acteId) => cAPI.retirerTarifNegocie(conventionOuverte, acteId),
+    onSuccess: () => { toast.success("Tarif négocié retiré"); qc.invalidateQueries(["cl-tarifs-convention", conventionOuverte]); },
+    onError: () => toast.error("Erreur"),
   });
 
   const LigneActe = ({ a, modifiable }) => {
@@ -3442,19 +3487,23 @@ function PanelGestionActes() {
         </div>
         {enEdition ? (
           <>
-            <input defaultValue={a.libelle} id={`libelle-${a.id}`} placeholder="Libellé" style={{width:160,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
-            <input type="number" defaultValue={a.tarif_base} id={`tarif-${a.id}`} style={{width:90,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
-            <input type="number" defaultValue={a.taux_assurance} id={`taux-${a.id}`} style={{width:60,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+            <input defaultValue={a.libelle} id={`libelle-${a.id}`} placeholder="Libellé" style={{width:150,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+            <input type="number" defaultValue={a.tarif_base} id={`tarif-${a.id}`} placeholder="Non assuré" style={{width:80,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+            <input type="number" defaultValue={a.prix_subventionne||""} id={`subv-${a.id}`} placeholder="Subventionné" style={{width:80,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+            <input type="number" defaultValue={a.taux_assurance} id={`taux-${a.id}`} placeholder="Taux %" style={{width:55,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
             <button onClick={()=>{
               const libelle = document.getElementById(`libelle-${a.id}`).value;
               const tarif_base = parseInt(document.getElementById(`tarif-${a.id}`).value);
+              const subvBrut = document.getElementById(`subv-${a.id}`).value;
+              const prix_subventionne = subvBrut ? parseInt(subvBrut) : null;
               const taux_assurance = parseInt(document.getElementById(`taux-${a.id}`).value);
-              editMut.mutate({ id:a.id, d:{ libelle, tarif_base, taux_assurance } });
+              editMut.mutate({ id:a.id, d:{ libelle, tarif_base, taux_assurance, prix_subventionne } });
             }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
           </>
         ) : (
           <>
             <span style={{fontWeight:800,color:C.green,minWidth:90,textAlign:"right"}}>{fmt(a.tarif_base)} F</span>
+            {a.prix_subventionne!=null && <span style={{fontSize:13,color:C.teal,minWidth:80,textAlign:"right"}}>Subv. {fmt(a.prix_subventionne)} F</span>}
             <span style={{fontSize:13,color:C.muted,minWidth:40}}>{a.taux_assurance}%</span>
             {modifiable ? (
               <>
@@ -3463,11 +3512,8 @@ function PanelGestionActes() {
               </>
             ) : (
               <button onClick={()=>{
-                const nouveauPrix = window.prompt(`Votre tarif pour "${a.libelle}" (FCFA) :`, a.tarif_base);
-                if (nouveauPrix===null) return;
-                const tarif_base = parseInt(nouveauPrix);
-                if (!tarif_base || tarif_base<0) { toast.error("Tarif invalide"); return; }
-                personnaliserMut.mutate({ code:a.code, libelle:a.libelle, categorie_id:a.categorie_id, tarif_base, taux_assurance:a.taux_assurance });
+                setPersonnaliserCible(a);
+                setPersonnaliserForm({ tarif_base:a.tarif_base||"", prix_subventionne:a.prix_subventionne||"", taux_assurance:a.taux_assurance||70 });
               }} style={{background:"rgba(10,143,88,.12)",border:`1px solid ${C.green}`,borderRadius:6,padding:"5px 10px",color:C.green,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>✏️ Personnaliser</button>
             )}
           </>
@@ -3496,13 +3542,96 @@ function PanelGestionActes() {
         </Grid>
         <Inp label="Libellé *" required value={form.libelle} onChange={e=>setForm(f=>({...f,libelle:e.target.value}))} placeholder="Ex: Consultation généraliste" />
         <Grid cols={2} gap={10}>
-          <Inp label="Tarif (FCFA) *" required type="number" value={form.tarif_base} onChange={e=>setForm(f=>({...f,tarif_base:e.target.value}))} />
-          <Inp label="Taux assurance par défaut (%)" type="number" value={form.taux_assurance} onChange={e=>setForm(f=>({...f,taux_assurance:e.target.value}))} />
+          <Inp label="Tarif non assuré (FCFA) *" required type="number" value={form.tarif_base} onChange={e=>setForm(f=>({...f,tarif_base:e.target.value}))} />
+          <Inp label="Tarif subventionné (FCFA)" type="number" value={form.prix_subventionne} onChange={e=>setForm(f=>({...f,prix_subventionne:e.target.value}))} placeholder="Facultatif" />
         </Grid>
+        <Inp label="Taux assurance par défaut (%)" type="number" value={form.taux_assurance} onChange={e=>setForm(f=>({...f,taux_assurance:e.target.value}))} />
+        <div style={{fontSize:13,color:C.dim,marginBottom:12}}>Le tarif négocié par assureur se paramètre ensuite dans "Conventions & tarifs négociés".</div>
         <Btn style={{width:"100%"}} loading={addMut.isPending} onClick={()=>{
           if(!form.code||!form.libelle||!form.tarif_base){toast.error("Code, libellé et tarif requis");return;}
           addMut.mutate();
         }}>Créer</Btn>
+      </Modal>
+
+      {/* Modal: Personnaliser un tarif du catalogue global */}
+      <Modal open={!!personnaliserCible} onClose={()=>setPersonnaliserCible(null)} title={`✏️ Personnaliser — ${personnaliserCible?.libelle||""}`} width={480}>
+        <Grid cols={2} gap={10}>
+          <Inp label="Tarif non assuré (FCFA) *" required type="number" value={personnaliserForm.tarif_base} onChange={e=>setPersonnaliserForm(p=>({...p,tarif_base:e.target.value}))} />
+          <Inp label="Tarif subventionné (FCFA)" type="number" value={personnaliserForm.prix_subventionne} onChange={e=>setPersonnaliserForm(p=>({...p,prix_subventionne:e.target.value}))} placeholder="Facultatif" />
+        </Grid>
+        <Inp label="Taux assurance par défaut (%)" type="number" value={personnaliserForm.taux_assurance} onChange={e=>setPersonnaliserForm(p=>({...p,taux_assurance:e.target.value}))} />
+        <Btn style={{width:"100%"}} loading={personnaliserMut.isPending} onClick={()=>{
+          const tarif_base = parseInt(personnaliserForm.tarif_base);
+          if(!tarif_base||tarif_base<0){toast.error("Tarif invalide");return;}
+          personnaliserMut.mutate({
+            code:personnaliserCible.code, libelle:personnaliserCible.libelle, categorie_id:personnaliserCible.categorie_id,
+            tarif_base, taux_assurance:parseInt(personnaliserForm.taux_assurance)||70,
+            prix_subventionne:personnaliserForm.prix_subventionne?parseInt(personnaliserForm.prix_subventionne):null,
+          });
+        }}>Enregistrer</Btn>
+      </Modal>
+
+      {/* Conventions & tarifs négociés par assureur */}
+      <Panel title="Conventions & tarifs négociés" style={{marginTop:16}}
+        actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAddConvention(true)}>+ Nouvelle convention</Btn>}>
+        {conventions.length===0
+          ? <Empty icon="🤝" title="Aucune convention" subtitle="Créez une convention par assureur pour négocier un taux, un plafond et des tarifs par acte." />
+          : conventions.map(c=>(
+            <div key={c.id} style={{marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}
+                onClick={()=>setConventionOuverte(conventionOuverte===c.id?null:c.id)}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:16,fontWeight:700,color:C.text}}>{c.assureur_nom}</div>
+                  <div style={{fontSize:13,color:C.muted}}>Taux général {c.taux}%{c.plafond_acte?` · Plafond ${fmt(c.plafond_acte)} F/acte`:""}</div>
+                </div>
+                <Badge color={c.is_active?"green":"gray"}>{c.is_active?"Active":"Inactive"}</Badge>
+                <button onClick={(e)=>{ e.stopPropagation(); toggleConventionMut.mutate({id:c.id, is_active:!c.is_active}); }}
+                  style={{padding:"4px 10px",background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.muted,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
+                  {c.is_active?"Désactiver":"Activer"}
+                </button>
+                <span style={{fontSize:13,color:C.dim}}>{conventionOuverte===c.id?"▲":"▼"}</span>
+              </div>
+              {conventionOuverte===c.id && (
+                <div style={{background:C.hover,borderRadius:10,padding:14,marginTop:8}}>
+                  <Inp label="" value={rechercheActeConv} onChange={e=>setRechercheActeConv(e.target.value)} placeholder="🔎 Rechercher un acte…" />
+                  <div style={{maxHeight:320,overflowY:"auto",marginTop:10}}>
+                    {(actes||[]).filter(a=>!rechercheActeConv||a.libelle.toLowerCase().includes(rechercheActeConv.toLowerCase())).map(a=>{
+                      const existant = tarifsNegocies.find(t=>t.acte_id===a.id);
+                      return (
+                        <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                          <div style={{flex:1,fontSize:14,color:C.text}}>{a.libelle} <span style={{color:C.dim,fontSize:12}}>({fmt(a.tarif_base)} F non assuré)</span></div>
+                          <input type="number" defaultValue={existant?.tarif_negocie||""} id={`negocie-${c.id}-${a.id}`} placeholder="Tarif négocié"
+                            style={{width:110,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+                          <button onClick={()=>{
+                            const v = document.getElementById(`negocie-${c.id}-${a.id}`).value;
+                            const tarif = parseInt(v);
+                            if(!v||!tarif||tarif<0){toast.error("Tarif invalide");return;}
+                            setTarifNegocieMut.mutate({ acteId:a.id, tarif });
+                          }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
+                          {existant && <button onClick={()=>retirerTarifNegocieMut.mutate(a.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        }
+      </Panel>
+
+      <Modal open={showAddConvention} onClose={()=>setShowAddConvention(false)} title="🤝 Nouvelle convention">
+        <Sel label="Compagnie d'assurance *" required value={conventionForm.assureur_id} onChange={e=>setConventionForm(f=>({...f,assureur_id:e.target.value}))}
+          options={[{v:"",l:"-- Choisir --"}, ...(assureursConv||[]).map(a=>({v:a.id,l:a.nom}))]} />
+        <Grid cols={2} gap={10}>
+          <Inp label="Taux de couverture général (%) *" required type="number" value={conventionForm.taux} onChange={e=>setConventionForm(f=>({...f,taux:e.target.value}))} />
+          <Inp label="Plafond par acte (FCFA)" type="number" value={conventionForm.plafond_acte} onChange={e=>setConventionForm(f=>({...f,plafond_acte:e.target.value}))} placeholder="Facultatif" />
+        </Grid>
+        <div style={{fontSize:13,color:C.dim,marginBottom:12}}>Ce taux s'applique par défaut à tous les actes ; des tarifs négociés spécifiques peuvent ensuite être définis acte par acte.</div>
+        <Btn style={{width:"100%"}} loading={addConventionMut.isPending} onClick={()=>{
+          if(!conventionForm.assureur_id||!conventionForm.taux){toast.error("Compagnie et taux requis");return;}
+          addConventionMut.mutate();
+        }}>Créer la convention</Btn>
       </Modal>
 
       <PanelGestionChambres />
