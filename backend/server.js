@@ -4164,7 +4164,28 @@ app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'med
     if (!acte.rows.length) return res.status(404).json({ success:false, message:'Acte introuvable dans le catalogue' });
     const a = acte.rows[0];
     const qte = parseInt(quantite||1);
-    const pu = prixSurcharge != null ? parseFloat(prixSurcharge) : parseFloat(a.tarif_base||0);
+
+    // Tarif negocie par convention (clinique + assureur du patient) --
+    // remplace le tarif de base si une ligne existe pour cet acte dans
+    // la convention active. Le taux de couverture reste celui de la
+    // formule personnelle du patient, independant du tarif negocie.
+    let puEffectif = parseFloat(a.tarif_base||0);
+    if (est_assure) {
+      const patientAssurance = await db('SELECT assureur_id FROM patients WHERE id=$1', [passage.rows[0].patient_id]);
+      const assureurId = patientAssurance.rows[0]?.assureur_id;
+      if (assureurId) {
+        const conv = await db(
+          `SELECT id FROM conventions WHERE clinique_id=$1 AND assureur_id=$2 AND is_active IS NOT false
+             AND (date_fin IS NULL OR date_fin >= CURRENT_DATE) ORDER BY date_debut DESC LIMIT 1`,
+          [passage.rows[0].clinique_id, assureurId]
+        );
+        if (conv.rows.length) {
+          const tn = await db('SELECT tarif_negocie FROM actes_tarifs_convention WHERE convention_id=$1 AND acte_id=$2', [conv.rows[0].id, acte_id]);
+          if (tn.rows.length) puEffectif = parseFloat(tn.rows[0].tarif_negocie);
+        }
+      }
+    }
+    const pu = prixSurcharge != null ? parseFloat(prixSurcharge) : puEffectif;
     const total = qte * pu;
 
     // Taux reellement negocie avec l'assureur du patient (table
