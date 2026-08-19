@@ -2195,6 +2195,26 @@ app.get('/api/admin/diagnostic-colonnes/:table', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── Diagnostic LECTURE SEULE : reproduit la jointure categorie pour
+// un passage donne (route temporaire, a retirer apres usage) ──
+app.get('/api/admin/diagnostic-jointure-categorie/:passageId', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    const r = await db(
+      `SELECT p.id, p.acte_id, p.libelle_acte, a.id AS acte_medicaux_id, a.categorie_id,
+              c.id AS categorie_actes_id, c.nom AS categorie_nom
+         FROM prise_en_charge_actes p
+         LEFT JOIN actes_medicaux a ON a.id = p.acte_id
+         LEFT JOIN categories_actes c ON c.id = a.categorie_id
+        WHERE p.passage_id = $1`,
+      [req.params.passageId]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 app.post('/api/admin/patch-patient', async (req, res) => {
   const key = req.headers['x-admin-key'];
   if (key !== 'mediconnect_dev_secret_2024')
