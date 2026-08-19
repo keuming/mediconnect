@@ -2174,6 +2174,7 @@ app.use("/api/cards-admin", require("./routes/cards_admin"));
 const TABLES_DIAGNOSTIC_AUTORISEES = [
   'factures', 'assureurs', 'formules_assurance', 'conventions',
   'actes_tarifs_convention', 'patients', 'actes_medicaux', 'prise_en_charge_actes',
+  'categories_actes',
 ];
 app.get('/api/admin/diagnostic-colonnes/:table', async (req, res) => {
   const key = req.headers['x-admin-key'];
