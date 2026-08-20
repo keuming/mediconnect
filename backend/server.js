@@ -3870,24 +3870,25 @@ app.get('/api/categories-actes', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+// categories_actes n'a pas de clinique_id : c'est une donnee de
+// reference globale, partagee par toutes les cliniques (meme principe
+// que le catalogue d'assureurs).
 app.put('/api/categories-actes/:id', auth, async (req, res) => {
   const { nom, ordre, is_active } = req.body;
-  const cid = req.user?.clinique_id;
   try {
     const r = await db(
       `UPDATE categories_actes SET nom=COALESCE($1,nom), ordre=COALESCE($2,ordre), is_active=COALESCE($3,is_active)
-       WHERE id=$4 AND clinique_id=$5 RETURNING *`,
-      [nom||null, ordre??null, is_active===undefined?null:is_active, req.params.id, cid]
+       WHERE id=$4 RETURNING *`,
+      [nom||null, ordre??null, is_active===undefined?null:is_active, req.params.id]
     );
-    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable dans votre clinique (les catégories globales ne sont pas modifiables)" });
+    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable" });
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.delete('/api/categories-actes/:id', auth, async (req, res) => {
-  const cid = req.user?.clinique_id;
   try {
-    const r = await db('UPDATE categories_actes SET is_active=false WHERE id=$1 AND clinique_id=$2 RETURNING *', [req.params.id, cid]);
-    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable dans votre clinique" });
+    const r = await db('UPDATE categories_actes SET is_active=false WHERE id=$1 RETURNING *', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable" });
     res.json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
