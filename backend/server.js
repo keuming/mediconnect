@@ -1887,7 +1887,11 @@ app.put('/api/commandes/:id', auth, async (req, res) => {
 app.get('/api/public/cliniques', async (req, res) => {
   try {
     const { q, ville, type } = req.query;
-    // Fusionner cliniques MediConnect + établissements annuaire
+    // Fusionner cliniques MediConnect + établissements annuaire.
+    // specialites : agregees depuis specialites_clinique (meme table
+    // alimentee a l'inscription et geree dans Parametrage) pour les
+    // cliniques MediConnect ; depuis la colonne texte existante pour
+    // les etablissements d'annuaire (non membres).
     let sql = `
       SELECT
         c.id, c.nom, c.ville, c.adresse,
@@ -1895,7 +1899,12 @@ app.get('/api/public/cliniques', async (req, res) => {
         COALESCE(c.email, u.email) AS email,
         c.logo, c.slogan, c.horaires, c.site_web,
         'mediconnect' AS source,
-        true AS est_membre
+        true AS est_membre,
+        COALESCE(
+          (SELECT array_agg(sc.nom ORDER BY sc.nom) FROM specialites_clinique sc
+            WHERE sc.clinique_id = c.id AND sc.disponible IS NOT false),
+          '{}'::text[]
+        ) AS specialites
       FROM cliniques c
       LEFT JOIN utilisateurs u ON u.id = c.user_id
       WHERE (c.is_active IS NOT false OR c.is_active IS NULL)
@@ -1904,7 +1913,9 @@ app.get('/api/public/cliniques', async (req, res) => {
         id, nom, ville, adresse, telephone, NULL AS email,
         NULL AS logo, NULL AS slogan, NULL AS horaires, NULL AS site_web,
         'annuaire' AS source,
-        false AS est_membre
+        false AS est_membre,
+        CASE WHEN specialites IS NULL OR specialites='' THEN '{}'::text[]
+             ELSE string_to_array(specialites, ',') END AS specialites
       FROM etablissements_sante
       WHERE NOT EXISTS (
         SELECT 1 FROM cliniques c2 WHERE LOWER(c2.nom) = LOWER(etablissements_sante.nom)
@@ -1974,7 +1985,12 @@ app.get('/api/public/cliniques/:id', async (req, res) => {
           COALESCE(c.telephone, u.telephone) AS telephone,
           COALESCE(c.email, u.email) AS email,
           c.logo, c.slogan, c.horaires, c.site_web,
-          'mediconnect' AS source, true AS est_membre
+          'mediconnect' AS source, true AS est_membre,
+          COALESCE(
+            (SELECT array_agg(sc.nom ORDER BY sc.nom) FROM specialites_clinique sc
+              WHERE sc.clinique_id = c.id AND sc.disponible IS NOT false),
+            '{}'::text[]
+          ) AS specialites
         FROM cliniques c
         LEFT JOIN utilisateurs u ON u.id = c.user_id
         WHERE (c.is_active IS NOT false OR c.is_active IS NULL)
@@ -1982,7 +1998,9 @@ app.get('/api/public/cliniques/:id', async (req, res) => {
         SELECT
           id, nom, ville, adresse, telephone, NULL AS email,
           NULL AS logo, NULL AS slogan, NULL AS horaires, NULL AS site_web,
-          'annuaire' AS source, false AS est_membre
+          'annuaire' AS source, false AS est_membre,
+          CASE WHEN specialites IS NULL OR specialites='' THEN '{}'::text[]
+               ELSE string_to_array(specialites, ',') END AS specialites
         FROM etablissements_sante
         WHERE NOT EXISTS (
           SELECT 1 FROM cliniques c2 WHERE LOWER(c2.nom) = LOWER(etablissements_sante.nom)
