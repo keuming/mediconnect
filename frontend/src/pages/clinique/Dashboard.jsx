@@ -3040,6 +3040,9 @@ function PageMedecins() {
                       <div style={{ fontSize:16, color:C.muted }}>{m.specialite||"—"}</div>
                     </div>
                     <Badge color={{ Disponible:"green", "En consultation":"teal", Absent:"red" }[m.statut]||"gray"}>{m.statut}</Badge>
+                    <Badge color={m.compte_id ? (m.compte_actif ? "green" : "amber") : "gray"} style={{marginLeft:6}}>
+                      {m.compte_id ? (m.compte_actif ? "🔑 Compte actif" : "🔒 Compte désactivé") : "❌ Pas de compte"}
+                    </Badge>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12, fontSize:16 }}>
                     {[["💰 Tarif",`${fmt(m.tarif)} F`],["⏱️ Expérience",`${m.experience_ans||"—"} ans`],["📞 Tel",m.telephone||"—"],["🕐 Horaires",`${m.horaires_debut||"—"}–${m.horaires_fin||"—"}`]].map(([k,v])=>(
@@ -3080,7 +3083,12 @@ function PageMedecins() {
           {chargementPersonnel ? <Loader/> : personnel.length===0
             ? <Empty icon="👥" title="Aucun compte de personnel" subtitle="Créez un compte pour le bureau des entrées, un médecin, la finance ou la RH."/>
             : <Table columns={[
-                { key:"prenom", label:"Nom", render:(v,row)=><span style={{fontWeight:700}}>{row.prenom} {row.nom}</span> },
+                { key:"prenom", label:"Nom", render:(v,row)=>(
+                  <div>
+                    <span style={{fontWeight:700}}>{row.prenom} {row.nom}</span>
+                    {row.medecin_id && <div style={{fontSize:12,color:C.dim}}>🩺 {row.medecin_specialite||"—"}{row.medecin_tarif?` · ${fmt(row.medecin_tarif)} F`:""}</div>}
+                  </div>
+                ) },
                 { key:"email", label:"Email" },
                 { key:"sous_role", label:"Rôle", render:v=><Badge color={COULEUR_SOUS_ROLE[v]||"gray"}>{LABEL_SOUS_ROLE[v]||v}</Badge> },
                 { key:"is_active", label:"Statut", render:v=><Badge color={v?"green":"red"}>{v?"Actif":"Désactivé"}</Badge> },
