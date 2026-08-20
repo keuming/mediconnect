@@ -3449,6 +3449,112 @@ function PageSpecialites() {
   );
 }
 
+// PARAMETRAGE - TYPE DE CHARGES
+function PanelTypeCharges() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [nom, setNom] = useState("");
+  const { data, isLoading } = useQuery({ queryKey:["cl-categories-charges"], queryFn:()=>api.get("/categories-charges").then(r=>r.data||[]) });
+  const categories = data||[];
+  const addMut = useMutation({
+    mutationFn: () => api.post("/categories-charges", { nom }),
+    onSuccess: () => { toast.success("Type de charge ajoute !"); qc.invalidateQueries(["cl-categories-charges"]); setShowAdd(false); setNom(""); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const supprimerMut = useMutation({
+    mutationFn: (id) => api.delete(`/categories-charges/${id}`),
+    onSuccess: () => { toast.success("Type de charge retire"); qc.invalidateQueries(["cl-categories-charges"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  return (
+    <div>
+      <Panel title="Types de charges (depenses en caisse)" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAdd(true)}>+ Nouveau type</Btn>}>
+        {isLoading ? <Loader/> : categories.length===0
+          ? <Empty icon="💸" title="Aucun type de charge" subtitle="Ajoutez les categories de depenses (loyer, salaires, fournitures...) utilisees lors des decaissements en caisse." />
+          : categories.map(c=>(
+            <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:16,color:C.text,fontWeight:600}}>{c.nom}</span>
+              <button onClick={()=>{ if(window.confirm(`Retirer "${c.nom}" ?`)) supprimerMut.mutate(c.id); }} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ))
+        }
+      </Panel>
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="💸 Nouveau type de charge">
+        <Inp label="Nom *" required value={nom} onChange={e=>setNom(e.target.value)} placeholder="Ex: Loyer" />
+        <Btn style={{width:"100%"}} loading={addMut.isPending} onClick={()=>{ if(!nom){toast.error("Nom requis");return;} addMut.mutate(); }}>Creer</Btn>
+      </Modal>
+    </div>
+  );
+}
+
+// PARAMETRAGE - TYPE D'ACTES
+function PanelTypeActes() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [nom, setNom] = useState("");
+  const { data, isLoading } = useQuery({ queryKey:["cl-categories-actes-param"], queryFn:()=>api.get("/categories-actes").then(r=>r.data||[]) });
+  const categories = data||[];
+  const addMut = useMutation({
+    mutationFn: () => api.post("/categories-actes", { nom }),
+    onSuccess: () => { toast.success("Type d'acte ajoute !"); qc.invalidateQueries(["cl-categories-actes-param"]); setShowAdd(false); setNom(""); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const supprimerMut = useMutation({
+    mutationFn: (id) => api.delete(`/categories-actes/${id}`),
+    onSuccess: () => { toast.success("Type d'acte retire"); qc.invalidateQueries(["cl-categories-actes-param"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  return (
+    <div>
+      <Panel title="Types d'actes (categories du catalogue)" actions={<Btn style={{padding:"6px 14px",fontSize:16}} onClick={()=>setShowAdd(true)}>+ Nouveau type</Btn>}>
+        {isLoading ? <Loader/> : categories.length===0
+          ? <Empty icon="🩺" title="Aucun type d'acte" />
+          : categories.map(c=>(
+            <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontSize:16,color:C.text,fontWeight:600}}>{c.nom}</span>
+              <button onClick={()=>{ if(window.confirm(`Retirer "${c.nom}" ? Les actes de ce type resteront, mais sans categorie.`)) supprimerMut.mutate(c.id); }} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:16}}>✕</button>
+            </div>
+          ))
+        }
+      </Panel>
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🩺 Nouveau type d'acte">
+        <Inp label="Nom *" required value={nom} onChange={e=>setNom(e.target.value)} placeholder="Ex: Kinesitherapie" />
+        <Btn style={{width:"100%"}} loading={addMut.isPending} onClick={()=>{ if(!nom){toast.error("Nom requis");return;} addMut.mutate(); }}>Creer</Btn>
+      </Modal>
+    </div>
+  );
+}
+
+// PARAMETRAGE - PAGE PRINCIPALE (5 onglets)
+function PageParametrage() {
+  const [tab, setTab] = useState("assurance");
+  const PARAM_TABS = [
+    { key:"assurance", label:"🛡️ Assurance" },
+    { key:"actes-tarifs", label:"🩺 Actes & tarifs" },
+    { key:"type-charges", label:"💸 Type de charges" },
+    { key:"type-actes", label:"📋 Type d'actes" },
+    { key:"specialites", label:"⚕️ Specialites" },
+  ];
+  return (
+    <div>
+      <PageHeader title="⚙️ Parametrage" subtitle="Assurance . Actes & tarifs . Charges . Specialites" />
+      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20, flexWrap:"wrap" }}>
+        {PARAM_TABS.map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)}
+            style={{ flex:1, minWidth:120, background:tab===t.key?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===t.key?C.text:C.muted, fontSize:14, fontWeight:tab===t.key?700:400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab==="assurance" && <PageAssurance />}
+      {tab==="actes-tarifs" && <PanelGestionActes />}
+      {tab==="type-charges" && <PanelTypeCharges />}
+      {tab==="type-actes" && <PanelTypeActes />}
+      {tab==="specialites" && <PageSpecialites />}
+    </div>
+  );
+}
+
 function PageStock() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
@@ -6216,6 +6322,7 @@ export default function Dashboard() {
       <Route path="caisse"       element={<PageCaisse />} />
       <Route path="facturation"  element={<PageFacturation />} />
       <Route path="specialites" element={<PageSpecialites />} />
+      <Route path="parametrage" element={<PageParametrage />} />
       <Route path="stock"        element={<PageStock />} />
       <Route path="assurance"    element={<PageAssurance />} />
       <Route path="dossiers-ass" element={<PageAssurance />} />
