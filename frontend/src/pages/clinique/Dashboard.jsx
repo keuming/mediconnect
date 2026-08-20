@@ -120,6 +120,10 @@ const cAPI = {
   facturesPatient: (patientId) => api.get("/factures", { params: { patient_id: patientId } }),
   caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
   actesCatalogue:  () => api.get("/actes"),
+  specialites:       () => api.get("/specialites-clinique"),
+  addSpecialite:     (d) => api.post("/specialites-clinique", d),
+  updateSpecialite:  (id,d) => api.put(`/specialites-clinique/${id}`, d),
+  deleteSpecialite:  (id) => api.delete(`/specialites-clinique/${id}`),
   passageActif:    (patientId) => api.get(`/passages/patient/${patientId}/actif`),
   ouvrirPassage:   (d) => api.post("/passages", d),
   passageDetail:   (id) => api.get(`/passages/${id}`),
@@ -3348,6 +3352,103 @@ function PagePharmacieInterne() {
   );
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  SPECIALITES DE LA CLINIQUE -- CRUD complet, avec tarif de
+//  consultation propre a chaque specialite.
+// ════════════════════════════════════════════════════════════════════
+function PageSpecialites() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [editante, setEditante] = useState(null);
+  const [form, setForm] = useState({ nom:"", description:"", tarif_consultation:"" });
+
+  const { data, isLoading } = useQuery({ queryKey:["cl-specialites"], queryFn:()=>cAPI.specialites().then(r=>r.data||[]) });
+  const specialites = data||[];
+
+  const addMut = useMutation({
+    mutationFn: () => cAPI.addSpecialite({ ...form, tarif_consultation: form.tarif_consultation?parseInt(form.tarif_consultation):null }),
+    onSuccess: () => { toast.success("Spécialité ajoutée !"); qc.invalidateQueries(["cl-specialites"]); setShowAdd(false); setForm({ nom:"", description:"", tarif_consultation:"" }); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const editMut = useMutation({
+    mutationFn: ({id,d}) => cAPI.updateSpecialite(id,d),
+    onSuccess: () => { toast.success("Spécialité mise à jour"); qc.invalidateQueries(["cl-specialites"]); setEditante(null); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const toggleMut = useMutation({
+    mutationFn: ({id,disponible}) => cAPI.updateSpecialite(id,{disponible}),
+    onSuccess: () => { toast.success("Statut mis à jour"); qc.invalidateQueries(["cl-specialites"]); },
+    onError: () => toast.error("Erreur"),
+  });
+  const supprimerMut = useMutation({
+    mutationFn: (id) => cAPI.deleteSpecialite(id),
+    onSuccess: () => { toast.success("Spécialité retirée"); qc.invalidateQueries(["cl-specialites"]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+
+  const ouvrirEdition = (s) => { setEditante(s.id); setForm({ nom:s.nom||"", description:s.description||"", tarif_consultation:s.tarif_consultation||"" }); };
+
+  return (
+    <div>
+      <PageHeader title="🩺 Spécialités" subtitle="Spécialités proposées par la clinique et tarif de consultation"
+        actions={<Btn onClick={()=>{ setForm({ nom:"", description:"", tarif_consultation:"" }); setShowAdd(true); }}>+ Nouvelle spécialité</Btn>} />
+
+      <Panel>
+        {isLoading ? <Loader/> : specialites.length===0
+          ? <Empty icon="🩺" title="Aucune spécialité" subtitle="Ajoutez les spécialités proposées par votre clinique, avec leur tarif de consultation." />
+          : specialites.map(s=>{
+            const enEdition = editante===s.id;
+            return (
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+                {enEdition ? (
+                  <>
+                    <div style={{flex:1,display:"grid",gridTemplateColumns:"1.3fr 1.7fr 1fr",gap:8}}>
+                      <Inp label="" value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Nom" />
+                      <Inp label="" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Description (facultatif)" />
+                      <Inp label="" type="number" value={form.tarif_consultation} onChange={e=>setForm(f=>({...f,tarif_consultation:e.target.value}))} placeholder="Tarif consultation" />
+                    </div>
+                    <button onClick={()=>editMut.mutate({ id:s.id, d:{ nom:form.nom, description:form.description, tarif_consultation:form.tarif_consultation?parseInt(form.tarif_consultation):null } })}
+                      style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✓</button>
+                    <button onClick={()=>setEditante(null)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",color:C.muted,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>✕</button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:17,fontWeight:700,color:C.text}}>{s.nom}</div>
+                      {s.description && <div style={{fontSize:14,color:C.muted}}>{s.description}</div>}
+                    </div>
+                    <div style={{fontWeight:800,color:C.green,minWidth:100,textAlign:"right"}}>{s.tarif_consultation?`${fmt(s.tarif_consultation)} F`:"—"}</div>
+                    <Badge color={s.disponible?"green":"gray"}>{s.disponible?"Disponible":"Indisponible"}</Badge>
+                    <button onClick={()=>toggleMut.mutate({id:s.id, disponible:!s.disponible})}
+                      style={{padding:"4px 10px",background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.muted,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>
+                      {s.disponible?"Désactiver":"Activer"}
+                    </button>
+                    <button onClick={()=>ouvrirEdition(s)} style={{background:"transparent",border:"none",color:C.blue,cursor:"pointer",fontSize:15}}>✏️</button>
+                    <button onClick={()=>{ if(window.confirm(`Supprimer la spécialité "${s.nom}" ?`)) supprimerMut.mutate(s.id); }} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>
+                  </>
+                )}
+              </div>
+            );
+          })
+        }
+      </Panel>
+
+      <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="🩺 Nouvelle spécialité">
+        <Inp label="Nom *" required value={form.nom} onChange={e=>setForm(f=>({...f,nom:e.target.value}))} placeholder="Ex: Cardiologie" />
+        <Inp label="Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Facultatif" />
+        <Inp label="Tarif de consultation (FCFA)" type="number" value={form.tarif_consultation} onChange={e=>setForm(f=>({...f,tarif_consultation:e.target.value}))} placeholder="15000" />
+        <div style={{display:"flex",gap:10,marginTop:4}}>
+          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAdd(false)}>Annuler</Btn>
+          <Btn style={{flex:2}} loading={addMut.isPending} onClick={()=>{
+            if(!form.nom){toast.error("Nom requis");return;}
+            addMut.mutate();
+          }}>Créer</Btn>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 function PageStock() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
@@ -6114,6 +6215,7 @@ export default function Dashboard() {
       <Route path="consultation" element={<PageConsultation />} />
       <Route path="caisse"       element={<PageCaisse />} />
       <Route path="facturation"  element={<PageFacturation />} />
+      <Route path="specialites" element={<PageSpecialites />} />
       <Route path="stock"        element={<PageStock />} />
       <Route path="assurance"    element={<PageAssurance />} />
       <Route path="dossiers-ass" element={<PageAssurance />} />
