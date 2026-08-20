@@ -5981,7 +5981,7 @@ function PageProprietaire(){
 function PageProfilLogo(){
   const { token } = useAuthStore();
   const queryClient = useQueryClient();
-  const [form, setForm] = React.useState({ slogan:'', adresse_complete:'', horaires:'', site_web:'', telephone:'', adresse:'', ville:'' });
+  const [form, setForm] = React.useState({ slogan:'', adresse_complete:'', horaires:'', site_web:'', telephone:'', adresse:'', ville:'', couleur_primaire:'#0A8F58' });
   const [logo, setLogo] = React.useState(null);
   const [preview, setPreview] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -6021,7 +6021,7 @@ function PageProfilLogo(){
   React.useEffect(() => {
     if (data?.data) {
       const d = data.data;
-      setForm({ slogan:d.slogan||'', adresse_complete:d.adresse_complete||'', horaires:d.horaires||'', site_web:d.site_web||'', telephone:d.telephone||'', adresse:d.adresse||'', ville:d.ville||'' });
+      setForm({ slogan:d.slogan||'', adresse_complete:d.adresse_complete||'', horaires:d.horaires||'', site_web:d.site_web||'', telephone:d.telephone||'', adresse:d.adresse||'', ville:d.ville||'', couleur_primaire:d.couleur_primaire||'#0A8F58' });
       if (d.logo) setPreview(d.logo);
     }
   }, [data]);
@@ -6071,7 +6071,7 @@ function PageProfilLogo(){
             <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:20}}>
               <h3 style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:12}}>Apercu en-tete impression</h3>
               <div style={{background:'#fff',borderRadius:8,padding:14}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,paddingBottom:8,borderBottom:'2px solid #0A8F58'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,paddingBottom:8,borderBottom:`2px solid ${form.couleur_primaire}`}}>
                   {preview ? <img src={preview} alt="Logo" style={{height:44,objectFit:'contain'}}/> : <div style={{width:44,height:44,background:'#e5e7eb',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center'}}>🏥</div>}
                   <div>
                     <div style={{fontSize:18,fontWeight:700,color:'#1A2E25'}}>{profil?.nom||'Nom de la clinique'}</div>
@@ -6086,6 +6086,15 @@ function PageProfilLogo(){
           </div>
           <div style={{background:C.input,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24}}>
             <h3 style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:16}}>Informations affichees</h3>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:14,color:C.muted,display:'block',marginBottom:5,fontWeight:700}}>COULEUR DE MARQUE (IMPRIMABLES)</label>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <input type="color" value={form.couleur_primaire} onChange={e=>setForm(p=>({...p,couleur_primaire:e.target.value}))}
+                  style={{width:56,height:40,padding:0,border:`1px solid ${C.border}`,borderRadius:8,cursor:'pointer',background:'transparent'}}/>
+                <span style={{fontSize:15,color:C.dim,fontFamily:'monospace'}}>{form.couleur_primaire}</span>
+              </div>
+              <div style={{fontSize:12,color:C.dim,marginTop:6}}>Utilisée pour les titres de section et l'en-tête des factures, reçus, rapports et ordonnances imprimés.</div>
+            </div>
             {[
               {label:'Téléphone',key:'telephone',ph:'Ex: 27 22 47 55 57'},
               {label:'Ville',key:'ville',ph:'Ex: Abidjan'},
