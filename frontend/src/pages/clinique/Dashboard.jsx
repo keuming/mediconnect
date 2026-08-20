@@ -98,6 +98,9 @@ const cAPI = {
   tarifsConvention:(conventionId) => api.get(`/conventions/${conventionId}/tarifs-actes`),
   setTarifNegocie: (conventionId,acteId,tarif_negocie) => api.put(`/conventions/${conventionId}/tarifs-actes/${acteId}`, { tarif_negocie }),
   retirerTarifNegocie:(conventionId,acteId) => api.delete(`/conventions/${conventionId}/tarifs-actes/${acteId}`),
+  tarifsMedicamentsConvention:(conventionId) => api.get(`/conventions/${conventionId}/tarifs-medicaments`),
+  setTarifNegocieMedicament: (conventionId,stockId,tarif_negocie) => api.put(`/conventions/${conventionId}/tarifs-medicaments/${stockId}`, { tarif_negocie }),
+  retirerTarifNegocieMedicament:(conventionId,stockId) => api.delete(`/conventions/${conventionId}/tarifs-medicaments/${stockId}`),
   formulesParAssureur: (assureurId) => api.get("/formules-assurance", { params:{ assureur_id:assureurId } }),
   contactsUrgence:       (patientId) => api.get(`/patients/${patientId}/contacts-urgence`),
   ajouterContactUrgence: (patientId,d) => api.post(`/patients/${patientId}/contacts-urgence`, d),
@@ -3605,6 +3608,28 @@ function PanelGestionActes() {
     onSuccess: () => { toast.success("Tarif négocié retiré"); qc.invalidateQueries(["cl-tarifs-convention", conventionOuverte]); },
     onError: () => toast.error("Erreur"),
   });
+  const [sousOngletConvention, setSousOngletConvention] = useState("actes");
+  const { data: stockConvData } = useQuery({
+    queryKey:["cl-stock-conv"],
+    queryFn:()=>cAPI.stock().then(r=>(r.data||[]).filter(s=>s.categorie==="Médicament")),
+  });
+  const stockConv = stockConvData||[];
+  const { data: tarifsMedicamentsData } = useQuery({
+    queryKey:["cl-tarifs-medicaments-convention", conventionOuverte],
+    queryFn:()=>cAPI.tarifsMedicamentsConvention(conventionOuverte).then(r=>r.data||[]),
+    enabled: !!conventionOuverte,
+  });
+  const tarifsMedicamentsNegocies = tarifsMedicamentsData||[];
+  const setTarifNegocieMedicamentMut = useMutation({
+    mutationFn: ({stockId, tarif}) => cAPI.setTarifNegocieMedicament(conventionOuverte, stockId, tarif),
+    onSuccess: () => { toast.success("Tarif négocié enregistré"); qc.invalidateQueries(["cl-tarifs-medicaments-convention", conventionOuverte]); },
+    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
+  });
+  const retirerTarifNegocieMedicamentMut = useMutation({
+    mutationFn: (stockId) => cAPI.retirerTarifNegocieMedicament(conventionOuverte, stockId),
+    onSuccess: () => { toast.success("Tarif négocié retiré"); qc.invalidateQueries(["cl-tarifs-medicaments-convention", conventionOuverte]); },
+    onError: () => toast.error("Erreur"),
+  });
 
   const LigneActe = ({ a, modifiable }) => {
     const enEdition = editant===a.id;
@@ -3722,26 +3747,62 @@ function PanelGestionActes() {
               </div>
               {conventionOuverte===c.id && (
                 <div style={{background:C.hover,borderRadius:10,padding:14,marginTop:8}}>
-                  <Inp label="" value={rechercheActeConv} onChange={e=>setRechercheActeConv(e.target.value)} placeholder="🔎 Rechercher un acte…" />
-                  <div style={{maxHeight:320,overflowY:"auto",marginTop:10}}>
-                    {(actes||[]).filter(a=>!rechercheActeConv||a.libelle.toLowerCase().includes(rechercheActeConv.toLowerCase())).map(a=>{
-                      const existant = tarifsNegocies.find(t=>t.acte_id===a.id);
-                      return (
-                        <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
-                          <div style={{flex:1,fontSize:14,color:C.text}}>{a.libelle} <span style={{color:C.dim,fontSize:12}}>({fmt(a.tarif_base)} F non assuré)</span></div>
-                          <input type="number" defaultValue={existant?.tarif_negocie||""} id={`negocie-${c.id}-${a.id}`} placeholder="Tarif négocié"
-                            style={{width:110,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
-                          <button onClick={()=>{
-                            const v = document.getElementById(`negocie-${c.id}-${a.id}`).value;
-                            const tarif = parseInt(v);
-                            if(!v||!tarif||tarif<0){toast.error("Tarif invalide");return;}
-                            setTarifNegocieMut.mutate({ acteId:a.id, tarif });
-                          }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
-                          {existant && <button onClick={()=>retirerTarifNegocieMut.mutate(a.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>}
-                        </div>
-                      );
-                    })}
+                  <div style={{display:"flex",gap:4,background:C.input,borderRadius:8,padding:3,marginBottom:12}}>
+                    {[["actes","🩺 Actes"],["medicaments","💊 Médicaments"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setSousOngletConvention(v)}
+                        style={{flex:1,padding:"6px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",
+                          background:sousOngletConvention===v?C.hover:"transparent",color:sousOngletConvention===v?C.text:C.muted}}>
+                        {l}
+                      </button>
+                    ))}
                   </div>
+                  {sousOngletConvention==="actes" ? (
+                    <>
+                      <Inp label="" value={rechercheActeConv} onChange={e=>setRechercheActeConv(e.target.value)} placeholder="🔎 Rechercher un acte…" />
+                      <div style={{maxHeight:320,overflowY:"auto",marginTop:10}}>
+                        {(actes||[]).filter(a=>!rechercheActeConv||a.libelle.toLowerCase().includes(rechercheActeConv.toLowerCase())).map(a=>{
+                          const existant = tarifsNegocies.find(t=>t.acte_id===a.id);
+                          return (
+                            <div key={a.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                              <div style={{flex:1,fontSize:14,color:C.text}}>{a.libelle} <span style={{color:C.dim,fontSize:12}}>({fmt(a.tarif_base)} F non assuré)</span></div>
+                              <input type="number" defaultValue={existant?.tarif_negocie||""} id={`negocie-${c.id}-${a.id}`} placeholder="Tarif négocié"
+                                style={{width:110,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+                              <button onClick={()=>{
+                                const v = document.getElementById(`negocie-${c.id}-${a.id}`).value;
+                                const tarif = parseInt(v);
+                                if(!v||!tarif||tarif<0){toast.error("Tarif invalide");return;}
+                                setTarifNegocieMut.mutate({ acteId:a.id, tarif });
+                              }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
+                              {existant && <button onClick={()=>retirerTarifNegocieMut.mutate(a.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Inp label="" value={rechercheActeConv} onChange={e=>setRechercheActeConv(e.target.value)} placeholder="🔎 Rechercher un médicament…" />
+                      <div style={{maxHeight:320,overflowY:"auto",marginTop:10}}>
+                        {stockConv.filter(s=>!rechercheActeConv||s.nom.toLowerCase().includes(rechercheActeConv.toLowerCase())).map(s=>{
+                          const existant = tarifsMedicamentsNegocies.find(t=>t.stock_id===s.id);
+                          return (
+                            <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                              <div style={{flex:1,fontSize:14,color:C.text}}>{s.nom} <span style={{color:C.dim,fontSize:12}}>({fmt(s.prix_unitaire)} F non assuré)</span></div>
+                              <input type="number" defaultValue={existant?.tarif_negocie||""} id={`negocie-med-${c.id}-${s.id}`} placeholder="Tarif négocié"
+                                style={{width:110,padding:"6px 8px",background:C.input,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:14}} />
+                              <button onClick={()=>{
+                                const v = document.getElementById(`negocie-med-${c.id}-${s.id}`).value;
+                                const tarif = parseInt(v);
+                                if(!v||!tarif||tarif<0){toast.error("Tarif invalide");return;}
+                                setTarifNegocieMedicamentMut.mutate({ stockId:s.id, tarif });
+                              }} style={{background:C.green,border:"none",borderRadius:6,padding:"6px 10px",color:"#fff",cursor:"pointer",fontSize:13}}>✓</button>
+                              {existant && <button onClick={()=>retirerTarifNegocieMedicamentMut.mutate(s.id)} style={{background:"transparent",border:"none",color:C.red,cursor:"pointer",fontSize:15}}>✕</button>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
