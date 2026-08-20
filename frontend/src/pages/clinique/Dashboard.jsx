@@ -40,8 +40,7 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-CI",{day:"numeric"
 // actuellement fixe (vert de marque) -- a remplacer par la couleur du
 // logo de la clinique une fois l'outil de gestion des couleurs
 // d'impression construit.
-const COULEUR_SECTION_FACTURE = "#0A8F58";
-const genererLignesFactureHtml = (lignes) => {
+const genererLignesFactureHtml = (lignes, couleur = "#0A8F58") => {
   if (!lignes || !lignes.length) return `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
   const groupes = {};
   const ordreGroupes = [];
@@ -51,7 +50,7 @@ const genererLignesFactureHtml = (lignes) => {
     groupes[cat].push(l);
   });
   return ordreGroupes.map(cat => `
-    <tr><td colspan="4" style="padding:8px 10px;background:${COULEUR_SECTION_FACTURE};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;">${cat}</td></tr>
+    <tr><td colspan="4" style="padding:8px 10px;background:${couleur};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;">${cat}</td></tr>
     ${groupes[cat].map(l => `
       <tr>
         <td style="padding:8px 0 8px 10px;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
@@ -1493,7 +1492,7 @@ function PageDossiers() {
     let cl = null;
     try { const r = await api.get(`/factures/${f.id}/detail`); lignes = r.data?.lignes || []; } catch(e) { /* impression sans detail si echec */ }
     try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
-    const lignesHtml = genererLignesFactureHtml(lignes);
+    const lignesHtml = genererLignesFactureHtml(lignes, cl?.couleur_primaire || "#0A8F58");
     win.document.open();
     win.document.write(`
       <html><head><title>Facture ${f.reference||''}</title>
@@ -4129,7 +4128,7 @@ function PageFacturation() {
     } catch(e) { /* fallback : impression sans detail si la requete echoue */ }
     try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
 
-    const lignesHtml = genererLignesFactureHtml(lignes);
+    const lignesHtml = genererLignesFactureHtml(lignes, cl?.couleur_primaire || "#0A8F58");
 
     win.document.open();
     win.document.write(`
