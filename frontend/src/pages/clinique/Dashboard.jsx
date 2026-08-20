@@ -3273,6 +3273,7 @@ function PageMedecins() {
 // ══════════════════════════════════════════════════════════════════
 function PagePharmacieInterne() {
   const qc = useQueryClient();
+  const [tab, setTab] = useState("ordonnances");
   const [ordonnanceActive, setOrdonnanceActive] = useState(null);
   const [lignesDevis, setLignesDevis] = useState([]);
 
@@ -3307,7 +3308,17 @@ function PagePharmacieInterne() {
 
   return (
     <div>
-      <PageHeader title="💊 Pharmacie interne" subtitle="Ordonnances reçues, devis et dispensation" />
+      <PageHeader title="💊 Pharmacie interne" subtitle="Ordonnances reçues, devis, dispensation et stock" />
+      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20 }}>
+        {[["ordonnances","Ordonnances"],["stock","Stock"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)}
+            style={{ flex:1, background:tab===k?C.hover:"transparent", border:"none", borderRadius:8, padding:"9px 4px", cursor:"pointer", fontFamily:"inherit", color:tab===k?C.text:C.muted, fontSize:16, fontWeight:tab===k?700:400 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab==="stock" ? <PageStock /> : (
+      <>
       <Panel>
         {isLoading ? <Loader/> : (ordonnances||[]).length===0
           ? <Empty icon="💊" title="Aucune ordonnance reçue" subtitle="Les ordonnances envoyées vers la pharmacie interne apparaîtront ici." />
@@ -3348,6 +3359,8 @@ function PagePharmacieInterne() {
         <button onClick={ajouterLigne} style={{width:"100%",marginTop:4,marginBottom:16,padding:8,borderRadius:8,background:"transparent",border:`1.5px dashed ${C.border}`,color:C.muted,cursor:"pointer",fontSize:15,fontWeight:700,fontFamily:"inherit"}}>+ Ajouter une ligne</button>
         <Btn style={{width:"100%"}} loading={devisMut.isPending} onClick={()=>devisMut.mutate()}>Valider le devis</Btn>
       </Modal>
+      </>
+      )}
     </div>
   );
 }
