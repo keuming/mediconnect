@@ -133,6 +133,13 @@ const initTables = async () => {
       description TEXT, tarif_consultation DECIMAL(10,2),
       disponible BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
+    // Categories de depenses en caisse (loyer, salaires, fournitures...)
+    // -- meme principe que categories_actes/categories_chambres.
+    `CREATE TABLE IF NOT EXISTS categories_charges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID, nom VARCHAR(200) NOT NULL,
+      is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
   ];
   for (const sql of tables) {
     await db(sql).catch(e => console.error('[INIT TABLE]', e.message));
@@ -3863,6 +3870,75 @@ app.get('/api/categories-actes', auth, async (req, res) => {
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
+app.put('/api/categories-actes/:id', auth, async (req, res) => {
+  const { nom, ordre, is_active } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE categories_actes SET nom=COALESCE($1,nom), ordre=COALESCE($2,ordre), is_active=COALESCE($3,is_active)
+       WHERE id=$4 AND clinique_id=$5 RETURNING *`,
+      [nom||null, ordre??null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable dans votre clinique (les catégories globales ne sont pas modifiables)" });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.delete('/api/categories-actes/:id', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db('UPDATE categories_actes SET is_active=false WHERE id=$1 AND clinique_id=$2 RETURNING *', [req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable dans votre clinique" });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  TYPE DE CHARGES -- categories de depenses en caisse
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/categories-charges', auth, async (req, res) => {
+  try {
+    const cid = req.user?.clinique_id;
+    const r = await db(
+      `SELECT DISTINCT ON (nom) * FROM categories_charges
+        WHERE is_active IS NOT false AND (clinique_id IS NULL OR clinique_id=$1)
+        ORDER BY nom, (clinique_id=$1) DESC NULLS LAST`,
+      [cid||null]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/categories-charges', auth, async (req, res) => {
+  const { nom } = req.body;
+  if (!nom) return res.status(400).json({ success:false, message:'Nom requis' });
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db('INSERT INTO categories_charges (id,clinique_id,nom) VALUES (gen_random_uuid(),$1,$2) RETURNING *', [cid, nom]);
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.put('/api/categories-charges/:id', auth, async (req, res) => {
+  const { nom, is_active } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE categories_charges SET nom=COALESCE($1,nom), is_active=COALESCE($2,is_active)
+       WHERE id=$3 AND clinique_id=$4 RETURNING *`,
+      [nom||null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable dans votre clinique" });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.delete('/api/categories-charges/:id', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db('UPDATE categories_charges SET is_active=false WHERE id=$1 AND clinique_id=$2 RETURNING *', [req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:"Catégorie introuvable dans votre clinique" });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.post('/api/categories-actes', auth, async (req, res) => {
   const { nom } = req.body;
   if (!nom) return res.status(400).json({ success:false, message:'nom requis' });
