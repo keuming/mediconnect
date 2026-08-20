@@ -1622,21 +1622,21 @@ function PageDossiers() {
     win.document.write(`
       <html><head><title>${proforma?'Proforma':'Facture'} ${ref}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
         .ci{font-size:11px;color:#5A7A94;}
-        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .warn{background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;border-radius:8px;padding:8px 12px;font-size:11px;text-align:center;margin-bottom:14px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
         table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;}
-        th{background:#065F3C;color:#fff;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;}
+        th{background:${cl?.couleur_primaire||'#065F3C'};color:#fff;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;}
         td{padding:8px;border-bottom:1px solid #e5e7eb;}
         .r{text-align:right;}
         .tot{background:#f8f9fa;font-weight:700;}
-        .final{background:#0A8F58;color:#fff;font-size:15px;font-weight:800;}
+        .final{background:${cl?.couleur_primaire||'#0A8F58'};color:#fff;font-size:15px;font-weight:800;}
         .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
         @media print{button{display:none;}}
       </style></head><body>
@@ -1720,12 +1720,12 @@ function PageDossiers() {
     win.document.write(`
       <html><head><title>Rapport médical - ${selected?.prenom||''} ${selected?.nom||''}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:760px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
         .ci{font-size:11px;color:#5A7A94;}
-        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
-        h3{color:#065F3C;font-size:13px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin:22px 0 10px;}
+        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h3{color:${cl?.couleur_primaire||'#065F3C'};font-size:13px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin:22px 0 10px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
@@ -1885,11 +1885,11 @@ function PageDossiers() {
     win.document.write(`
       <html><head><title>Rapport médical - ${new Date(c.created_at).toLocaleDateString('fr-CI')}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
         .ci{font-size:11px;color:#5A7A94;}
-        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
@@ -1976,16 +1976,16 @@ function PageDossiers() {
       <html><head><title>Ordonnance</title>
       <style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:20px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:20px;}
         .logo{height:60px;object-fit:contain;}
-        .clinique-nom{font-size:18px;font-weight:700;color:#065F3C;}
+        .clinique-nom{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
         .clinique-info{font-size:11px;color:#5A7A94;}
-        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .section{margin-bottom:14px;}
         .label{font-size:11px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
         .value{font-size:14px;color:#1a2e25;font-weight:500;}
         .patient{background:#E8F8F1;border-radius:8px;padding:12px;margin-bottom:16px;}
-        .medicament{background:#f8f9fa;border-left:3px solid #0A8F58;padding:12px;border-radius:4px;margin-bottom:10px;}
+        .medicament{background:#f8f9fa;border-left:3px solid ${cl?.couleur_primaire||'#0A8F58'};padding:12px;border-radius:4px;margin-bottom:10px;}
         .footer{margin-top:40px;border-top:1px solid #e5e7eb;padding-top:16px;display:flex;justify-content:space-between;font-size:11px;color:#8BA0B5;}
         .signature{text-align:right;}
         @media print{button{display:none;}}
