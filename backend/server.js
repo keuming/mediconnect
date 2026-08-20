@@ -2011,10 +2011,10 @@ app.get('/api/public/cliniques/:id', async (req, res) => {
     `;
     const r = await db(sql, [id]);
     if (!r.rows.length) return res.status(404).json({ success: false, message: 'Etablissement introuvable' });
-    res.json({ success: true, data: r.rows[0] });
+    res.json({ success: true, data: { ...r.rows[0], debug_version: 'PATCH_SPECIALITES_V1' } });
   } catch (e) {
     console.error('public/cliniques/:id:', e.message);
-    res.status(500).json({ success: false, message: e.message });
+    res.status(500).json({ success: false, message: e.message, debug_error: e.message });
   }
 });
 
