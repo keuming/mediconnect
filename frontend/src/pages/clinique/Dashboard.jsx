@@ -1498,22 +1498,22 @@ function PageDossiers() {
       <html><head><title>Facture ${f.reference||''}</title>
       <style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid ${cl?.couleur_primaire||'#0A8F58'};padding-bottom:12px;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
         .label{color:#8BA0B5;}
         .valeur{font-weight:700;}
         table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
         th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
-        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
+        .total{font-size:20px;color:${cl?.couleur_primaire||'#0A8F58'};font-weight:900;text-align:right;margin-top:10px;}
         .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
         @media print{button{display:none;}}
       </style></head><body>
       <div class="header">
         ${cl?.logo?`<img src="${cl.logo}" class="logo"/>`:''}
         <div>
-          <div style="font-size:16px;font-weight:700;color:#065F3C;">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:16px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};">${cl?.nom||'MediConnect Africa'}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
         </div>
@@ -4135,7 +4135,7 @@ function PageFacturation() {
       <html><head><title>Facture ${f.reference||''}</title>
       <style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
-        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
         .label{color:#8BA0B5;}
         .valeur{font-weight:700;}
@@ -4143,13 +4143,13 @@ function PageFacturation() {
         th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
         .totaux{margin-top:16px;}
         .totaux .champ{font-size:15px;}
-        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
+        .total{font-size:20px;color:${cl?.couleur_primaire||'#0A8F58'};font-weight:900;text-align:right;margin-top:10px;}
         @media print{button{display:none;}}
       </style></head><body>
-      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;">
+      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid ${cl?.couleur_primaire||'#0A8F58'};padding-bottom:12px;margin-bottom:18px;">
         ${cl?.logo?`<img src="${cl.logo}" style="height:58px;object-fit:contain;"/>`:''}
         <div>
-          <div style="font-size:16px;font-weight:700;color:#065F3C;">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:16px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};">${cl?.nom||'MediConnect Africa'}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
         </div>
@@ -5293,9 +5293,9 @@ function PageCaisse() {
       <html><head><title>Historique caisse</title>
       <style>
         body{font-family:sans-serif;padding:32px;color:#16211C}
-        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid ${cl?.couleur_primaire||'#0A8F58'};padding-bottom:12px;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:#065F3C;}
+        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
         .ci{font-size:11px;color:#5A7A94;}
         h1{font-size:20px;margin-bottom:4px} p{color:#5B6B78;margin-top:0}
         table{width:100%;border-collapse:collapse;margin-top:20px}
