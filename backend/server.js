@@ -4000,6 +4000,59 @@ app.delete('/api/actes/:id', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
+// ══════════════════════════════════════════════════════════════════
+//  SPECIALITES DE LA CLINIQUE -- table deja creee mais jamais exposee
+//  par une route jusqu'ici (menu "Spécialités" pointait vers un lien
+//  mort). Chaque clinique parametre ses propres specialites et le
+//  tarif de consultation associe.
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/specialites-clinique', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    if (!cid) return res.json({ success:true, data:[] });
+    const r = await db('SELECT * FROM specialites_clinique WHERE clinique_id=$1 ORDER BY nom', [cid]);
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.post('/api/specialites-clinique', auth, async (req, res) => {
+  const { nom, description, tarif_consultation } = req.body;
+  if (!nom) return res.status(400).json({ success:false, message:'Nom requis' });
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      'INSERT INTO specialites_clinique (id,clinique_id,nom,description,tarif_consultation) VALUES (gen_random_uuid(),$1,$2,$3,$4) RETURNING *',
+      [cid, nom, description||null, tarif_consultation||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Cette spécialité existe déjà' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+app.put('/api/specialites-clinique/:id', auth, async (req, res) => {
+  const { nom, description, tarif_consultation, disponible } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE specialites_clinique SET nom=COALESCE($1,nom), description=COALESCE($2,description),
+         tarif_consultation=COALESCE($3,tarif_consultation), disponible=COALESCE($4,disponible)
+       WHERE id=$5 AND clinique_id=$6 RETURNING *`,
+      [nom||null, description||null, tarif_consultation??null, disponible===undefined?null:disponible, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Spécialité introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.delete('/api/specialites-clinique/:id', auth, async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db('DELETE FROM specialites_clinique WHERE id=$1 AND clinique_id=$2 RETURNING id', [req.params.id, cid]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Spécialité introuvable dans votre clinique' });
+    res.json({ success:true });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 // ── Affecter / reaffecter le medecin d'un passage en cours ────────
 app.put('/api/passages/:id/medecin', auth, requireSousRole('bureau_entrees', 'medecin', 'finance'), async (req, res) => {
   const { medecin_id } = req.body;
