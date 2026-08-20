@@ -2052,8 +2052,12 @@ function PageDossiers() {
   ];
   // "Carte patient" (bureau des entrees) : infos, carte, factures, rapports.
   // Consultations/ordonnances/examens restent strictement reserves au medecin.
+  // "examens" ajoute pour bureau_entrees : deja concu pour lui (acces
+  // volontairement restreint aux SEULS bulletins, ni consultations ni
+  // ordonnances), et remplace desormais l'ancienne entree de menu
+  // "Resultats d'examens" retiree du menu principal.
   const TABS = user?.sous_role === "bureau_entrees"
-    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="carte" || t.key==="factures" || t.key==="rapports")
+    ? TABS_TOUTES.filter(t => t.key==="infos" || t.key==="carte" || t.key==="examens" || t.key==="factures" || t.key==="rapports")
     : TABS_TOUTES;
 
   const bloodGroups = ["A+","A-","B+","B-","AB+","AB-","O+","O-"];
