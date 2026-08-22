@@ -2282,6 +2282,76 @@ app.post('/api/admin/generer-disponibilites', async (req, res) => {
 // connait deja le numero de telephone du patient peut le retrouver.
 // Champs retournes limites au strict necessaire pour pre-remplir le
 // formulaire de RDV, jamais le code_secret ni le dossier medical.
+// Recherche par nom pour le flux "scan QR presence" -- le patient tape
+// son nom, choisit dans la liste, rejoint la file d'attente sans repasser
+// par un enregistrement complet au bureau des entrees.
+app.get('/api/public/patients/recherche-nom', async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) return res.json({ success: true, data: [] });
+  try {
+    const terme = `%${q.trim()}%`;
+    const r = await db(
+      `SELECT id, prenom, nom, telephone, ville
+         FROM patients
+        WHERE prenom ILIKE $1 OR nom ILIKE $1 OR (prenom || ' ' || nom) ILIKE $1
+        ORDER BY nom, prenom
+        LIMIT 10`,
+      [terme]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// Rejoindre la file d'attente via scan QR -- deux cas : patient_id fourni
+// (compte MediConnect deja existant, trouve par recherche-nom) ou
+// nouveau_patient fourni (creation inline, meme logique que POST
+// /api/patients mais sans utilisateur authentifie : clinique_id vient du
+// QR scanne, pas d'un token). Le rang est le nombre de tickets deja pris
+// aujourd'hui pour cette clinique, plus un.
+app.post('/api/public/file-attente/rejoindre', async (req, res) => {
+  const { clinique_id, patient_id, nouveau_patient, motif } = req.body;
+  if (!clinique_id) return res.status(400).json({ success:false, message:'clinique_id requis' });
+  if (!patient_id && !nouveau_patient) return res.status(400).json({ success:false, message:'patient_id ou nouveau_patient requis' });
+  try {
+    let finalPatientId = patient_id;
+    let patientNom, patientTelephone, codeSecret = null;
+
+    if (!finalPatientId) {
+      const { prenom, nom, telephone } = nouveau_patient || {};
+      if (!prenom || !nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
+      const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
+      finalPatientId = uuid();
+      await db(
+        'INSERT INTO patients (id,code_secret,prenom,nom,telephone,clinique_id) VALUES ($1,$2,$3,$4,$5,$6)',
+        [finalPatientId, code, prenom, nom, telephone||null, clinique_id]
+      );
+      patientNom = `${prenom} ${nom}`;
+      patientTelephone = telephone || null;
+      codeSecret = code;
+    } else {
+      const pr = await db('SELECT prenom, nom, telephone FROM patients WHERE id=$1', [finalPatientId]);
+      if (!pr.rows.length) return res.status(404).json({ success:false, message:'Patient introuvable' });
+      patientNom = `${pr.rows[0].prenom} ${pr.rows[0].nom}`;
+      patientTelephone = pr.rows[0].telephone;
+    }
+
+    const cnt = await db(
+      `SELECT COUNT(*)::int AS n FROM file_attente WHERE clinique_id=$1 AND date_scan=CURRENT_DATE`,
+      [clinique_id]
+    );
+    const rang = (cnt.rows[0]?.n || 0) + 1;
+
+    const ins = await db(
+      `INSERT INTO file_attente (id,clinique_id,patient_id,patient_nom,patient_telephone,rang,statut,date_scan,heure_scan,motif)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,'en_attente',CURRENT_DATE,NOW(),$6)
+       RETURNING *`,
+      [clinique_id, finalPatientId, patientNom, patientTelephone, rang, motif||null]
+    );
+
+    res.status(201).json({ success:true, data: ins.rows[0], code_secret: codeSecret });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/public/patients/recherche-telephone', async (req, res) => {
   const { telephone, code_secret } = req.query;
   try {
