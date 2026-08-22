@@ -1825,34 +1825,73 @@ app.post('/api/caisse/ouvrir', auth, requireSousRole('finance', 'bureau_entrees'
 // compteur agrege, sans jamais garder trace individuelle de chaque
 // transaction. Chaque mouvement est desormais aussi insere dans
 // mouvements_caisse, ce qui rend un vrai historique possible.
+// Factures impayees de la clinique -- alimente le selecteur du
+// formulaire d'encaissement (au lieu d'une reference texte libre).
+app.get('/api/caisse/factures-impayees', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  try {
+    const r = await db(
+      `SELECT f.id, f.reference, f.montant_total, f.created_at, p.prenom, p.nom
+         FROM factures f
+         JOIN patients p ON p.id = f.patient_id
+        WHERE f.clinique_id=$1 AND f.statut != 'payee'
+        ORDER BY f.created_at DESC LIMIT 200`,
+      [req.user?.clinique_id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Charges non encore payees -- alimente le selecteur du formulaire de
+// decaissement (au lieu d'un motif texte libre).
+app.get('/api/caisse/charges-a-payer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
+  try {
+    const r = await db(
+      `SELECT id, libelle, montant, date_echeance, statut
+         FROM charges_a_payer
+        WHERE clinique_id=$1 AND statut != 'payee'
+        ORDER BY date_echeance ASC NULLS LAST LIMIT 200`,
+      [req.user?.clinique_id]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.post('/api/caisse/encaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { montant, caisse_id, mode, reference } = req.body;
+  const { montant, caisse_id, mode, reference, objet, facture_id } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
   if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
   try {
     const r = await db("UPDATE caisse_sessions SET total_encaisse=total_encaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte' RETURNING id",[montant,req.user?.clinique_id,caisse_id]);
     if (!r.rows.length) return res.status(400).json({ success:false, message:'Aucune session ouverte pour cette caisse aujourd\'hui' });
-    await db(
-      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,mode_paiement,reference,utilisateur_id,utilisateur_nom)
-       VALUES (gen_random_uuid(),$1,$2,'encaissement',$3,$4,$5,$6,$7)`,
-      [caisse_id, req.user?.clinique_id, montant, mode||null, reference||null, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
+    const mv = await db(
+      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,mode_paiement,reference,objet,facture_id,utilisateur_id,utilisateur_nom)
+       VALUES (gen_random_uuid(),$1,$2,'encaissement',$3,$4,$5,$6,$7,$8,$9)
+       RETURNING *`,
+      [caisse_id, req.user?.clinique_id, montant, mode||null, reference||null, objet||null, facture_id||null, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
     );
-    res.json({ success:true, message:`${Number(montant).toLocaleString('fr-CI')} FCFA encaissés` });
+    if (facture_id) {
+      await db("UPDATE factures SET statut='payee' WHERE id=$1 AND clinique_id=$2", [facture_id, req.user?.clinique_id]);
+    }
+    res.json({ success:true, message:`${Number(montant).toLocaleString('fr-CI')} FCFA encaissés`, data:mv.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.post('/api/caisse/decaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { montant, caisse_id, motif } = req.body;
+  const { montant, caisse_id, motif, objet, charge_id } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });
   if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
   try {
     const r = await db("UPDATE caisse_sessions SET total_decaisse=total_decaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte' RETURNING id",[montant,req.user?.clinique_id,caisse_id]);
     if (!r.rows.length) return res.status(400).json({ success:false, message:'Aucune session ouverte pour cette caisse aujourd\'hui' });
-    await db(
-      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,reference,utilisateur_id,utilisateur_nom)
-       VALUES (gen_random_uuid(),$1,$2,'decaissement',$3,$4,$5,$6)`,
-      [caisse_id, req.user?.clinique_id, montant, motif||null, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
+    const mv = await db(
+      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,reference,objet,charge_id,utilisateur_id,utilisateur_nom)
+       VALUES (gen_random_uuid(),$1,$2,'decaissement',$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [caisse_id, req.user?.clinique_id, montant, motif||null, objet||null, charge_id||null, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
     );
-    res.json({ success:true, message:'Décaissement enregistré' });
+    if (charge_id) {
+      await db("UPDATE charges_a_payer SET statut='payee', paye_at=NOW() WHERE id=$1 AND clinique_id=$2", [charge_id, req.user?.clinique_id]);
+    }
+    res.json({ success:true, message:'Décaissement enregistré', data:mv.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 // Historique detaille des mouvements d'une caisse -- consultation et
