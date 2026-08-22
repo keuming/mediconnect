@@ -4317,6 +4317,68 @@ function PageFacturation() {
     },
   });
 
+  // Impression recapitulative du bordereau (PDF via impression navigateur),
+  // meme patron que imprimerFactureResume : fenetre ouverte immediatement,
+  // remplie une fois les donnees en-tete clinique recuperees.
+  const imprimerBordereau = async (b) => {
+    const win = window.open('', '_blank');
+    win.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement du bordereau…</p>');
+    let cl = null;
+    try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
+
+    const couleur = cl?.couleur_primaire || "#0A8F58";
+    const lignesHtml = (b.lignes||[]).map(l => `
+      <tr>
+        <td>${(l.facture_id||'').toString().slice(0,8)}</td>
+        <td style="text-align:right;">${fmt(l.montant_facture)} F</td>
+        <td style="text-align:right;">${l.montant_contractuel!=null ? fmt(l.montant_contractuel)+' F' : '—'}</td>
+        <td style="text-align:right;">${l.montant_contractuel!=null ? fmt(l.montant_facture-l.montant_contractuel)+' F' : '—'}</td>
+        <td>${l.statut_ligne}</td>
+      </tr>`).join('');
+
+    win.document.open();
+    win.document.write(`
+      <html><head><title>Bordereau ${b.reference||''}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:760px;margin:0 auto;}
+        h2{color:${couleur};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
+        .label{color:#8BA0B5;}
+        .valeur{font-weight:700;}
+        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
+        th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
+        td{padding:8px 4px;border-bottom:1px solid #e5e7eb;}
+        .totaux{margin-top:16px;}
+        .totaux .champ{font-size:15px;}
+        .total{font-size:20px;color:${couleur};font-weight:900;text-align:right;margin-top:10px;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid ${couleur};padding-bottom:12px;margin-bottom:18px;">
+        ${cl?.logo?`<img src="${cl.logo}" style="height:58px;object-fit:contain;"/>`:''}
+        <div>
+          <div style="font-size:16px;font-weight:700;color:${couleur};">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+        </div>
+      </div>
+      <h2>Bordereau de facturation assurance</h2>
+      <div class="champ"><span class="label">Référence</span><span class="valeur">${b.reference||'—'}</span></div>
+      <div class="champ"><span class="label">Compagnie</span><span class="valeur">${b.compagnie_nom||'—'}</span></div>
+      <div class="champ"><span class="label">Période</span><span class="valeur">${fmtDate(b.periode_debut)} → ${fmtDate(b.periode_fin)}</span></div>
+      <div class="champ"><span class="label">Statut</span><span class="valeur">${b.statut||'—'}</span></div>
+      <table>
+        <thead><tr><th>Facture</th><th style="text-align:right;">Facturé</th><th style="text-align:right;">Contractuel</th><th style="text-align:right;">Écart</th><th>Statut</th></tr></thead>
+        <tbody>${lignesHtml || '<tr><td colspan="5" style="text-align:center;padding:16px;color:#8BA0B5;">Aucune ligne</td></tr>'}</tbody>
+      </table>
+      <div class="totaux">
+        <div class="champ"><span class="label">Montant validé</span><span class="valeur">${fmt(b.montant_valide)} F</span></div>
+        <div class="champ"><span class="label">Montant rejeté</span><span class="valeur">${fmt(b.montant_rejete)} F</span></div>
+      </div>
+      <div class="total">Total : ${fmt(b.montant_total)} F</div>
+      <script>window.onload=()=>window.print();<\/script>
+      </body></html>`);
+    win.document.close();
+  };
+
   const ouvrirBordereau = async (id) => {
     try {
       const r = await api.get(`/bordereaux/${id}`);
@@ -4550,6 +4612,8 @@ function PageFacturation() {
                     { key:"statut_ligne", label:"Statut ligne" },
                   ]} rows={bordereauSelectionne.lignes} />
                 )}
+
+                <Btn variant="outline" style={{marginBottom:14}} onClick={()=>imprimerBordereau(bordereauSelectionne)}>🖨️ Imprimer</Btn>
 
                 {(BORDEREAU_ACTIONS[bordereauSelectionne.statut]||[]).length>0 && (
                   <div style={{ display:"flex", gap:10, marginTop:20, flexWrap:"wrap" }}>
