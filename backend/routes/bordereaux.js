@@ -231,11 +231,23 @@ module.exports = function bordereauxRoutes(pool, auth) {
       );
       if (!bRes.rows.length) return res.status(404).json({ success: false, message: 'Bordereau introuvable' });
 
+      // Part assurance / part patient calculee depuis le taux de
+      // couverture de la formule d'assurance du patient (formules_assurance.
+      // taux_couverture) -- aucune grille tarifaire specifique n'existe
+      // encore, donc on part du taux contractuel connu du patient lui-meme.
       const lignesRes = await pool.query(
-        `SELECT l.*, f.reference AS facture_reference, p.prenom AS patient_prenom, p.nom AS patient_nom
+        `SELECT l.*, f.reference AS facture_reference, p.prenom AS patient_prenom, p.nom AS patient_nom,
+                fa.taux_couverture,
+                CASE WHEN fa.taux_couverture IS NOT NULL
+                     THEN ROUND(l.montant_facture * fa.taux_couverture / 100.0, 0)
+                     ELSE NULL END AS part_assurance,
+                CASE WHEN fa.taux_couverture IS NOT NULL
+                     THEN l.montant_facture - ROUND(l.montant_facture * fa.taux_couverture / 100.0, 0)
+                     ELSE NULL END AS part_patient
          FROM bordereau_lignes l
          JOIN factures f ON f.id = l.facture_id
          JOIN patients p ON p.id = f.patient_id
+         LEFT JOIN formules_assurance fa ON fa.id = p.formule_assurance_id
          WHERE l.bordereau_id = $1 ORDER BY l.created_at ASC`,
         [req.params.id]
       );

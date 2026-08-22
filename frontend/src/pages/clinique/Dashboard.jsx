@@ -4333,6 +4333,8 @@ function PageFacturation() {
         <td style="text-align:right;">${fmt(l.montant_facture)} F</td>
         <td style="text-align:right;">${l.montant_contractuel!=null ? fmt(l.montant_contractuel)+' F' : '—'}</td>
         <td style="text-align:right;">${l.montant_contractuel!=null ? fmt(l.montant_facture-l.montant_contractuel)+' F' : '—'}</td>
+        <td style="text-align:right;">${l.part_assurance!=null ? fmt(l.part_assurance)+' F' : '—'}</td>
+        <td style="text-align:right;">${l.part_patient!=null ? fmt(l.part_patient)+' F' : '—'}</td>
         <td>${l.statut_ligne}</td>
       </tr>`).join('');
 
@@ -4366,8 +4368,8 @@ function PageFacturation() {
       <div class="champ"><span class="label">Période</span><span class="valeur">${fmtDate(b.periode_debut)} → ${fmtDate(b.periode_fin)}</span></div>
       <div class="champ"><span class="label">Statut</span><span class="valeur">${b.statut||'—'}</span></div>
       <table>
-        <thead><tr><th>Facture</th><th style="text-align:right;">Facturé</th><th style="text-align:right;">Contractuel</th><th style="text-align:right;">Écart</th><th>Statut</th></tr></thead>
-        <tbody>${lignesHtml || '<tr><td colspan="5" style="text-align:center;padding:16px;color:#8BA0B5;">Aucune ligne</td></tr>'}</tbody>
+        <thead><tr><th>Facture</th><th style="text-align:right;">Facturé</th><th style="text-align:right;">Contractuel</th><th style="text-align:right;">Écart</th><th style="text-align:right;">Part assurance</th><th style="text-align:right;">Part patient</th><th>Statut</th></tr></thead>
+        <tbody>${lignesHtml || '<tr><td colspan="7" style="text-align:center;padding:16px;color:#8BA0B5;">Aucune ligne</td></tr>'}</tbody>
       </table>
       <div class="totaux">
         <div class="champ"><span class="label">Montant validé</span><span class="valeur">${fmt(b.montant_valide)} F</span></div>
@@ -4610,6 +4612,8 @@ function PageFacturation() {
                           {ecart>0?"+":""}{fmt(ecart)} F
                         </span>;
                       } },
+                    { key:"part_assurance", label:"Part assurance", render:v=>v!=null?`${fmt(v)} F`:"—" },
+                    { key:"part_patient", label:"Part patient", render:v=>v!=null?`${fmt(v)} F`:"—" },
                     { key:"statut_ligne", label:"Statut ligne" },
                   ]} rows={bordereauSelectionne.lignes} />
                 )}
