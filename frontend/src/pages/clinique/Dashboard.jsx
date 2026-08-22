@@ -46,35 +46,35 @@ function CreationBordereauModal({ onClose, onCreated }) {
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1001 }}>
-      <div style={{ background:"#fff", borderRadius:16, padding:24, width:"90%", maxWidth:560, maxHeight:"85vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between" }}>
-          <h3 style={{ margin:0 }}>Nouveau bordereau</h3>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:20, cursor:"pointer" }}>✕</button>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1001 }}>
+      <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:16, padding:24, width:"90%", maxWidth:560, maxHeight:"85vh", overflowY:"auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <h3 style={{ margin:0, color:C.text }}>Nouveau bordereau</h3>
+          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:20, color:C.muted, cursor:"pointer" }}>✕</button>
         </div>
 
         {step === 1 && (
           <div style={{ display:"flex", flexDirection:"column", gap:12, marginTop:16 }}>
-            <label>
+            <label style={{ color:C.muted, fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:".5px" }}>
               Compagnie d'assurance
               <select value={compagnieId} onChange={e=>setCompagnieId(e.target.value)}
-                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid #ddd" }}>
+                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:C.input, color:C.text, fontFamily:"inherit", fontSize:15, fontWeight:400, textTransform:"none" }}>
                 <option value="">— Choisir —</option>
                 {compagnies.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
               </select>
             </label>
-            <label>
+            <label style={{ color:C.muted, fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:".5px" }}>
               Période — début
               <input type="date" value={periodeDebut} onChange={e=>setPeriodeDebut(e.target.value)}
-                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid #ddd" }} />
+                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:C.input, color:C.text, fontFamily:"inherit", fontSize:15, fontWeight:400, textTransform:"none" }} />
             </label>
-            <label>
+            <label style={{ color:C.muted, fontSize:14, fontWeight:700, textTransform:"uppercase", letterSpacing:".5px" }}>
               Période — fin
               <input type="date" value={periodeFin} onChange={e=>setPeriodeFin(e.target.value)}
-                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid #ddd" }} />
+                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:`1px solid ${C.border}`, background:C.input, color:C.text, fontFamily:"inherit", fontSize:15, fontWeight:400, textTransform:"none" }} />
             </label>
             <button disabled={!compagnieId || !periodeDebut || !periodeFin} onClick={fetchEligibles}
-              style={{ background:"#0a8f58", color:"#fff", border:"none", borderRadius:8, padding:"10px 16px", fontWeight:700, cursor:"pointer", marginTop:8 }}>
+              style={{ background:C.green, color:"#fff", border:"none", borderRadius:8, padding:"10px 16px", fontWeight:700, fontFamily:"inherit", fontSize:15, cursor:"pointer", marginTop:8, opacity:(!compagnieId || !periodeDebut || !periodeFin)?.5:1 }}>
               Voir les factures éligibles
             </button>
           </div>
@@ -82,21 +82,23 @@ function CreationBordereauModal({ onClose, onCreated }) {
 
         {step === 2 && (
           <div style={{ marginTop:16 }}>
-            <p style={{ color:"#8a8f89", fontSize:14 }}>
+            <p style={{ color:C.muted, fontSize:14 }}>
               {eligibles.length} facture(s) trouvée(s) pour cette compagnie sur la période.
             </p>
-            <div style={{ maxHeight:260, overflowY:"auto", border:"1px solid #eee", borderRadius:8 }}>
-              {eligibles.map(f => (
-                <label key={f.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 12px", borderBottom:"1px solid #f2f2f2" }}>
+            <div style={{ maxHeight:260, overflowY:"auto", border:`1px solid ${C.border}`, borderRadius:8 }}>
+              {eligibles.length === 0 ? (
+                <div style={{ padding:16, color:C.dim, fontSize:14, textAlign:"center" }}>Aucune facture éligible sur cette période.</div>
+              ) : eligibles.map(f => (
+                <label key={f.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 12px", borderBottom:`1px solid ${C.border}`, color:C.text }}>
                   <input type="checkbox" checked={selectedIds.includes(f.id)}
                     onChange={e => setSelectedIds(prev => e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id))} />
                   <span style={{ flex:1 }}>{f.patient_nom || `Facture #${f.id}`}</span>
-                  <span>{f.montant_total ?? f.montant} F</span>
+                  <span style={{ fontWeight:700, color:C.green }}>{f.montant_total ?? f.montant} F</span>
                 </label>
               ))}
             </div>
             <button disabled={saving} onClick={create}
-              style={{ background:"#0a8f58", color:"#fff", border:"none", borderRadius:8, padding:"10px 16px", fontWeight:700, cursor:"pointer", width:"100%", marginTop:16 }}>
+              style={{ background:C.green, color:"#fff", border:"none", borderRadius:8, padding:"10px 16px", fontWeight:700, fontFamily:"inherit", fontSize:15, cursor:"pointer", width:"100%", marginTop:16, opacity:saving?.6:1 }}>
               {saving ? "Création…" : `Créer le bordereau (${selectedIds.length} facture(s))`}
             </button>
           </div>
