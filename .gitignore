@@ -5,3 +5,10 @@ uploads/
 dist/
 .DS_Storecard-app/
 *.bak
+
+# Backups générés par les patch_*.py
+*.bak
+*.bak[0-9]*
+
+# Build compilé (généré, pas du code source)
+rdv-site/build/
