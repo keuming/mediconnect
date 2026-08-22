@@ -5579,7 +5579,7 @@ function PageCaisse() {
   const [showPayerCharge, setShowPayerCharge] = useState(null);
   const [modePaiementCharge, setModePaiementCharge] = useState("Espèces");
   const [showAddCharge, setShowAddCharge] = useState(false);
-  const [chargeForm, setChargeForm] = useState({ categorie_charge_id:"", libelle:"", montant:"", date_echeance:"" });
+  const [chargeForm, setChargeForm] = useState({ categorie_charge_id:"", libelle:"", montant:"", date_echeance:"", reference:"" });
 
   const { data: caissesData, isLoading: chargementCaisses } = useQuery({
     queryKey: ["cl-caisses"], queryFn: () => cAPI.caisses().then(r => r.data || []),
@@ -5973,7 +5973,10 @@ function PageCaisse() {
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           <span style={{fontSize:16,fontWeight:800,color:C.amber}}>{fmt(c.montant)} F</span>
-                          <Btn variant="outline" style={{padding:"6px 12px",fontSize:14}} onClick={()=>setShowPayerCharge(c)}>💳 Payer</Btn>
+                          <Btn variant="outline" style={{padding:"6px 12px",fontSize:14}} onClick={()=>{
+                            setChargeChoisieId(c.id); setMontantDecaisse(String(c.montant)); setMotifDecaisse(c.libelle);
+                            document.getElementById("panel-decaissement")?.scrollIntoView({behavior:"smooth", block:"center"});
+                          }}>💳 Payer</Btn>
                         </div>
                       </div>
                     ))
@@ -6023,7 +6026,7 @@ function PageCaisse() {
                     encaisserMut.mutate();
                   }}>Encaisser</Btn>
                 </Panel>
-                <Panel title="📤 Décaissement">
+                <Panel title="📤 Décaissement" id="panel-decaissement">
                   <Sel label="Charge à payer (optionnel)" value={chargeChoisieId} onChange={e=>{
                       const id = e.target.value; setChargeChoisieId(id);
                       const c = chargesAPayer.find(x=>x.id===id);
@@ -6108,7 +6111,8 @@ function PageCaisse() {
       <Modal open={showAddCharge} onClose={()=>setShowAddCharge(false)} title="💸 Nouvelle charge à payer">
         <Sel label="Type de charge" value={chargeForm.categorie_charge_id} onChange={e=>setChargeForm(f=>({...f,categorie_charge_id:e.target.value}))}
           options={[{v:"",l:"-- Choisir (facultatif) --"}, ...categoriesCharges.map(c=>({v:c.id,l:c.nom}))]} />
-        <Inp label="Libellé *" required value={chargeForm.libelle} onChange={e=>setChargeForm(f=>({...f,libelle:e.target.value}))} placeholder="Ex: Loyer janvier" />
+        <Inp label="Libellé *" required value={chargeForm.libelle} onChange={e=>setChargeForm(f=>({...f,libelle:e.target.value}))} placeholder="Ex: Loyer janvier" style={{marginBottom:10}} />
+        <Inp label="Référence" value={chargeForm.reference} onChange={e=>setChargeForm(f=>({...f,reference:e.target.value}))} placeholder="N° de facture fournisseur (optionnel)" />
         <Grid cols={2} gap={10}>
           <Inp label="Montant (FCFA) *" required type="number" value={chargeForm.montant} onChange={e=>setChargeForm(f=>({...f,montant:e.target.value}))} placeholder="150000" />
           <Inp label="Échéance" type="date" value={chargeForm.date_echeance} onChange={e=>setChargeForm(f=>({...f,date_echeance:e.target.value}))} />

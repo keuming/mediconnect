@@ -1917,15 +1917,15 @@ app.get('/api/charges-a-payer', auth, requireSousRole('finance', 'bureau_entrees
   } catch(e) { res.json({ success:true, data:[] }); }
 });
 app.post('/api/charges-a-payer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { categorie_charge_id, libelle, montant, date_echeance } = req.body;
+  const { categorie_charge_id, libelle, montant, date_echeance, reference } = req.body;
   if (!libelle || !montant) return res.status(400).json({ success:false, message:'Libellé et montant requis' });
   const cid = req.user?.clinique_id;
   if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
   try {
     const r = await db(
-      `INSERT INTO charges_a_payer (id,clinique_id,categorie_charge_id,libelle,montant,date_echeance)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5) RETURNING *`,
-      [cid, categorie_charge_id||null, libelle, montant, date_echeance||null]
+      `INSERT INTO charges_a_payer (id,clinique_id,categorie_charge_id,libelle,montant,date_echeance,reference)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6) RETURNING *`,
+      [cid, categorie_charge_id||null, libelle, montant, date_echeance||null, reference||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
