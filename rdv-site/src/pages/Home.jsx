@@ -520,16 +520,33 @@ export default function Home() {
       </nav>
 
       {/* RECHERCHE — coeur de la page */}
-      <section style={{ padding: '44px 5% 20px', position: 'relative', overflow: 'hidden' }}>
-        {/* Relief visuel discret derriere le titre -- une tache de
-            couleur floue, meme teinte que les onglets type juste en
-            dessous, pour ancrer le hero sans toucher a la structure. */}
-        <div aria-hidden="true" style={{ position: 'absolute', top: -80, left: '50%', width: 640, height: 320, transform: 'translateX(-50%)', background: `radial-gradient(ellipse at center, ${V.green}1c, transparent 70%)`, pointerEvents: 'none', filter: 'blur(10px)' }} />
+      <section style={{ padding: '56px 5% 22px', position: 'relative', overflow: 'hidden' }}>
+        {/* Signature visuelle du hero : un semis de points epars, dans
+            les 4 couleurs des types d'etablissement (vert/teal/violet/
+            ambre), qui evoque des epingles sur une carte -- ancre
+            litteralement "la ou il se trouve" au lieu d'une tache
+            decorative sans lien avec le propos. Purement decoratif
+            (aria-hidden), aucune interaction, aucune structure touchee. */}
+        <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.5 }}>
+          {[
+            { x: '12%', y: '18%', c: V.green, s: 7 }, { x: '85%', y: '14%', c: V.teal, s: 5 },
+            { x: '22%', y: '68%', c: V.purple, s: 6 }, { x: '92%', y: '58%', c: V.amber, s: 5 },
+            { x: '6%', y: '42%', c: V.teal, s: 4 }, { x: '78%', y: '78%', c: V.green, s: 6 },
+            { x: '48%', y: '8%', c: V.purple, s: 4 }, { x: '38%', y: '86%', c: V.amber, s: 5 },
+          ].map((p, i) => (
+            <span key={i} style={{ position: 'absolute', left: p.x, top: p.y, width: p.s, height: p.s, borderRadius: '50%', background: p.c }} />
+          ))}
+        </div>
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative' }}>
-          <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(26px,3.8vw,40px)', color: V.text, marginBottom: 10, textAlign: 'center', letterSpacing: '-.01em' }}>
+          <div style={{ textAlign: 'center', marginBottom: 14 }}>
+            <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: V.teal, background: `${V.teal}14`, border: `1px solid ${V.teal}33`, borderRadius: 20, padding: '5px 14px' }}>
+              📍 Localisé en quelques secondes
+            </span>
+          </div>
+          <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(30px,4.4vw,46px)', color: V.text, marginBottom: 12, textAlign: 'center', letterSpacing: '-.015em', lineHeight: 1.12 }}>
             Le soin qu'il vous faut, <span style={{ color: V.green, fontStyle: 'italic' }}>là où il se trouve</span>
           </h1>
-          <p style={{ color: V.muted, fontSize: 15, fontWeight: 500, textAlign: 'center', marginBottom: 26, maxWidth: 620, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }}>
+          <p style={{ color: V.muted, fontSize: 15, fontWeight: 500, textAlign: 'center', marginBottom: 28, maxWidth: 600, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }}>
             Cliniques, laboratoires et centres d'imagerie d'Afrique de l'Ouest, localisés en quelques secondes — là où l'information manquait, MediConnect répond.
           </p>
 
@@ -550,8 +567,10 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Barre de recherche */}
-          <div style={{ background: V.card, border: `1px solid ${V.border}`, borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
+          {/* Barre de recherche -- accent superieur degrade pour lui donner
+              plus de presence, echo direct des 3 couleurs des onglets. */}
+          <div style={{ background: V.card, border: `1px solid ${V.border}`, borderTop: 'none', borderRadius: 18, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,.4)', position: 'relative' }}>
+            <div aria-hidden="true" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, borderRadius: '18px 18px 0 0', background: `linear-gradient(90deg,${V.green},${V.teal},${V.purple})` }} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 14 }}>
               <ComboboxRecherche
                 id="recherche-nom-specialite" name="recherche-nom-specialite"
