@@ -4329,7 +4329,7 @@ function PageFacturation() {
     const couleur = cl?.couleur_primaire || "#0A8F58";
     const lignesHtml = (b.lignes||[]).map(l => `
       <tr>
-        <td>${(l.facture_id||'').toString().slice(0,8)}</td>
+        <td>${(`${l.patient_prenom||''} ${l.patient_nom||''}`.trim()) || l.facture_reference || '—'}</td>
         <td style="text-align:right;">${fmt(l.montant_facture)} F</td>
         <td style="text-align:right;">${l.montant_contractuel!=null ? fmt(l.montant_contractuel)+' F' : '—'}</td>
         <td style="text-align:right;">${l.montant_contractuel!=null ? fmt(l.montant_facture-l.montant_contractuel)+' F' : '—'}</td>
@@ -4600,6 +4600,7 @@ function PageFacturation() {
 
                 {(bordereauSelectionne.lignes||[]).length>0 && (
                   <Table columns={[
+                    { key:"patient_nom", label:"Patient", render:(v,l)=>`${l.patient_prenom||''} ${v||''}`.trim() || l.facture_reference || "—" },
                     { key:"montant_facture", label:"Facturé", render:v=>`${fmt(v)} F` },
                     { key:"montant_contractuel", label:"Tarif contractuel", render:v=>v!=null?`${fmt(v)} F`:"—" },
                     { key:"id", label:"Écart", render:(_,l)=>{

@@ -232,7 +232,11 @@ module.exports = function bordereauxRoutes(pool, auth) {
       if (!bRes.rows.length) return res.status(404).json({ success: false, message: 'Bordereau introuvable' });
 
       const lignesRes = await pool.query(
-        `SELECT l.* FROM bordereau_lignes l WHERE l.bordereau_id = $1 ORDER BY l.created_at ASC`,
+        `SELECT l.*, f.reference AS facture_reference, p.prenom AS patient_prenom, p.nom AS patient_nom
+         FROM bordereau_lignes l
+         JOIN factures f ON f.id = l.facture_id
+         JOIN patients p ON p.id = f.patient_id
+         WHERE l.bordereau_id = $1 ORDER BY l.created_at ASC`,
         [req.params.id]
       );
       res.json({ success: true, data: { ...bRes.rows[0], lignes: lignesRes.rows } });
