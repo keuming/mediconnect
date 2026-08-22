@@ -18,7 +18,10 @@ export const PALETTE_DARK = {
 export const PALETTE_LIGHT = {
   green: '#0A8F58', teal: '#0D9488', purple: '#7C3AED', amber: '#B45309',
   bg: '#F5F7FA', card: '#FFFFFF', input: '#FFFFFF', hover: '#F0F3F6', border: '#DCE3EA',
-  text: '#101B26', muted: '#5B6B7A', dim: '#8A97A3',
+  // muted/dim assombris (etaient #5B6B7A/#8A97A3) -- trop pales sur le
+  // fond quasi-blanc du theme clair, rendaient les sous-titres et labels
+  // ternes malgre un ratio de contraste techniquement suffisant.
+  text: '#101B26', muted: '#3E4C5A', dim: '#647082',
   navBg: 'rgba(255,255,255,.92)', navBorder: 'rgba(16,27,38,.08)',
   footerBg: '#EEF1F4', footerBorder: 'rgba(16,27,38,.06)',
 };

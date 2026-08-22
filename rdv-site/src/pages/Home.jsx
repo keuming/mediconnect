@@ -520,12 +520,16 @@ export default function Home() {
       </nav>
 
       {/* RECHERCHE — coeur de la page */}
-      <section style={{ padding: '36px 5% 20px' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(24px,3.5vw,36px)', color: V.text, marginBottom: 6, textAlign: 'center' }}>
+      <section style={{ padding: '44px 5% 20px', position: 'relative', overflow: 'hidden' }}>
+        {/* Relief visuel discret derriere le titre -- une tache de
+            couleur floue, meme teinte que les onglets type juste en
+            dessous, pour ancrer le hero sans toucher a la structure. */}
+        <div aria-hidden="true" style={{ position: 'absolute', top: -80, left: '50%', width: 640, height: 320, transform: 'translateX(-50%)', background: `radial-gradient(ellipse at center, ${V.green}1c, transparent 70%)`, pointerEvents: 'none', filter: 'blur(10px)' }} />
+        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative' }}>
+          <h1 style={{ fontFamily: "'DM Serif Display',serif", fontSize: 'clamp(26px,3.8vw,40px)', color: V.text, marginBottom: 10, textAlign: 'center', letterSpacing: '-.01em' }}>
             Le soin qu'il vous faut, <span style={{ color: V.green, fontStyle: 'italic' }}>là où il se trouve</span>
           </h1>
-          <p style={{ color: V.muted, fontSize: 14, textAlign: 'center', marginBottom: 22 }}>
+          <p style={{ color: V.muted, fontSize: 15, fontWeight: 500, textAlign: 'center', marginBottom: 26, maxWidth: 620, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }}>
             Cliniques, laboratoires et centres d'imagerie d'Afrique de l'Ouest, localisés en quelques secondes — là où l'information manquait, MediConnect répond.
           </p>
 
