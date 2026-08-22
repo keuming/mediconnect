@@ -5651,6 +5651,72 @@ function PageCaisse() {
     w.document.close(); w.print();
   };
 
+  // Recu individuel d'un mouvement (encaissement ou decaissement),
+  // format ticket etroit (80mm, compatible imprimante thermique) mais
+  // qui s'imprime tout aussi bien centre sur une feuille A4 standard
+  // pour les cliniques sans imprimante dediee. QR code genere dans la
+  // fenetre d'impression elle-meme (script charge par balise <script>,
+  // execute dans l'ordre juste apres son chargement).
+  const imprimerRecuMouvement = async (m) => {
+    const w = window.open('', '_blank');
+    w.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement…</p>');
+    let cl = null;
+    try { const r = await api.get('/clinique/profil'); cl = r.data || null; } catch(e) { /* recu sans en-tete si echec */ }
+
+    const estEncaissement = m.type === 'encaissement';
+    const dateStr = new Date(m.created_at).toLocaleString('fr-CI',{dateStyle:'medium',timeStyle:'short'});
+    const objet = m.objet || m.reference || (estEncaissement?'Encaissement':'Décaissement');
+    const qrTexte = `MediConnect ${estEncaissement?'Reçu':'Pièce de caisse'} | Montant: ${fmt(m.montant)} FCFA | Date: ${dateStr} | Objet: ${objet}`;
+    const qrTexteJs = JSON.stringify(qrTexte);
+
+    w.document.open();
+    w.document.write(`
+      <html><head><title>${estEncaissement?'Reçu de paiement':'Pièce de caisse'}</title>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+      <style>
+        @page { size: 80mm auto; margin: 0; }
+        body{font-family:'Courier New',monospace;color:#16211C;width:80mm;margin:0 auto;padding:10px 8px;font-size:12px;}
+        .center{text-align:center;}
+        .cn{font-size:14px;font-weight:700;}
+        .ci{font-size:10px;color:#444;}
+        .sep{border-top:1px dashed #16211C;margin:8px 0;}
+        .champ{display:flex;justify-content:space-between;padding:3px 0;font-size:12px;}
+        .label{color:#555;}
+        .valeur{font-weight:700;text-align:right;}
+        .titre{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px;}
+        .total{font-size:18px;font-weight:900;text-align:center;margin:10px 0;color:${estEncaissement?'#0A8F58':'#B45309'};}
+        #qr{display:flex;justify-content:center;margin:12px 0;}
+        .footer{font-size:9px;color:#666;margin-top:10px;}
+        @media print{ @page { size: 80mm auto; margin: 0; } body{width:80mm;} }
+      </style></head><body>
+      <div class="center">
+        ${cl?.logo?`<img src="${cl.logo}" style="height:40px;object-fit:contain;margin-bottom:4px;"/>`:''}
+        <div class="cn">${cl?.nom||'MediConnect Africa'}</div>
+        <div class="ci">${cl?.adresse_complete||cl?.adresse||''}</div>
+        <div class="ci">${cl?.telephone||''}</div>
+      </div>
+      <div class="sep"></div>
+      <div class="center titre">${estEncaissement?'Reçu de paiement':'Pièce de caisse'}</div>
+      <div class="sep"></div>
+      <div class="champ"><span class="label">Date</span><span class="valeur">${dateStr}</span></div>
+      <div class="champ"><span class="label">Objet</span><span class="valeur">${objet}</span></div>
+      ${m.mode_paiement ? `<div class="champ"><span class="label">Mode</span><span class="valeur">${m.mode_paiement}</span></div>` : ''}
+      ${m.utilisateur_nom ? `<div class="champ"><span class="label">Caissier</span><span class="valeur">${m.utilisateur_nom}</span></div>` : ''}
+      <div class="sep"></div>
+      <div class="total">${estEncaissement?'+':'-'}${fmt(m.montant)} FCFA</div>
+      <div class="sep"></div>
+      <div id="qr"></div>
+      <div class="footer center">${cl?.nom||'MediConnect Africa'} — Généré via MediConnect</div>
+      <script>
+        try {
+          new QRCode(document.getElementById('qr'), { text: ${qrTexteJs}, width: 110, height: 110, correctLevel: QRCode.CorrectLevel.M });
+        } catch(e) { /* impression sans QR si la librairie n'a pas charge */ }
+        window.onload = () => window.print();
+      <\/script>
+      </body></html>`);
+    w.document.close();
+  };
+
   const addCaisseMut = useMutation({
     mutationFn: d => cAPI.addCaisse(d),
     onSuccess: (r) => {
@@ -5845,8 +5911,12 @@ function PageCaisse() {
                                   {m.utilisateur_nom && ` · ${m.utilisateur_nom}`}
                                 </div>
                               </div>
-                              <div style={{fontSize:15,fontWeight:800,color:m.type==="encaissement"?C.green:C.amber}}>
-                                {m.type==="encaissement"?"+":"-"}{fmt(m.montant)} F
+                              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                <div style={{fontSize:15,fontWeight:800,color:m.type==="encaissement"?C.green:C.amber}}>
+                                  {m.type==="encaissement"?"+":"-"}{fmt(m.montant)} F
+                                </div>
+                                <button onClick={()=>imprimerRecuMouvement(m)} title="Imprimer le reçu"
+                                  style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:13}}>🖨️</button>
                               </div>
                             </div>
                           ))}
