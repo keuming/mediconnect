@@ -5898,7 +5898,7 @@ function PageCaisse() {
                   <Sel label="Facture à payer (optionnel)" value={factureChoisieId} onChange={e=>{
                       const id = e.target.value; setFactureChoisieId(id);
                       const f = facturesImpayees.find(x=>x.id===id);
-                      if (f) { setMontantEncaisse(String(f.montant_total)); setReferenceEncaisse(`${f.prenom||''} ${f.nom||''}`.trim() || f.reference); }
+                      if (f) { setMontantEncaisse(String(f.montant_total)); setReferenceEncaisse(f.reference || ''); }
                     }}
                     options={[{v:"",l:"— Saisie libre —"}, ...facturesImpayees.map(f=>({v:f.id, l:`${f.reference} — ${f.prenom||''} ${f.nom||''} — ${fmt(f.montant_total)} F`}))]}
                     style={{marginBottom:10}} />
