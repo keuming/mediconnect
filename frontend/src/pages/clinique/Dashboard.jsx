@@ -5666,7 +5666,9 @@ function PageCaisse() {
     const estEncaissement = m.type === 'encaissement';
     const dateStr = new Date(m.created_at).toLocaleString('fr-CI',{dateStyle:'medium',timeStyle:'short'});
     const objet = m.objet || m.reference || (estEncaissement?'Encaissement':'Décaissement');
-    const qrTexte = `MediConnect ${estEncaissement?'Reçu':'Pièce de caisse'} | Montant: ${fmt(m.montant)} FCFA | Date: ${dateStr} | Objet: ${objet}`;
+    const nomPatient = `${m.patient_prenom||''} ${m.patient_nom||''}`.trim();
+    const refTicket = (m.id||'').toString().slice(0,8).toUpperCase();
+    const qrTexte = `MediConnect ${estEncaissement?'Reçu':'Pièce de caisse'} ${refTicket} | Montant: ${fmt(m.montant)} FCFA | Date: ${dateStr} | Objet: ${objet}`;
     const qrTexteJs = JSON.stringify(qrTexte);
 
     w.document.open();
@@ -5693,12 +5695,15 @@ function PageCaisse() {
         ${cl?.logo?`<img src="${cl.logo}" style="height:40px;object-fit:contain;margin-bottom:4px;"/>`:''}
         <div class="cn">${cl?.nom||'MediConnect Africa'}</div>
         <div class="ci">${cl?.adresse_complete||cl?.adresse||''}</div>
-        <div class="ci">${cl?.telephone||''}</div>
+        <div class="ci">${cl?.telephone?'Tél : '+cl.telephone:''}</div>
       </div>
       <div class="sep"></div>
       <div class="center titre">${estEncaissement?'Reçu de paiement':'Pièce de caisse'}</div>
+      <div class="center ci">N° ${refTicket}</div>
       <div class="sep"></div>
       <div class="champ"><span class="label">Date</span><span class="valeur">${dateStr}</span></div>
+      ${nomPatient ? `<div class="champ"><span class="label">Patient</span><span class="valeur">${nomPatient}</span></div>` : ''}
+      ${m.facture_reference ? `<div class="champ"><span class="label">Facture</span><span class="valeur">${m.facture_reference}</span></div>` : ''}
       <div class="champ"><span class="label">Objet</span><span class="valeur">${objet}</span></div>
       ${m.mode_paiement ? `<div class="champ"><span class="label">Mode</span><span class="valeur">${m.mode_paiement}</span></div>` : ''}
       ${m.utilisateur_nom ? `<div class="champ"><span class="label">Caissier</span><span class="valeur">${m.utilisateur_nom}</span></div>` : ''}

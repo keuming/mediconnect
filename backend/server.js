@@ -1885,11 +1885,19 @@ app.get('/api/caisse/:caisseId/historique', auth, requireSousRole('finance', 'bu
   try {
     const cid = req.user?.clinique_id;
     const { date } = req.query;
-    let sql = 'SELECT * FROM mouvements_caisse WHERE caisse_id=$1 AND clinique_id=$2';
+    // Jointure optionnelle vers factures/patients (via facture_id, quand
+    // le mouvement est lie a une facture reelle) pour que le recu puisse
+    // afficher la reference de la facture et le nom du patient.
+    let sql = `SELECT mc.*, f.reference AS facture_reference,
+                      p.prenom AS patient_prenom, p.nom AS patient_nom
+                 FROM mouvements_caisse mc
+                 LEFT JOIN factures f ON f.id = mc.facture_id
+                 LEFT JOIN patients p ON p.id = f.patient_id
+                WHERE mc.caisse_id=$1 AND mc.clinique_id=$2`;
     const p = [req.params.caisseId, cid];
-    if (date) { p.push(date); sql += ` AND DATE(created_at)=$${p.length}`; }
-    else { sql += ' AND DATE(created_at)=CURRENT_DATE'; }
-    sql += ' ORDER BY created_at DESC LIMIT 500';
+    if (date) { p.push(date); sql += ` AND DATE(mc.created_at)=$${p.length}`; }
+    else { sql += ' AND DATE(mc.created_at)=CURRENT_DATE'; }
+    sql += ' ORDER BY mc.created_at DESC LIMIT 500';
     const r = await db(sql, p);
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
