@@ -4,6 +4,14 @@
  * routes/bordereaux.js — MediConnect Africa / CSN
  * Module Facturation Assurance — Bordereaux (Phase 1+2+3)
  *
+ * VERSION CORRIGEE : la version precedente referencait une table
+ * compagnies_assurance (SERIAL/INTEGER) qui n'existe pas et fait
+ * doublon avec la table assureurs deja existante dans MediConnect
+ * (uuid). Toutes les requetes utilisent desormais assureurs. La route
+ * eligibles/liste cherchait aussi f.compagnie_id, colonne inexistante
+ * sur factures -- le lien assureur passe par patients.assureur_id,
+ * corrige via une jointure.
+ *
  * Montage dans server.js :
  *   const bordereauxRoutes = require('./routes/bordereaux');
  *   app.use('/api', bordereauxRoutes(dbPool, auth));
@@ -76,7 +84,7 @@ module.exports = function bordereauxRoutes(pool, auth) {
     );
   }
 
-  async function ajouterLignes(client, bordereauId, factureIds, compagnieId) {
+  async function ajouterLignes(client, bordereauId, factureIds, assureurId) {
     const metaF = await resolveTable(client, ['factures', 'facture']);
     if (!metaF) throw Object.assign(new Error('Table factures introuvable'), { status: 500 });
     const colMontant = pickColumn(metaF, ['montant_total', 'montant']);
@@ -89,11 +97,11 @@ module.exports = function bordereauxRoutes(pool, auth) {
 
       const gRes = await client.query(
         `SELECT tarif_convention FROM grilles_tarifaires
-         WHERE compagnie_id = $1
+         WHERE assureur_id = $1
            AND date_debut_validite <= CURRENT_DATE
            AND (date_fin_validite IS NULL OR date_fin_validite >= CURRENT_DATE)
          ORDER BY date_debut_validite DESC LIMIT 1`,
-        [compagnieId]
+        [assureurId]
       );
       const montantContractuel = gRes.rows.length ? gRes.rows[0].tarif_convention : null;
 
@@ -106,9 +114,12 @@ module.exports = function bordereauxRoutes(pool, auth) {
     }
   }
 
+  // Nom d'endpoint inchange (le frontend deja deploye l'appelle tel
+  // quel) -- seule la table interrogee change : assureurs, pas
+  // compagnies_assurance.
   router.get('/compagnies-assurance', auth, async (req, res) => {
     try {
-      const { rows } = await pool.query(`SELECT * FROM compagnies_assurance WHERE actif = true ORDER BY nom`);
+      const { rows } = await pool.query(`SELECT id, nom, telephone, email FROM assureurs WHERE is_active = true ORDER BY nom`);
       res.json({ success: true, data: rows });
     } catch (e) {
       console.error('[bordereaux GET /compagnies-assurance]', e.message);
@@ -123,13 +134,13 @@ module.exports = function bordereauxRoutes(pool, auth) {
       const clauses = ['b.clinique_id = $1'];
       const params = [cliniqueId];
       if (statut) { params.push(statut); clauses.push(`b.statut = $${params.length}`); }
-      if (compagnie_id) { params.push(compagnie_id); clauses.push(`b.compagnie_id = $${params.length}`); }
+      if (compagnie_id) { params.push(compagnie_id); clauses.push(`b.assureur_id = $${params.length}`); }
 
       const { rows } = await pool.query(
-        `SELECT b.*, c.nom AS compagnie_nom,
+        `SELECT b.*, a.nom AS compagnie_nom,
                 (SELECT COUNT(*) FROM bordereau_lignes l WHERE l.bordereau_id = b.id) AS nb_lignes
          FROM bordereaux_facturation b
-         JOIN compagnies_assurance c ON c.id = b.compagnie_id
+         JOIN assureurs a ON a.id = b.assureur_id
          WHERE ${clauses.join(' AND ')}
          ORDER BY b.created_at DESC`,
         params
@@ -141,6 +152,8 @@ module.exports = function bordereauxRoutes(pool, auth) {
     }
   });
 
+  // Une facture n'a pas de lien direct vers un assureur -- le lien
+  // passe par le patient (patients.assureur_id). Jointure ajoutee.
   router.get('/bordereaux/eligibles/liste', auth, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -154,9 +167,10 @@ module.exports = function bordereauxRoutes(pool, auth) {
       const colDate = pickColumn(metaF, ['created_at', 'date_emission']);
 
       const { rows } = await client.query(
-        `SELECT * FROM "${metaF.name}" f
+        `SELECT f.* FROM "${metaF.name}" f
+         JOIN patients p ON p.id = f.patient_id
          WHERE f.clinique_id = $1
-           AND f.compagnie_id = $2
+           AND p.assureur_id = $2
            AND f."${colDate}" BETWEEN $3 AND $4
            AND NOT EXISTS (SELECT 1 FROM bordereau_lignes l WHERE l.facture_id = f.id)
          ORDER BY f."${colDate}" ASC`,
@@ -183,7 +197,7 @@ module.exports = function bordereauxRoutes(pool, auth) {
         const reference = await genererReference(client, cliniqueId);
         const bRes = await client.query(
           `INSERT INTO bordereaux_facturation
-            (clinique_id, compagnie_id, reference, periode_debut, periode_fin, statut, responsable_id)
+            (clinique_id, assureur_id, reference, periode_debut, periode_fin, statut, responsable_id)
            VALUES ($1,$2,$3,$4,$5,'brouillon',$6)
            RETURNING *`,
           [cliniqueId, compagnie_id, reference, periode_debut, periode_fin, req.user?.id]
@@ -207,9 +221,9 @@ module.exports = function bordereauxRoutes(pool, auth) {
     try {
       const cliniqueId = req.user?.clinique_id;
       const bRes = await pool.query(
-        `SELECT b.*, c.nom AS compagnie_nom
+        `SELECT b.*, a.nom AS compagnie_nom
          FROM bordereaux_facturation b
-         JOIN compagnies_assurance c ON c.id = b.compagnie_id
+         JOIN assureurs a ON a.id = b.assureur_id
          WHERE b.id = $1 AND b.clinique_id = $2`,
         [req.params.id, cliniqueId]
       );
@@ -242,7 +256,7 @@ module.exports = function bordereauxRoutes(pool, auth) {
       }
 
       await withTransaction(pool, async (client) => {
-        await ajouterLignes(client, req.params.id, facture_ids, bordereau.compagnie_id);
+        await ajouterLignes(client, req.params.id, facture_ids, bordereau.assureur_id);
         await recalculerMontants(client, req.params.id);
       });
 
