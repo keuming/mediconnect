@@ -1940,7 +1940,7 @@ app.delete('/api/charges-a-payer/:id', auth, requireSousRole('finance', 'bureau_
 });
 
 app.post('/api/caisse/payer-facture', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { facture_id, caisse_id, mode_paiement, reduction_pourcentage, reduction_montant_fixe } = req.body;
+  const { facture_id, caisse_id, mode_paiement, reduction_pourcentage, reduction_montant_fixe, objet } = req.body;
   if (!facture_id || !caisse_id) return res.status(400).json({ success:false, message:'facture_id et caisse_id requis' });
   const cid = req.user?.clinique_id;
   try {
@@ -1967,9 +1967,9 @@ app.post('/api/caisse/payer-facture', auth, requireSousRole('finance', 'bureau_e
     );
 
     await db(
-      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,mode_paiement,reference,utilisateur_id,utilisateur_nom)
-       VALUES (gen_random_uuid(),$1,$2,'encaissement',$3,$4,$5,$6,$7)`,
-      [caisse_id, cid, montantFinal, mode_paiement||null, facture.reference, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
+      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,mode_paiement,reference,objet,facture_id,utilisateur_id,utilisateur_nom)
+       VALUES (gen_random_uuid(),$1,$2,'encaissement',$3,$4,$5,$6,$7,$8,$9)`,
+      [caisse_id, cid, montantFinal, mode_paiement||null, facture.reference, objet||null, facture_id, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
     );
     await db("UPDATE caisse_sessions SET total_encaisse=total_encaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte'", [montantFinal, cid, caisse_id]);
 

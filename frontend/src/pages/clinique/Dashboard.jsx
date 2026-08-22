@@ -5754,13 +5754,22 @@ function PageCaisse() {
   const [chargeChoisieId, setChargeChoisieId] = useState("");
 
   const encaisserMut = useMutation({
-    mutationFn: () => cAPI.encaisser(caisseId, { montant: Number(montantEncaisse), mode: modePaiement, reference: referenceEncaisse || null, objet: objetEncaisse || null, facture_id: factureChoisieId || null }),
-    onSuccess: () => {
-      toast.success("Encaissement enregistré !");
+    mutationFn: () => factureChoisieId
+      ? cAPI.payerFacture({
+          facture_id: factureChoisieId, caisse_id: caisseId, mode_paiement: modePaiement, objet: objetEncaisse || null,
+          reduction_pourcentage: reductionType==="pourcentage" && reductionValue ? Number(reductionValue) : undefined,
+          reduction_montant_fixe: reductionType==="montant" && reductionValue ? Number(reductionValue) : undefined,
+        })
+      : cAPI.encaisser(caisseId, { montant: Number(montantEncaisse), mode: modePaiement, reference: referenceEncaisse || null, objet: objetEncaisse || null }),
+    onSuccess: (r) => {
+      const reduc = r?.reduction_appliquee;
+      toast.success(reduc>0 ? `Encaissement enregistré ! Réduction : ${fmt(reduc)} F` : "Encaissement enregistré !");
       qc.invalidateQueries(["cl-caisses"]);
       qc.invalidateQueries(["cl-caisse-historique", caisseId]);
       qc.invalidateQueries(["cl-factures-impayees"]);
+      qc.invalidateQueries(["cl-factures-en-attente"]);
       setMontantEncaisse(""); setReferenceEncaisse(""); setObjetEncaisse(""); setFactureChoisieId("");
+      setReductionValue(""); setReductionType("pourcentage");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'encaissement"),
   });
@@ -5944,7 +5953,11 @@ function PageCaisse() {
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           <span style={{fontSize:16,fontWeight:800,color:C.green}}>{fmt(f.montant_total)} F</span>
-                          <Btn style={{padding:"6px 12px",fontSize:14}} onClick={()=>{ setShowPayerFacture(f); setReductionValue(""); setReductionType("pourcentage"); }}>💰 Encaisser</Btn>
+                          <Btn style={{padding:"6px 12px",fontSize:14}} onClick={()=>{
+                            setFactureChoisieId(f.id); setMontantEncaisse(String(f.montant_total)); setReferenceEncaisse(f.reference||"");
+                            setReductionValue(""); setReductionType("pourcentage");
+                            document.getElementById("panel-encaissement")?.scrollIntoView({behavior:"smooth", block:"center"});
+                          }}>💰 Encaisser</Btn>
                         </div>
                       </div>
                     ))
@@ -5969,18 +5982,42 @@ function PageCaisse() {
               </div>
 
               <Grid cols={2} gap={20}>
-                <Panel title="📥 Encaissement">
+                <Panel title="📥 Encaissement" id="panel-encaissement">
                   <Sel label="Facture à payer (optionnel)" value={factureChoisieId} onChange={e=>{
                       const id = e.target.value; setFactureChoisieId(id);
                       const f = facturesImpayees.find(x=>x.id===id);
                       if (f) { setMontantEncaisse(String(f.montant_total)); setReferenceEncaisse(f.reference || ''); }
+                      setReductionValue(""); setReductionType("pourcentage");
                     }}
                     options={[{v:"",l:"— Saisie libre —"}, ...facturesImpayees.map(f=>({v:f.id, l:`${f.reference} — ${f.prenom||''} ${f.nom||''} — ${fmt(f.montant_total)} F`}))]}
                     style={{marginBottom:10}} />
-                  <Inp label="Montant (FCFA)" type="number" placeholder="5000" value={montantEncaisse} onChange={e=>setMontantEncaisse(e.target.value)} style={{marginBottom:10}} />
+                  <Inp label="Montant (FCFA)" type="number" placeholder="5000" value={montantEncaisse} onChange={e=>setMontantEncaisse(e.target.value)} disabled={!!factureChoisieId} style={{marginBottom:10}} />
                   <Sel label="Mode de paiement" value={modePaiement} onChange={e=>setModePaiement(e.target.value)} options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} style={{marginBottom:10}} />
                   <Inp label="Référence / Patient" placeholder="Nom du patient ou référence" value={referenceEncaisse} onChange={e=>setReferenceEncaisse(e.target.value)} style={{marginBottom:10}} />
                   <Inp label="Objet" placeholder="Consultation, ordonnance, acte…" value={objetEncaisse} onChange={e=>setObjetEncaisse(e.target.value)} style={{marginBottom:14}} />
+                  {factureChoisieId && (
+                    <>
+                      <div style={{ display:"flex", gap:4, background:C.input, borderRadius:8, padding:3, marginBottom:8 }}>
+                        {[["pourcentage","% Pourcentage"],["montant","FCFA Montant fixe"]].map(([v,l])=>(
+                          <button key={v} onClick={()=>setReductionType(v)} type="button"
+                            style={{flex:1,background:reductionType===v?C.hover:"transparent",border:"none",borderRadius:6,padding:"7px 4px",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:reductionType===v?C.text:C.muted}}>{l}</button>
+                        ))}
+                      </div>
+                      <Inp label={reductionType==="pourcentage" ? "Réduction (%)" : "Réduction (FCFA)"} type="number" min="0"
+                        max={reductionType==="pourcentage" ? "100" : undefined}
+                        value={reductionValue} onChange={e=>setReductionValue(e.target.value)} placeholder="0" style={{marginBottom:10}} />
+                      {reductionValue>0 && montantEncaisse && (
+                        <div style={{ background:"rgba(10,143,88,.08)", borderRadius:8, padding:10, marginBottom:14, textAlign:"center" }}>
+                          <span style={{fontSize:13,color:C.muted}}>Montant après réduction : </span>
+                          <span style={{fontSize:16,fontWeight:800,color:C.green}}>
+                            {fmt(Math.max(0, Number(montantEncaisse) - (reductionType==="pourcentage"
+                              ? Math.round(Number(montantEncaisse)*Number(reductionValue)/100)
+                              : Number(reductionValue))))} F
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <Btn style={{width:"100%"}} loading={encaisserMut.isPending} onClick={()=>{
                     if(!montantEncaisse||Number(montantEncaisse)<=0){toast.error("Montant invalide");return;}
                     encaisserMut.mutate();
