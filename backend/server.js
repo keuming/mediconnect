@@ -2484,12 +2484,40 @@ app.post('/api/public/rdv', async (req, res) => {
     return res.status(400).json({ success:false, message:'Etablissement requis' });
 
   try {
+    // BUG CORRIGE : cette route n'a jamais cree ni lie de vraie fiche
+    // patient -- patient_nom/patient_telephone n'etaient que du texte
+    // libre sur le rendez_vous, jamais insere dans la table patients.
+    // Recherche par telephone (memes 8 derniers chiffres que
+    // recherche-telephone), sinon creation, comme /api/public/file-attente/rejoindre.
+    let patientId = null;
+    let codeSecret = null;
+    const normTel = (patient_telephone||'').replace(/[^0-9]/g, '').slice(-8);
+    if (normTel.length >= 8) {
+      const existant = await db(
+        `SELECT id FROM patients WHERE RIGHT(REGEXP_REPLACE(telephone, '[^0-9]', '', 'g'), 8) = $1 LIMIT 1`,
+        [normTel]
+      );
+      if (existant.rows.length) patientId = existant.rows[0].id;
+    }
+    if (!patientId) {
+      const noms = patient_nom.trim().split(/\s+/);
+      const prenom = noms[0] || patient_nom;
+      const nom = noms.slice(1).join(' ') || patient_nom;
+      const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
+      patientId = uuid();
+      await db(
+        'INSERT INTO patients (id,code_secret,prenom,nom,telephone,clinique_id) VALUES ($1,$2,$3,$4,$5,$6)',
+        [patientId, code, prenom, nom, patient_telephone, finalCliniqueId]
+      );
+      codeSecret = code;
+    }
+
     const ref='MC-RDV-'+Math.random().toString(36).slice(2,8).toUpperCase();
     const r=await db(
-      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,etablissement_externe,prestataire_type,prestataire_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [uuid(),ref,finalCliniqueId,medecin_id||null,etablissement_externe||null,finalPrestataireType,finalPrestataireId,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
+      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,etablissement_externe,prestataire_type,prestataire_id,patient_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [uuid(),ref,finalCliniqueId,medecin_id||null,etablissement_externe||null,finalPrestataireType,finalPrestataireId,patientId,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
     );
-    res.status(201).json({ success:true, data:{ reference:ref, rdv_id:r.rows[0].id }, message:'RDV confirmé !' });
+    res.status(201).json({ success:true, data:{ reference:ref, rdv_id:r.rows[0].id, patient_id:patientId }, code_secret:codeSecret, message:'RDV confirmé !' });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
