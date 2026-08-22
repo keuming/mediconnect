@@ -1841,21 +1841,6 @@ app.get('/api/caisse/factures-impayees', auth, requireSousRole('finance', 'burea
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
-// Charges non encore payees -- alimente le selecteur du formulaire de
-// decaissement (au lieu d'un motif texte libre).
-app.get('/api/caisse/charges-a-payer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  try {
-    const r = await db(
-      `SELECT id, libelle, montant, date_echeance, statut
-         FROM charges_a_payer
-        WHERE clinique_id=$1 AND statut != 'payee'
-        ORDER BY date_echeance ASC NULLS LAST LIMIT 200`,
-      [req.user?.clinique_id]
-    );
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
 app.post('/api/caisse/encaisser', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { montant, caisse_id, mode, reference, objet, facture_id } = req.body;
   if (!montant||montant<=0) return res.status(400).json({ success:false, message:'Montant invalide' });

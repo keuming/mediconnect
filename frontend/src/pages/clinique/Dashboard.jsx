@@ -243,6 +243,7 @@ const cAPI = {
   ouvrirCaisse:  (caisseId) => api.post("/caisse/ouvrir", { caisse_id: caisseId }),
   encaisser:     (caisseId, d) => api.post("/caisse/encaisser", { ...d, caisse_id: caisseId }),
   decaisser:     (caisseId, d) => api.post("/caisse/decaisser", { ...d, caisse_id: caisseId }),
+  facturesImpayees: () => api.get("/caisse/factures-impayees"),
   historiqueCaisse: (caisseId) => api.get(`/caisse/${caisseId}/historique`),
   cloturerCaisse:(caisseId) => api.post("/caisse/cloturer", { caisse_id: caisseId }),
   // Assurances
@@ -5667,24 +5668,40 @@ function PageCaisse() {
     onError: e => toast.error(e?.response?.data?.message || "Erreur à l'ouverture"),
   });
 
+  // Selecteur factures impayees, au lieu d'une saisie libre --
+  // selectionner une facture reelle la marque payee automatiquement
+  // cote backend. Pour les charges, reutilise chargesAPayer deja
+  // charge plus bas dans ce meme composant (meme route existante).
+  const { data: facturesImpayeesData } = useQuery({
+    queryKey: ["cl-factures-impayees"],
+    queryFn: () => cAPI.facturesImpayees().then(r => r.data||[]),
+  });
+  const facturesImpayees = facturesImpayeesData||[];
+  const [objetEncaisse, setObjetEncaisse] = useState("");
+  const [factureChoisieId, setFactureChoisieId] = useState("");
+  const [objetDecaisse, setObjetDecaisse] = useState("");
+  const [chargeChoisieId, setChargeChoisieId] = useState("");
+
   const encaisserMut = useMutation({
-    mutationFn: () => cAPI.encaisser(caisseId, { montant: Number(montantEncaisse), mode: modePaiement, reference: referenceEncaisse || null }),
+    mutationFn: () => cAPI.encaisser(caisseId, { montant: Number(montantEncaisse), mode: modePaiement, reference: referenceEncaisse || null, objet: objetEncaisse || null, facture_id: factureChoisieId || null }),
     onSuccess: () => {
       toast.success("Encaissement enregistré !");
       qc.invalidateQueries(["cl-caisses"]);
       qc.invalidateQueries(["cl-caisse-historique", caisseId]);
-      setMontantEncaisse(""); setReferenceEncaisse("");
+      qc.invalidateQueries(["cl-factures-impayees"]);
+      setMontantEncaisse(""); setReferenceEncaisse(""); setObjetEncaisse(""); setFactureChoisieId("");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'encaissement"),
   });
 
   const decaisserMut = useMutation({
-    mutationFn: () => cAPI.decaisser(caisseId, { montant: Number(montantDecaisse), motif: motifDecaisse || null }),
+    mutationFn: () => cAPI.decaisser(caisseId, { montant: Number(montantDecaisse), motif: motifDecaisse || null, objet: objetDecaisse || null, charge_id: chargeChoisieId || null }),
     onSuccess: () => {
       toast.success("Décaissement enregistré !");
       qc.invalidateQueries(["cl-caisses"]);
       qc.invalidateQueries(["cl-caisse-historique", caisseId]);
-      setMontantDecaisse(""); setMotifDecaisse("");
+      qc.invalidateQueries(["cl-charges-a-payer"]);
+      setMontantDecaisse(""); setMotifDecaisse(""); setObjetDecaisse(""); setChargeChoisieId("");
     },
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors du décaissement"),
   });
@@ -5878,17 +5895,33 @@ function PageCaisse() {
 
               <Grid cols={2} gap={20}>
                 <Panel title="📥 Encaissement">
+                  <Sel label="Facture à payer (optionnel)" value={factureChoisieId} onChange={e=>{
+                      const id = e.target.value; setFactureChoisieId(id);
+                      const f = facturesImpayees.find(x=>x.id===id);
+                      if (f) { setMontantEncaisse(String(f.montant_total)); setReferenceEncaisse(`${f.prenom||''} ${f.nom||''}`.trim() || f.reference); }
+                    }}
+                    options={[{v:"",l:"— Saisie libre —"}, ...facturesImpayees.map(f=>({v:f.id, l:`${f.reference} — ${f.prenom||''} ${f.nom||''} — ${fmt(f.montant_total)} F`}))]}
+                    style={{marginBottom:10}} />
                   <Inp label="Montant (FCFA)" type="number" placeholder="5000" value={montantEncaisse} onChange={e=>setMontantEncaisse(e.target.value)} style={{marginBottom:10}} />
                   <Sel label="Mode de paiement" value={modePaiement} onChange={e=>setModePaiement(e.target.value)} options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} style={{marginBottom:10}} />
-                  <Inp label="Référence / Patient" placeholder="Nom du patient ou référence" value={referenceEncaisse} onChange={e=>setReferenceEncaisse(e.target.value)} style={{marginBottom:14}} />
+                  <Inp label="Référence / Patient" placeholder="Nom du patient ou référence" value={referenceEncaisse} onChange={e=>setReferenceEncaisse(e.target.value)} style={{marginBottom:10}} />
+                  <Inp label="Objet" placeholder="Consultation, ordonnance, acte…" value={objetEncaisse} onChange={e=>setObjetEncaisse(e.target.value)} style={{marginBottom:14}} />
                   <Btn style={{width:"100%"}} loading={encaisserMut.isPending} onClick={()=>{
                     if(!montantEncaisse||Number(montantEncaisse)<=0){toast.error("Montant invalide");return;}
                     encaisserMut.mutate();
                   }}>Encaisser</Btn>
                 </Panel>
                 <Panel title="📤 Décaissement">
+                  <Sel label="Charge à payer (optionnel)" value={chargeChoisieId} onChange={e=>{
+                      const id = e.target.value; setChargeChoisieId(id);
+                      const c = chargesAPayer.find(x=>x.id===id);
+                      if (c) { setMontantDecaisse(String(c.montant)); setMotifDecaisse(c.libelle); }
+                    }}
+                    options={[{v:"",l:"— Saisie libre —"}, ...chargesAPayer.map(c=>({v:c.id, l:`${c.libelle} — ${fmt(c.montant)} F`}))]}
+                    style={{marginBottom:10}} />
                   <Inp label="Montant (FCFA)" type="number" placeholder="2000" value={montantDecaisse} onChange={e=>setMontantDecaisse(e.target.value)} style={{marginBottom:10}} />
-                  <Inp label="Motif" placeholder="Achat fournitures, remboursement…" value={motifDecaisse} onChange={e=>setMotifDecaisse(e.target.value)} style={{marginBottom:14}} />
+                  <Inp label="Motif" placeholder="Achat fournitures, remboursement…" value={motifDecaisse} onChange={e=>setMotifDecaisse(e.target.value)} style={{marginBottom:10}} />
+                  <Inp label="Objet" placeholder="Fournitures bureau, entretien…" value={objetDecaisse} onChange={e=>setObjetDecaisse(e.target.value)} style={{marginBottom:14}} />
                   <Btn variant="amber" style={{width:"100%"}} loading={decaisserMut.isPending} onClick={()=>{
                     if(!montantDecaisse||Number(montantDecaisse)<=0){toast.error("Montant invalide");return;}
                     decaisserMut.mutate();
