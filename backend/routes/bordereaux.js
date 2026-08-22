@@ -167,7 +167,8 @@ module.exports = function bordereauxRoutes(pool, auth) {
       const colDate = pickColumn(metaF, ['created_at', 'date_emission']);
 
       const { rows } = await client.query(
-        `SELECT f.* FROM "${metaF.name}" f
+        `SELECT f.*, p.prenom AS patient_prenom, p.nom AS patient_nom_reel
+         FROM "${metaF.name}" f
          JOIN patients p ON p.id = f.patient_id
          WHERE f.clinique_id = $1
            AND p.assureur_id = $2
@@ -176,6 +177,7 @@ module.exports = function bordereauxRoutes(pool, auth) {
          ORDER BY f."${colDate}" ASC`,
         [cliniqueId, compagnie_id, periode_debut, periode_fin]
       );
+      rows.forEach(r => { r.patient_nom = `${r.patient_prenom||''} ${r.patient_nom_reel||''}`.trim() || null; });
       res.json({ success: true, data: rows });
     } catch (e) {
       console.error('[bordereaux GET /eligibles]', e.message);
