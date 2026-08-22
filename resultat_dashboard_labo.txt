@@ -1,0 +1,403 @@
+=== Taille du fichier ===
+     473 frontend/src/pages/laboratoire/Dashboard.jsx
+
+=== Lignes correspondant aux mots-cles pertinents ===
+1:import React, { useState, useRef } from 'react';
+43:  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/${resourceType}/upload`, {
+121:        {isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses envoyées par les cliniques apparaîtront ici"/>:
+141:  const [tab, setTab] = useState('recus');
+143:  const [fichier, setFichier] = useState(null);
+144:  const [resultat, setResultat] = useState('');
+145:  const [patientNom, setPatientNom] = useState('');
+146:  const [type, setType] = useState('NFS');
+147:  const [notes, setNotes] = useState('');
+148:  const [succes, setSucces] = useState(false);
+149:  const [uploadEnCours, setUploadEnCours] = useState(false);
+150:  const [bulletinActif, setBulletinActif] = useState(null); // demande a laquelle on repond (null = patient de passage)
+151:  const [codePatientPassage, setCodePatientPassage] = useState('');
+152:  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+153:  const [erreurRecherche, setErreurRecherche] = useState('');
+154:  const [patientPassage, setPatientPassage] = useState(null);
+200:        {[['recus','📥 Demandes reçues'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
+209:        isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses apparaîtront ici"/>:
+210:        <Panel title={`Demandes reçues (${bulletins.length})`}>
+363:function PageAdministration() {
+365:  const [showAdd, setShowAdd] = useState(false);
+366:  const [form, setForm] = useState({ prenom:'', nom:'', email:'', password:'', telephone:'', sous_role:'technicien' });
+391:          <div style={{ fontSize:20, fontWeight:800, color:C.text }}>👤 Administration</div>
+469:      <Route path="administration" element={<PageAdministration/>}/>
+
+=== Contexte autour de chaque zone trouvee (80 lignes apres chaque match sur les mots-cles metier) ===
+
+>>> Contexte autour de la ligne 121 <<<
+
+      <Grid cols={3} gap={14} style={{ marginBottom:24 }}>
+        <Card label="Bulletins reçus" value={bulletins.length}                            icon="🔬" color={C.teal}/>
+        <Card label="En attente"      value={bulletins.filter(b=>b.statut==='nouveau').length} icon="⏳" color={C.amber}/>
+        <Card label="Traités"         value={bulletins.filter(b=>b.statut==='traite').length}  icon="✅" color={C.green}/>
+      </Grid>
+
+      <Panel title="📥 Dernières demandes d'analyses" actions={
+        <button onClick={()=>nav('bulletins')} style={{ background:'none',border:`1px solid ${C.border}`,borderRadius:8,padding:'5px 12px',color:C.muted,cursor:'pointer',fontSize:12,fontFamily:'inherit' }}>Tout voir →</button>
+      }>
+        {isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses envoyées par les cliniques apparaîtront ici"/>:
+          bulletins.slice(0,5).map((b,i)=>(
+            <div key={b.id||i} style={{ display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:22 }}>🧪</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.type||'Analyse'} — {b.patient_nom||'Patient'}</div>
+                <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                {b.notes&&<div style={{ fontSize:11,color:C.dim }}>{b.notes}</div>}
+              </div>
+              <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'En attente':'Traité'}</Badge>
+            </div>
+          ))
+        }
+      </Panel>
+    </div>
+  );
+}
+
+function PageBulletins() {
+  const qc = useQueryClient();
+  const [tab, setTab] = useState('recus');
+  const fileRef = useRef();
+  const [fichier, setFichier] = useState(null);
+  const [resultat, setResultat] = useState('');
+  const [patientNom, setPatientNom] = useState('');
+  const [type, setType] = useState('NFS');
+  const [notes, setNotes] = useState('');
+  const [succes, setSucces] = useState(false);
+  const [uploadEnCours, setUploadEnCours] = useState(false);
+  const [bulletinActif, setBulletinActif] = useState(null); // demande a laquelle on repond (null = patient de passage)
+  const [codePatientPassage, setCodePatientPassage] = useState('');
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+  const [erreurRecherche, setErreurRecherche] = useState('');
+  const [patientPassage, setPatientPassage] = useState(null);
+
+  const { data, isLoading } = useQuery({ queryKey:['lab-bulletins'], queryFn:()=>labAPI.bulletins().then(r=>r.data.data||[]) });
+  const bulletins = data||[];
+
+  const reinitialiserFormulaire = () => {
+    setResultat(''); setFichier(null); setPatientNom(''); setNotes('');
+    setBulletinActif(null); setPatientPassage(null); setCodePatientPassage(''); setErreurRecherche('');
+  };
+  const addMut = useMutation({
+    mutationFn: d => labAPI.addBulletin(d),
+    onSuccess: () => { qc.invalidateQueries(['lab-bulletins']); setSucces(true); setTimeout(()=>setSucces(false),2500); reinitialiserFormulaire(); },
+    onError: () => { toast.error('Erreur'); setSucces(true); setTimeout(()=>setSucces(false),2500); },
+  });
+  // Repondre a une demande existante = completer sa ligne (PUT), jamais
+  // creer une seconde ligne detachee du patient d'origine.
+  const repondreMut = useMutation({
+    mutationFn: ({id,d}) => labAPI.updBulletin(id,d),
+    onSuccess: () => { qc.invalidateQueries(['lab-bulletins']); setSucces(true); setTimeout(()=>setSucces(false),2500); reinitialiserFormulaire(); },
+    onError: () => { toast.error('Erreur'); setSucces(true); setTimeout(()=>setSucces(false),2500); },
+  });
+  const rechercherPatientPassage = async () => {
+    const code = codePatientPassage.trim();
+    if (!code) { setErreurRecherche('Entrez un code dossier'); return; }
+    setRechercheEnCours(true); setErreurRecherche(''); setPatientPassage(null);
+    try {
+      const r = await api.get(`/patients/by-code/${encodeURIComponent(code)}`);
+      const p = r?.data?.data;
+      if (p?.id) setPatientPassage(p); else setErreurRecherche('Aucun patient avec ce code');
+    } catch(e) {
+      setErreurRecherche(e?.response?.data?.message || 'Aucun patient avec ce code');
+    }
+    setRechercheEnCours(false);
+  };
+  const updMut = useMutation({
+    mutationFn: ({id,statut}) => labAPI.updBulletin(id,{statut}),
+    onSuccess: () => { toast.success('Mis à jour'); qc.invalidateQueries(['lab-bulletins']); },
+  });
+
+  const TYPES_LAB = ['NFS','Glycémie','Bilan lipidique','Bilan hépatique','Bilan rénal','Sérologie','Hémoculture','Ionogramme','HbA1c','Urine ECBU','Frottis','PCR','Groupe sanguin','Autre'];
+
+  return (
+    <div>
+      <PageHeader title="🔬 Bulletins d'analyses" subtitle="Gestion des demandes et résultats"/>
+
+      <div style={{ display:'flex',gap:4,background:C.input,borderRadius:12,padding:4,marginBottom:24,width:'fit-content' }}>
+        {[['recus','📥 Demandes reçues'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
+          <button key={v} onClick={()=>setTab(v)}
+
+>>> Contexte autour de la ligne 200 <<<
+    onSuccess: () => { toast.success('Mis à jour'); qc.invalidateQueries(['lab-bulletins']); },
+  });
+
+  const TYPES_LAB = ['NFS','Glycémie','Bilan lipidique','Bilan hépatique','Bilan rénal','Sérologie','Hémoculture','Ionogramme','HbA1c','Urine ECBU','Frottis','PCR','Groupe sanguin','Autre'];
+
+  return (
+    <div>
+      <PageHeader title="🔬 Bulletins d'analyses" subtitle="Gestion des demandes et résultats"/>
+
+      <div style={{ display:'flex',gap:4,background:C.input,borderRadius:12,padding:4,marginBottom:24,width:'fit-content' }}>
+        {[['recus','📥 Demandes reçues'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
+          <button key={v} onClick={()=>setTab(v)}
+            style={{ background:tab===v?C.teal:'none',border:'none',borderRadius:8,padding:'8px 20px',color:tab===v?'#fff':C.muted,fontSize:13,fontWeight:tab===v?700:400,cursor:'pointer',fontFamily:'inherit' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab==='recus'&&(
+        isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses apparaîtront ici"/>:
+        <Panel title={`Demandes reçues (${bulletins.length})`}>
+          {bulletins.map((b,i)=>(
+            <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:22 }}>🧪</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.type||'Analyse'} — {b.patient_nom||'—'}</div>
+                <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                {b.notes&&<div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.notes}</div>}
+                {b.fichier_prescription_url&&(
+                  <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                    📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                  </a>
+                )}
+                {b.rapport&&<div style={{ fontSize:12,color:C.teal,marginTop:4,fontStyle:'italic' }}>📋 Résultats: {b.rapport.slice(0,80)}…</div>}
+              </div>
+              <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
+                <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'En attente':'Traité'}</Badge>
+                {b.statut==='nouveau'&&estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>{ setBulletinActif(b); setType(b.type||'NFS'); setNotes(''); setResultat(''); setFichier(null); setTab('envoyer'); }}
+                    style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                    📝 Répondre
+                  </button>
+                )}
+                {b.statut==='nouveau'&&!estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>updMut.mutate({id:b.id,statut:'traite'})}
+                    style={{ background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,cursor:'pointer',fontFamily:'inherit' }}>
+                    ✅ Marquer traité
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {tab==='envoyer'&&(
+        <div style={{ maxWidth:600 }}>
+          {succes?(
+            <div style={{ textAlign:'center',padding:'60px',background:C.input,borderRadius:16,border:`1px solid rgba(13,148,136,.3)` }}>
+              <div style={{ fontSize:60,marginBottom:12 }}>✅</div>
+              <div style={{ fontSize:18,fontWeight:800,color:C.text }}>Résultats envoyés avec succès !</div>
+              <div style={{ fontSize:13,color:C.muted,marginTop:8 }}>Les résultats sont disponibles dans le dossier patient.</div>
+            </div>
+          ):(
+            <div style={{ background:C.input,border:`1px solid ${C.border}`,borderRadius:16,padding:24 }}>
+              <div style={{ fontSize:14,fontWeight:700,color:C.text,marginBottom:16 }}>
+                {bulletinActif?`📝 Répondre — ${bulletinActif.patient_nom||'Patient'}`:'📤 Enregistrer un résultat'}
+              </div>
+
+              {bulletinActif ? (
+                <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{bulletinActif.patient_nom||'Patient'}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{bulletinActif.type} · demande du {fmtDate(bulletinActif.created_at)}</div>
+                  </div>
+                  <button type="button" onClick={reinitialiserFormulaire}
+                    style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                </div>
+              ) : (
+                <div style={{marginBottom:16}}>
+                  <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Patient de passage — code dossier *</label>
+                  {patientPassage ? (
+                    <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientPassage.prenom} {patientPassage.nom}</div>
+                        <div style={{fontSize:11,color:C.muted}}>Dossier : {patientPassage.code_secret||'—'}</div>
+                      </div>
+                      <button type="button" onClick={()=>{ setPatientPassage(null); setCodePatientPassage(''); }}
+                        style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                    </div>
+
+>>> Contexte autour de la ligne 209 <<<
+      <div style={{ display:'flex',gap:4,background:C.input,borderRadius:12,padding:4,marginBottom:24,width:'fit-content' }}>
+        {[['recus','📥 Demandes reçues'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
+          <button key={v} onClick={()=>setTab(v)}
+            style={{ background:tab===v?C.teal:'none',border:'none',borderRadius:8,padding:'8px 20px',color:tab===v?'#fff':C.muted,fontSize:13,fontWeight:tab===v?700:400,cursor:'pointer',fontFamily:'inherit' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab==='recus'&&(
+        isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses apparaîtront ici"/>:
+        <Panel title={`Demandes reçues (${bulletins.length})`}>
+          {bulletins.map((b,i)=>(
+            <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:22 }}>🧪</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.type||'Analyse'} — {b.patient_nom||'—'}</div>
+                <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                {b.notes&&<div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.notes}</div>}
+                {b.fichier_prescription_url&&(
+                  <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                    📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                  </a>
+                )}
+                {b.rapport&&<div style={{ fontSize:12,color:C.teal,marginTop:4,fontStyle:'italic' }}>📋 Résultats: {b.rapport.slice(0,80)}…</div>}
+              </div>
+              <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
+                <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'En attente':'Traité'}</Badge>
+                {b.statut==='nouveau'&&estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>{ setBulletinActif(b); setType(b.type||'NFS'); setNotes(''); setResultat(''); setFichier(null); setTab('envoyer'); }}
+                    style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                    📝 Répondre
+                  </button>
+                )}
+                {b.statut==='nouveau'&&!estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>updMut.mutate({id:b.id,statut:'traite'})}
+                    style={{ background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,cursor:'pointer',fontFamily:'inherit' }}>
+                    ✅ Marquer traité
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {tab==='envoyer'&&(
+        <div style={{ maxWidth:600 }}>
+          {succes?(
+            <div style={{ textAlign:'center',padding:'60px',background:C.input,borderRadius:16,border:`1px solid rgba(13,148,136,.3)` }}>
+              <div style={{ fontSize:60,marginBottom:12 }}>✅</div>
+              <div style={{ fontSize:18,fontWeight:800,color:C.text }}>Résultats envoyés avec succès !</div>
+              <div style={{ fontSize:13,color:C.muted,marginTop:8 }}>Les résultats sont disponibles dans le dossier patient.</div>
+            </div>
+          ):(
+            <div style={{ background:C.input,border:`1px solid ${C.border}`,borderRadius:16,padding:24 }}>
+              <div style={{ fontSize:14,fontWeight:700,color:C.text,marginBottom:16 }}>
+                {bulletinActif?`📝 Répondre — ${bulletinActif.patient_nom||'Patient'}`:'📤 Enregistrer un résultat'}
+              </div>
+
+              {bulletinActif ? (
+                <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{bulletinActif.patient_nom||'Patient'}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{bulletinActif.type} · demande du {fmtDate(bulletinActif.created_at)}</div>
+                  </div>
+                  <button type="button" onClick={reinitialiserFormulaire}
+                    style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                </div>
+              ) : (
+                <div style={{marginBottom:16}}>
+                  <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Patient de passage — code dossier *</label>
+                  {patientPassage ? (
+                    <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientPassage.prenom} {patientPassage.nom}</div>
+                        <div style={{fontSize:11,color:C.muted}}>Dossier : {patientPassage.code_secret||'—'}</div>
+                      </div>
+                      <button type="button" onClick={()=>{ setPatientPassage(null); setCodePatientPassage(''); }}
+                        style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',gap:8}}>
+                      <input value={codePatientPassage} onChange={e=>{ setCodePatientPassage(e.target.value); setErreurRecherche(''); }}
+                        placeholder="MC-XX-0000"
+                        style={{ flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box' }}/>
+                      <button onClick={rechercherPatientPassage} disabled={rechercheEnCours}
+                        style={{padding:'0 18px',background:C.teal,border:'none',borderRadius:9,color:'#fff',fontSize:13,fontWeight:700,cursor:rechercheEnCours?'not-allowed':'pointer',fontFamily:'inherit'}}>
+                        {rechercheEnCours?'…':'🔎'}
+                      </button>
+
+>>> Contexte autour de la ligne 210 <<<
+        {[['recus','📥 Demandes reçues'],['envoyer','📤 Envoyer résultats']].map(([v,l])=>(
+          <button key={v} onClick={()=>setTab(v)}
+            style={{ background:tab===v?C.teal:'none',border:'none',borderRadius:8,padding:'8px 20px',color:tab===v?'#fff':C.muted,fontSize:13,fontWeight:tab===v?700:400,cursor:'pointer',fontFamily:'inherit' }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {tab==='recus'&&(
+        isLoading?<Loader/>:bulletins.length===0?<Empty icon="🧪" title="Aucune demande reçue" subtitle="Les demandes d'analyses apparaîtront ici"/>:
+        <Panel title={`Demandes reçues (${bulletins.length})`}>
+          {bulletins.map((b,i)=>(
+            <div key={b.id||i} style={{ display:'flex',alignItems:'flex-start',gap:14,padding:'12px 0',borderBottom:`1px solid ${C.border}` }}>
+              <span style={{ fontSize:22 }}>🧪</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13,fontWeight:700,color:C.text }}>{b.type||'Analyse'} — {b.patient_nom||'—'}</div>
+                <div style={{ fontSize:11,color:C.muted }}>De: {b.emetteur_nom||'—'} · {fmtDate(b.created_at)}</div>
+                {b.notes&&<div style={{ fontSize:11,color:C.dim,marginTop:2 }}>{b.notes}</div>}
+                {b.fichier_prescription_url&&(
+                  <a href={b.fichier_prescription_url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:'inline-block',fontSize:11,color:C.blue,marginTop:4,textDecoration:'none',fontWeight:700 }}>
+                    📎 Voir la prescription{b.fichier_prescription_nom?` (${b.fichier_prescription_nom})`:''} ↗
+                  </a>
+                )}
+                {b.rapport&&<div style={{ fontSize:12,color:C.teal,marginTop:4,fontStyle:'italic' }}>📋 Résultats: {b.rapport.slice(0,80)}…</div>}
+              </div>
+              <div style={{ display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end' }}>
+                <Badge color={b.statut==='nouveau'?'blue':'green'}>{b.statut==='nouveau'?'En attente':'Traité'}</Badge>
+                {b.statut==='nouveau'&&estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>{ setBulletinActif(b); setType(b.type||'NFS'); setNotes(''); setResultat(''); setFichier(null); setTab('envoyer'); }}
+                    style={{ background:'rgba(13,148,136,.15)',border:'1px solid rgba(13,148,136,.4)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>
+                    📝 Répondre
+                  </button>
+                )}
+                {b.statut==='nouveau'&&!estDemandeIdentifiee(b)&&(
+                  <button onClick={()=>updMut.mutate({id:b.id,statut:'traite'})}
+                    style={{ background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:8,padding:'4px 10px',color:C.teal,fontSize:11,cursor:'pointer',fontFamily:'inherit' }}>
+                    ✅ Marquer traité
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {tab==='envoyer'&&(
+        <div style={{ maxWidth:600 }}>
+          {succes?(
+            <div style={{ textAlign:'center',padding:'60px',background:C.input,borderRadius:16,border:`1px solid rgba(13,148,136,.3)` }}>
+              <div style={{ fontSize:60,marginBottom:12 }}>✅</div>
+              <div style={{ fontSize:18,fontWeight:800,color:C.text }}>Résultats envoyés avec succès !</div>
+              <div style={{ fontSize:13,color:C.muted,marginTop:8 }}>Les résultats sont disponibles dans le dossier patient.</div>
+            </div>
+          ):(
+            <div style={{ background:C.input,border:`1px solid ${C.border}`,borderRadius:16,padding:24 }}>
+              <div style={{ fontSize:14,fontWeight:700,color:C.text,marginBottom:16 }}>
+                {bulletinActif?`📝 Répondre — ${bulletinActif.patient_nom||'Patient'}`:'📤 Enregistrer un résultat'}
+              </div>
+
+              {bulletinActif ? (
+                <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{bulletinActif.patient_nom||'Patient'}</div>
+                    <div style={{fontSize:11,color:C.muted}}>{bulletinActif.type} · demande du {fmtDate(bulletinActif.created_at)}</div>
+                  </div>
+                  <button type="button" onClick={reinitialiserFormulaire}
+                    style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                </div>
+              ) : (
+                <div style={{marginBottom:16}}>
+                  <label style={{ display:'block',fontSize:11,fontWeight:700,color:C.muted,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:5 }}>Patient de passage — code dossier *</label>
+                  {patientPassage ? (
+                    <div style={{background:'rgba(13,148,136,.1)',border:'1px solid rgba(13,148,136,.3)',borderRadius:9,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.text}}>✓ {patientPassage.prenom} {patientPassage.nom}</div>
+                        <div style={{fontSize:11,color:C.muted}}>Dossier : {patientPassage.code_secret||'—'}</div>
+                      </div>
+                      <button type="button" onClick={()=>{ setPatientPassage(null); setCodePatientPassage(''); }}
+                        style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:13}}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',gap:8}}>
+                      <input value={codePatientPassage} onChange={e=>{ setCodePatientPassage(e.target.value); setErreurRecherche(''); }}
+                        placeholder="MC-XX-0000"
+                        style={{ flex:1,background:C.hover,border:`1.5px solid ${C.border}`,borderRadius:9,padding:'10px 14px',color:C.text,fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box' }}/>
+                      <button onClick={rechercherPatientPassage} disabled={rechercheEnCours}
+                        style={{padding:'0 18px',background:C.teal,border:'none',borderRadius:9,color:'#fff',fontSize:13,fontWeight:700,cursor:rechercheEnCours?'not-allowed':'pointer',fontFamily:'inherit'}}>
+                        {rechercheEnCours?'…':'🔎'}
+                      </button>
+                    </div>
+

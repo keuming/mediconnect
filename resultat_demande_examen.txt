@@ -1,0 +1,28 @@
+=== A) Fichiers frontend contenant 'Demande d'examen' ou similaire ===
+frontend/src/pages/laboratoire/Dashboard.jsx
+frontend/src/pages/clinique/Dashboard.jsx
+
+=== B) Fichiers appelant addBulletin ou postBulletin ou bulletins( cote clinique ===
+frontend/src/pages/clinique/Dashboard.jsx
+frontend/src/pages/patient/PageDossier.jsx
+
+=== C) Contexte : occurrences 'type' pres de 'bulletin' dans PageDossiers (si trouve) ===
+Fichiers dossier trouves :
+frontend/src/pages/patient/PageDossier.jsx
+
+--- Lignes avec 'bulletin' ou 'examen' dans frontend/src/pages/patient/PageDossier.jsx ---
+103:  bulletins:   ()  => fetchAuth('/bulletins'),
+322:    laboratoire:['NFS','Glycémie','Bilan lipidique','Bilan hépatique','Bilan rénal','HbA1c','Sérologie','ECBU','Hémoculture','PCR','Ionogramme','Groupe sanguin','Bilan thyroïdien','Autre analyse'],
+327:    mutationFn: d => fetchAuth('/bulletins', {method:'POST',body:JSON.stringify(d)}),
+329:      if(r.success) { toast.success('✅ Document archivé dans votre dossier'); qc.invalidateQueries(['dme-bulletins']); onClose(); }
+450:  const {data:bulletinsData,isLoading:ldBul} = useQuery({
+451:    queryKey:['dme-bulletins'],
+452:    queryFn: () => dmeAPI.bulletins().then(r=>r.data||[]),
+464:  const bulletins = bulletinsData||[];
+472:    {key:'bulletins',   icon:'📁', label:`Documents (${bulletins.length})`},
+732:      {activeTab==='bulletins'&&(
+735:            <div style={{fontSize:14,fontWeight:700,color:C.text}}>{bulletins.length} document(s) archivé(s)</div>
+738:          {ldBul?<Loader/>:bulletins.length===0
+739:            ?<Empty icon="📁" title="Aucun document" subtitle="Archivez vos résultats d'analyses, radios, comptes-rendus et tous vos documents médicaux."/>
+741:              {bulletins.map(b=>{
+

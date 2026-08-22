@@ -1,0 +1,196 @@
+=== A) Taille du fichier ===
+     294 backend/routes/extra.js
+
+=== B) Ou extra.js est monte dans server.js ===
+248:app.use('/api',           require('./routes/extra'));
+
+=== C) Toutes les routes definies dans extra.js (methode + chemin) ===
+6:router.get('/bulletins', auth, async (req, res) => {
+36:router.post('/bulletins', auth, async (req, res) => {
+63:router.put('/bulletins/:id', auth, async (req, res) => {
+75:router.get('/public/specialites', async (req, res) => {
+90:router.get('/public/cliniques/:id/specialites', async (req, res) => {
+100:router.get('/cliniques/specialites', auth, async (req, res) => {
+107:router.post('/cliniques/specialites', auth, async (req, res) => {
+122:router.put('/cliniques/specialites/:id', auth, async (req, res) => {
+133:router.delete('/cliniques/specialites/:id', auth, async (req, res) => {
+141:router.get('/pharmacie/commandes', auth, async (req, res) => {
+155:router.get('/livreurs/commandes', auth, async (req, res) => {
+168:router.put('/livreurs/position', auth, async (req, res) => {
+173:router.get('/patients/me', auth, async (req, res) => {
+181:router.post('/consultations/depuis-rdv', auth, async (req, res) => {
+210:router.get('/public/recherche-specialite', async (req, res) => {
+239:router.get('/public/prestataires', async (req, res) => {
+
+=== D) Lignes 1 a 170 (creation table bulletins + POST) ===
+const router = require('express').Router();
+const { db } = require('../config/db');
+const { auth } = require('../middleware/auth');
+
+// ── BULLETINS ─────────────────────────────────────────────────────
+router.get('/bulletins', auth, async (req, res) => {
+  try {
+    const { categorie, statut, patient_id } = req.query;
+    let sql = 'SELECT * FROM bulletins WHERE 1=1'; const p = [];
+    // FAILLE CONFIDENTIALITE CORRIGEE : sans ce filtre, un patient voyait
+    // TOUS les bulletins de TOUS les patients (resultats labo/imagerie
+    // d'inconnus). Le filtre vient de req.user (token signe), jamais
+    // d'un parametre de requete que le client pourrait manipuler.
+    if (req.user?.role === 'patient') {
+      if (!req.user.patient_id) { return res.json({ success: true, data: [] }); }
+      p.push(req.user.patient_id);
+      sql += ` AND patient_id=$${p.length}`;
+    } else if (req.user?.clinique_id) {
+      p.push(req.user.clinique_id);
+      sql += ` AND clinique_id=$${p.length}`;
+      // Filtre patient_id optionnel pour le personnel (ex: outil de
+      // recherche de resultats par code dossier). Toujours EN PLUS du
+      // cloisonnement clinique_id ci-dessus, jamais a sa place : le
+      // personnel ne peut interroger que les patients de sa propre
+      // clinique, meme en connaissant l'id d'un patient externe.
+      if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    }
+    if (categorie) { p.push(categorie); sql += ` AND categorie=$${p.length}`; }
+    if (statut)    { p.push(statut);    sql += ` AND statut=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.post('/bulletins', auth, async (req, res) => {
+  const {
+    type, categorie, patient_nom, emetteur_nom, notes, rapport, fichier_url, fichier_nom, statut,
+    // Fichier de PRESCRIPTION joint par le medecin a la demande -- colonnes
+    // distinctes de fichier_url/fichier_nom (reservees au RESULTAT que le
+    // labo/imagerie uploade plus tard via PUT). Les melanger ferait
+    // ecraser la prescription par le resultat au moment de la reponse.
+    fichier_prescription_url, fichier_prescription_nom,
+  } = req.body;
+  if (!type) return res.status(400).json({ success: false, message: 'Type requis' });
+  try {
+    // Un compte patient ne peut jamais creer un bulletin au nom d'un autre
+    // patient : le patient_id vient du token signe, pas du corps de la
+    // requete, meme si le champ est present dans le payload envoye.
+    // Les autres roles (clinique, labo, imagerie) restent libres de
+    // specifier le patient_id cible.
+    const patientId = req.user?.role === 'patient'
+      ? (req.user.patient_id || null)
+      : (req.body.patient_id || null);
+    const r = await db(
+      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statut||'nouveau', fichier_prescription_url||null, fichier_prescription_nom||null]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.put('/bulletins/:id', auth, async (req, res) => {
+  const { statut, rapport, notes, fichier_url, fichier_nom } = req.body;
+  try {
+    const r = await db(
+      "UPDATE bulletins SET statut=COALESCE($1,statut),rapport=COALESCE($2,rapport),notes=COALESCE($3,notes),fichier_url=COALESCE($4,fichier_url),fichier_nom=COALESCE($5,fichier_nom),updated_at=NOW() WHERE id=$6 RETURNING *",
+      [statut||null, rapport||null, notes||null, fichier_url||null, fichier_nom||null, req.params.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── SPÉCIALITÉS CLINIQUE ─────────────────────────────────────────
+router.get('/public/specialites', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT s.nom, COUNT(DISTINCT s.clinique_id) AS nb_cliniques,
+             json_agg(DISTINCT jsonb_build_object('id',c.id,'nom',c.nom,'ville',c.ville))
+               FILTER (WHERE c.id IS NOT NULL) AS cliniques
+      FROM specialites_clinique s
+      LEFT JOIN cliniques c ON c.id=s.clinique_id AND c.is_active IS NOT false
+      WHERE s.disponible=true
+      GROUP BY s.nom ORDER BY nb_cliniques DESC, s.nom
+    `);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.get('/public/cliniques/:id/specialites', async (req, res) => {
+  try {
+    const r = await db(
+      'SELECT * FROM specialites_clinique WHERE clinique_id=$1 AND disponible=true ORDER BY nom',
+      [req.params.id]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.get('/cliniques/specialites', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM specialites_clinique WHERE clinique_id=$1 ORDER BY nom', [req.user?.clinique_id]);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.post('/cliniques/specialites', auth, async (req, res) => {
+  const { nom, description, tarif_consultation } = req.body;
+  if (!nom) return res.status(400).json({ success: false, message: 'Nom requis' });
+  try {
+    const cid = req.user?.clinique_id;
+    const exists = await db('SELECT id FROM specialites_clinique WHERE clinique_id=$1 AND nom=$2', [cid, nom]);
+    if (exists.rows.length) return res.status(409).json({ success: false, message: 'Spécialité déjà existante' });
+    const r = await db(
+      'INSERT INTO specialites_clinique (id,clinique_id,nom,description,tarif_consultation) VALUES (gen_random_uuid(),$1,$2,$3,$4) RETURNING *',
+      [cid, nom, description||null, tarif_consultation||null]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.put('/cliniques/specialites/:id', auth, async (req, res) => {
+  const { nom, description, tarif_consultation, disponible } = req.body;
+  try {
+    const r = await db(
+      'UPDATE specialites_clinique SET nom=COALESCE($1,nom),description=COALESCE($2,description),tarif_consultation=COALESCE($3::DECIMAL,tarif_consultation),disponible=COALESCE($4,disponible) WHERE id=$5 AND clinique_id=$6 RETURNING *',
+      [nom||null, description||null, tarif_consultation||null, disponible??null, req.params.id, req.user?.clinique_id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.delete('/cliniques/specialites/:id', auth, async (req, res) => {
+  try {
+    await db('UPDATE specialites_clinique SET disponible=false WHERE id=$1 AND clinique_id=$2', [req.params.id, req.user?.clinique_id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── PHARMACIE ─────────────────────────────────────────────────────
+router.get('/pharmacie/commandes', auth, async (req, res) => {
+  try {
+    const { statut } = req.query;
+    let sql = `SELECT c.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact
+               FROM commandes c LEFT JOIN utilisateurs u ON u.id=c.patient_id WHERE 1=1`;
+    const p = [];
+    if (statut) { p.push(statut); sql += ` AND c.statut=$${p.length}`; }
+    sql += ' ORDER BY c.created_at DESC LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── LIVREURS ─────────────────────────────────────────────────────
+router.get('/livreurs/commandes', auth, async (req, res) => {
+  try {
+    const lid = req.user?.id;
+    const r = await db(`
+      SELECT c.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact
+      FROM commandes c LEFT JOIN utilisateurs u ON u.id=c.patient_id
+      WHERE (c.livreur_id=$1 OR (c.livreur_id IS NULL AND c.statut='confirmee'))
+      ORDER BY c.created_at DESC LIMIT 50
+    `, [lid]);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.put('/livreurs/position', auth, async (req, res) => {
+  res.json({ success: true, message: 'Position enregistrée' });
+});
+

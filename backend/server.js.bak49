@@ -140,13 +140,6 @@ const initTables = async () => {
       clinique_id UUID, nom VARCHAR(200) NOT NULL,
       is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
-    `CREATE TABLE IF NOT EXISTS charges_a_payer (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      clinique_id UUID NOT NULL, categorie_charge_id UUID,
-      libelle VARCHAR(300) NOT NULL, montant DECIMAL(12,2) NOT NULL,
-      statut VARCHAR(20) DEFAULT 'a_payer', date_echeance DATE,
-      created_at TIMESTAMPTZ DEFAULT NOW(), paye_at TIMESTAMPTZ
-    )`,
   ];
   for (const sql of tables) {
     await db(sql).catch(e => console.error('[INIT TABLE]', e.message));
@@ -368,20 +361,9 @@ app.get('/api/cliniques/stats', auth, async (req, res) => {
 app.get('/api/medecins', auth, async (req, res) => {
   try {
     const cid = req.query.clinique_id || req.user?.clinique_id;
-    // Jointure sur le compte de connexion lie (medecins.user_id), pour
-    // afficher son statut sans requete separee cote frontend.
     const r = cid
-      ? await db(
-          `SELECT m.*, u.id AS compte_id, u.email AS compte_email, u.is_active AS compte_actif
-             FROM medecins m LEFT JOIN utilisateurs u ON u.id = m.user_id
-            WHERE m.clinique_id=$1 ORDER BY m.nom,m.prenom`,
-          [cid]
-        )
-      : await db(
-          `SELECT m.*, u.id AS compte_id, u.email AS compte_email, u.is_active AS compte_actif
-             FROM medecins m LEFT JOIN utilisateurs u ON u.id = m.user_id
-            ORDER BY m.nom,m.prenom LIMIT 200`
-        );
+      ? await db('SELECT * FROM medecins WHERE clinique_id=$1 ORDER BY nom,prenom', [cid])
+      : await db('SELECT * FROM medecins ORDER BY nom,prenom LIMIT 200');
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
@@ -432,14 +414,11 @@ app.post('/api/medecins', auth, async (req, res) => {
       } else {
         const bcrypt = require('bcryptjs');
         const hash = await bcrypt.hash(password, 10);
-        // Lien bidirectionnel medecins.user_id <-> utilisateurs.medecin_id,
-        // pose des la creation.
-        const compteR = await db(
-          `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,clinique_id,sous_role,is_active,medecin_id)
-           VALUES (gen_random_uuid(),$1,$2,$3,$4,'clinique',$5,$6,'medecin',true,$7) RETURNING id`,
-          [email, hash, prenom, nom, telephone||null, req.user?.clinique_id, medecin.id]
+        await db(
+          `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,clinique_id,sous_role,is_active)
+           VALUES (gen_random_uuid(),$1,$2,$3,$4,'clinique',$5,$6,'medecin',true)`,
+          [email, hash, prenom, nom, telephone||null, req.user?.clinique_id]
         );
-        await db('UPDATE medecins SET user_id=$1 WHERE id=$2', [compteR.rows[0].id, medecin.id]);
         compteCree = true;
       }
     }
@@ -462,43 +441,8 @@ app.put('/api/medecins/:id', auth, async (req, res) => {
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 app.delete('/api/medecins/:id', auth, async (req, res) => {
-  const cid = req.user?.clinique_id;
-  try {
-    const m = await db('SELECT user_id FROM medecins WHERE id=$1 AND clinique_id=$2', [req.params.id, cid]);
-    if (!m.rows.length) return res.status(404).json({ success:false, message:'Médecin introuvable dans votre clinique' });
-    let compteDesactive = false;
-    if (m.rows[0].user_id) {
-      await db('UPDATE utilisateurs SET is_active=false WHERE id=$1', [m.rows[0].user_id]);
-      compteDesactive = true;
-    }
-    await db('DELETE FROM medecins WHERE id=$1', [req.params.id]);
-    res.json({ success:true, compteDesactive });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-// ── Backfill temporaire : lie retroactivement les fiches medecins et
-// comptes deja existants. Route a retirer apres usage. ──
-app.post('/api/admin/backfill-liens-medecins', async (req, res) => {
-  const key = req.headers['x-admin-key'];
-  if (key !== 'mediconnect_dev_secret_2024')
-    return res.status(403).json({ success:false, message:'Non autorise' });
-  try {
-    const r1 = await db(`
-      UPDATE medecins m SET user_id = u.id
-        FROM utilisateurs u
-       WHERE u.clinique_id = m.clinique_id AND u.sous_role='medecin'
-         AND LOWER(u.prenom) = LOWER(m.prenom) AND LOWER(u.nom) = LOWER(m.nom)
-         AND m.user_id IS NULL
-      RETURNING m.id, m.prenom, m.nom
-    `);
-    const r2 = await db(`
-      UPDATE utilisateurs u SET medecin_id = m.id
-        FROM medecins m
-       WHERE m.user_id = u.id AND u.medecin_id IS NULL
-      RETURNING u.id
-    `);
-    res.json({ success:true, medecins_lies: r1.rows.length, comptes_lies: r2.rows.length, details: r1.rows });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+  try { await db('DELETE FROM medecins WHERE id=$1', [req.params.id]); res.json({ success:true }); }
+  catch(e) { res.status(500).json({ success:false, message:e.message }); }
 });
 
 // ── PATIENTS ──────────────────────────────────────────────────────
@@ -680,11 +624,9 @@ app.get('/api/clinique/personnel', auth, requireSousRole(), async (req, res) => 
   if (!cid) return res.json({ success:true, data:[] });
   try {
     const r = await db(
-      `SELECT u.id,u.email,u.prenom,u.nom,u.telephone,u.sous_role,u.is_active,u.created_at,
-              m.id AS medecin_id, m.specialite AS medecin_specialite, m.tarif AS medecin_tarif
-         FROM utilisateurs u LEFT JOIN medecins m ON m.id = u.medecin_id
-        WHERE u.clinique_id=$1 AND u.sous_role IS NOT NULL
-        ORDER BY u.created_at DESC`,
+      `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+         FROM utilisateurs WHERE clinique_id=$1 AND sous_role IS NOT NULL
+        ORDER BY created_at DESC`,
       [cid]
     );
     res.json({ success:true, data:r.rows });
@@ -1677,14 +1619,18 @@ app.delete('/api/stock/:id', auth, async (req, res) => {
 app.get('/api/factures', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   try {
     const cid=req.user?.clinique_id; const pid=req.user?.patient_id;
-    const { patient_id, statut } = req.query;
+    const { patient_id } = req.query;
+    // factures n'a pas de colonne patient_nom propre -- recupere via
+    // jointure sur patients, a partir de patient_id.
     let sql=`SELECT f.*, TRIM(CONCAT(p.prenom,' ',p.nom)) AS patient_nom
                FROM factures f LEFT JOIN patients p ON p.id=f.patient_id WHERE 1=1`;
     const p=[];
     if (cid) { p.push(cid); sql+=` AND f.clinique_id=$${p.length}`; }
     if (pid&&!cid) { p.push(pid); sql+=` AND f.patient_id=$${p.length}`; }
+    // Filtre explicite par patient (dossier patient cote clinique) --
+    // s'ajoute au scope clinique_id deja applique ci-dessus, jamais un
+    // substitut : un compte clinique ne peut voir que SES patients.
     if (patient_id) { p.push(patient_id); sql+=` AND f.patient_id=$${p.length}`; }
-    if (statut) { p.push(statut); sql+=` AND f.statut=$${p.length}`; }
     sql+=' ORDER BY f.created_at DESC LIMIT 100';
     const r=await db(sql,p); res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
@@ -1870,107 +1816,6 @@ app.get('/api/caisse/:caisseId/historique', auth, requireSousRole('finance', 'bu
     res.json({ success:true, data:r.rows });
   } catch(e) { res.json({ success:true, data:[] }); }
 });
-app.get('/api/charges-a-payer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const cid = req.user?.clinique_id;
-  const { statut } = req.query;
-  try {
-    let sql = `SELECT c.*, cc.nom AS categorie_nom FROM charges_a_payer c
-                 LEFT JOIN categories_charges cc ON cc.id = c.categorie_charge_id
-                WHERE c.clinique_id=$1`;
-    const p = [cid];
-    p.push(statut||'a_payer'); sql += ` AND c.statut=$${p.length}`;
-    sql += ' ORDER BY c.created_at DESC';
-    const r = await db(sql, p);
-    res.json({ success:true, data:r.rows });
-  } catch(e) { res.json({ success:true, data:[] }); }
-});
-app.post('/api/charges-a-payer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { categorie_charge_id, libelle, montant, date_echeance } = req.body;
-  if (!libelle || !montant) return res.status(400).json({ success:false, message:'Libellé et montant requis' });
-  const cid = req.user?.clinique_id;
-  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
-  try {
-    const r = await db(
-      `INSERT INTO charges_a_payer (id,clinique_id,categorie_charge_id,libelle,montant,date_echeance)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5) RETURNING *`,
-      [cid, categorie_charge_id||null, libelle, montant, date_echeance||null]
-    );
-    res.status(201).json({ success:true, data:r.rows[0] });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-app.delete('/api/charges-a-payer/:id', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const cid = req.user?.clinique_id;
-  try {
-    const r = await db("DELETE FROM charges_a_payer WHERE id=$1 AND clinique_id=$2 AND statut='a_payer' RETURNING id", [req.params.id, cid]);
-    if (!r.rows.length) return res.status(404).json({ success:false, message:'Charge introuvable ou déjà payée' });
-    res.json({ success:true });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-app.post('/api/caisse/payer-facture', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { facture_id, caisse_id, mode_paiement, reduction_pourcentage, reduction_montant_fixe } = req.body;
-  if (!facture_id || !caisse_id) return res.status(400).json({ success:false, message:'facture_id et caisse_id requis' });
-  const cid = req.user?.clinique_id;
-  try {
-    const session = await db("SELECT id FROM caisse_sessions WHERE clinique_id=$1 AND caisse_id=$2 AND date=CURRENT_DATE AND statut='ouverte'", [cid, caisse_id]);
-    if (!session.rows.length) return res.status(400).json({ success:false, message:"Aucune session ouverte pour cette caisse aujourd'hui" });
-
-    const facR = await db('SELECT * FROM factures WHERE id=$1 AND clinique_id=$2', [facture_id, cid]);
-    if (!facR.rows.length) return res.status(404).json({ success:false, message:'Facture introuvable dans votre clinique' });
-    const facture = facR.rows[0];
-    if (facture.statut === 'payee') return res.status(400).json({ success:false, message:'Facture déjà payée' });
-
-    const montantActuel = parseFloat(facture.montant_total || 0);
-    let reduction = 0;
-    if (reduction_pourcentage) reduction = Math.round(montantActuel * parseFloat(reduction_pourcentage) / 100);
-    else if (reduction_montant_fixe) reduction = parseFloat(reduction_montant_fixe);
-    reduction = Math.max(0, Math.min(reduction, montantActuel));
-    const montantFinal = montantActuel - reduction;
-
-    const r = await db(
-      `UPDATE factures SET montant_total=$1, statut='payee', mode_paiement=COALESCE($2,mode_paiement),
-         reduction_montant=COALESCE(reduction_montant,0)+$3, updated_at=NOW()
-       WHERE id=$4 RETURNING *`,
-      [montantFinal, mode_paiement||null, reduction, facture_id]
-    );
-
-    await db(
-      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,mode_paiement,reference,utilisateur_id,utilisateur_nom)
-       VALUES (gen_random_uuid(),$1,$2,'encaissement',$3,$4,$5,$6,$7)`,
-      [caisse_id, cid, montantFinal, mode_paiement||null, facture.reference, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
-    );
-    await db("UPDATE caisse_sessions SET total_encaisse=total_encaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte'", [montantFinal, cid, caisse_id]);
-
-    res.json({ success:true, data:r.rows[0], reduction_appliquee:reduction });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
-app.post('/api/caisse/payer-charge', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
-  const { charge_id, caisse_id, mode_paiement } = req.body;
-  if (!charge_id || !caisse_id) return res.status(400).json({ success:false, message:'charge_id et caisse_id requis' });
-  const cid = req.user?.clinique_id;
-  try {
-    const session = await db("SELECT id FROM caisse_sessions WHERE clinique_id=$1 AND caisse_id=$2 AND date=CURRENT_DATE AND statut='ouverte'", [cid, caisse_id]);
-    if (!session.rows.length) return res.status(400).json({ success:false, message:"Aucune session ouverte pour cette caisse aujourd'hui" });
-
-    const chargeR = await db('SELECT * FROM charges_a_payer WHERE id=$1 AND clinique_id=$2', [charge_id, cid]);
-    if (!chargeR.rows.length) return res.status(404).json({ success:false, message:'Charge introuvable dans votre clinique' });
-    const charge = chargeR.rows[0];
-    if (charge.statut === 'payee') return res.status(400).json({ success:false, message:'Charge déjà payée' });
-
-    const r = await db("UPDATE charges_a_payer SET statut='payee', paye_at=NOW() WHERE id=$1 RETURNING *", [charge_id]);
-
-    await db(
-      `INSERT INTO mouvements_caisse (id,caisse_id,clinique_id,type,montant,reference,utilisateur_id,utilisateur_nom)
-       VALUES (gen_random_uuid(),$1,$2,'decaissement',$3,$4,$5,$6)`,
-      [caisse_id, cid, charge.montant, charge.libelle, req.user?.id||null, `${req.user?.prenom||''} ${req.user?.nom||''}`.trim()||null]
-    );
-    await db("UPDATE caisse_sessions SET total_decaisse=total_decaisse+$1 WHERE clinique_id=$2 AND caisse_id=$3 AND date=CURRENT_DATE AND statut='ouverte'", [charge.montant, cid, caisse_id]);
-
-    res.json({ success:true, data:r.rows[0] });
-  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
-});
-
 app.post('/api/caisse/cloturer', auth, requireSousRole('finance', 'bureau_entrees'), async (req, res) => {
   const { caisse_id } = req.body;
   if (!caisse_id) return res.status(400).json({ success:false, message:'caisse_id requis' });
@@ -3524,26 +3369,26 @@ app.post('/api/admin/init-logo-clinique', async (req, res) => {
 // ── Upload logo clinique (base64) ─────────────────────────────────
 app.post('/api/clinique/logo', auth, async (req, res) => {
   try {
-    const { logo, slogan, adresse_complete, horaires, site_web, telephone, adresse, ville, couleur_primaire } = req.body;
+    const { logo, slogan, adresse_complete, horaires, site_web, telephone, adresse, ville } = req.body;
     const cid = req.user?.clinique_id;
     if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
 
+    // Le logo est desormais optionnel a la sauvegarde : si absent, on
+    // conserve celui deja enregistre (permet de mettre a jour les
+    // coordonnees seules, sans re-uploader une image a chaque fois).
     if (logo && logo.length > 3000000)
       return res.status(400).json({ success: false, message: 'Logo trop volumineux (max 2MB)' });
-    if (couleur_primaire && !/^#[0-9A-Fa-f]{6}$/.test(couleur_primaire))
-      return res.status(400).json({ success: false, message: 'Couleur invalide (format attendu : #RRGGBB)' });
 
     const r = await db(
       `UPDATE cliniques SET
          logo=COALESCE($1,logo), slogan=COALESCE($2,slogan),
          adresse_complete=COALESCE($3,adresse_complete), horaires=COALESCE($4,horaires),
          site_web=COALESCE($5,site_web), telephone=COALESCE($6,telephone),
-         adresse=COALESCE($7,adresse), ville=COALESCE($8,ville),
-         couleur_primaire=COALESCE($9,couleur_primaire)
-       WHERE id=$10
-       RETURNING id, nom, logo, slogan, adresse_complete, horaires, site_web, telephone, adresse, ville, couleur_primaire`,
+         adresse=COALESCE($7,adresse), ville=COALESCE($8,ville)
+       WHERE id=$9
+       RETURNING id, nom, logo, slogan, adresse_complete, horaires, site_web, telephone, adresse, ville`,
       [logo||null, slogan||null, adresse_complete||null, horaires||null, site_web||null,
-       telephone||null, adresse||null, ville||null, couleur_primaire||null, cid]
+       telephone||null, adresse||null, ville||null, cid]
     );
     res.json({ success: true, data: r.rows[0], message: 'Profil mis à jour avec succès' });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
@@ -3556,7 +3401,7 @@ app.get('/api/clinique/profil', auth, async (req, res) => {
     if (!cid) return res.status(400).json({ success: false, message: 'clinique_id requis' });
     const r = await db(
       `SELECT id, nom, adresse, adresse_complete, ville, telephone, email,
-              logo, slogan, horaires, site_web, created_at, couleur_primaire
+              logo, slogan, horaires, site_web, created_at
        FROM cliniques WHERE id=$1`, [cid]
     );
     res.json({ success: true, data: r.rows[0] || null });
@@ -3887,10 +3732,6 @@ app.post('/api/admin/init-nomenclature', async (req, res) => {
     // de prix "non assure", prix_subventionne est le 2e niveau, et
     // stock_tarifs_convention porte le tarif negocie par assureur.
     await db(`ALTER TABLE stock ADD COLUMN IF NOT EXISTS prix_subventionne DECIMAL(12,2)`);
-    // Couleur de marque pour les imprimables (facture, recu, rapport,
-    // ordonnance...) -- '#0A8F58' = vert actuellement code en dur partout.
-    await db(`ALTER TABLE cliniques ADD COLUMN IF NOT EXISTS couleur_primaire VARCHAR(7) DEFAULT '#0A8F58'`);
-    await db(`ALTER TABLE factures ADD COLUMN IF NOT EXISTS reduction_montant DECIMAL(12,2) DEFAULT 0`);
     await db(`CREATE TABLE IF NOT EXISTS stock_tarifs_convention (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       convention_id UUID NOT NULL REFERENCES conventions(id) ON DELETE CASCADE,
@@ -4718,9 +4559,6 @@ app.post('/api/admin/backfill-codes-patients', async (req, res) => {
 const { pool: dbPool } = require('./config/db');
 const facturesAuto = require('./routes/factures-auto');
 app.use('/api', facturesAuto(dbPool, auth));
-
-const bordereauxRoutes = require('./routes/bordereaux');
-app.use('/api', bordereauxRoutes(dbPool, auth));
 
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err.message);

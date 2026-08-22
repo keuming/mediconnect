@@ -7,105 +7,6 @@ import useAuthStore from "../../context/authStore";
 import useThemeStore from "../../context/themeStore";
 import api from "../../services/api";
 
-function CreationBordereauModal({ onClose, onCreated }) {
-  const [compagnies, setCompagnies] = useState([]);
-  const [compagnieId, setCompagnieId] = useState("");
-  const [periodeDebut, setPeriodeDebut] = useState("");
-  const [periodeFin, setPeriodeFin] = useState("");
-  const [eligibles, setEligibles] = useState([]);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [step, setStep] = useState(1);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    api.get("/compagnies-assurance").then(r => setCompagnies(r.data || [])).catch(() => {});
-  }, []);
-
-  const fetchEligibles = async () => {
-    const r = await api.get("/bordereaux/eligibles/liste", {
-      params: { compagnie_id: compagnieId, periode_debut: periodeDebut, periode_fin: periodeFin },
-    });
-    setEligibles(r.data || []);
-    setSelectedIds((r.data || []).map(f => f.id));
-    setStep(2);
-  };
-
-  const create = async () => {
-    setSaving(true);
-    try {
-      await api.post("/bordereaux", {
-        compagnie_id: compagnieId, periode_debut: periodeDebut, periode_fin: periodeFin,
-        facture_ids: selectedIds,
-      });
-      onCreated();
-    } catch (e) {
-      alert("Erreur lors de la création du bordereau.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1001 }}>
-      <div style={{ background:"#fff", borderRadius:16, padding:24, width:"90%", maxWidth:560, maxHeight:"85vh", overflowY:"auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between" }}>
-          <h3 style={{ margin:0 }}>Nouveau bordereau</h3>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:20, cursor:"pointer" }}>✕</button>
-        </div>
-
-        {step === 1 && (
-          <div style={{ display:"flex", flexDirection:"column", gap:12, marginTop:16 }}>
-            <label>
-              Compagnie d'assurance
-              <select value={compagnieId} onChange={e=>setCompagnieId(e.target.value)}
-                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid #ddd" }}>
-                <option value="">— Choisir —</option>
-                {compagnies.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-              </select>
-            </label>
-            <label>
-              Période — début
-              <input type="date" value={periodeDebut} onChange={e=>setPeriodeDebut(e.target.value)}
-                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid #ddd" }} />
-            </label>
-            <label>
-              Période — fin
-              <input type="date" value={periodeFin} onChange={e=>setPeriodeFin(e.target.value)}
-                style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid #ddd" }} />
-            </label>
-            <button disabled={!compagnieId || !periodeDebut || !periodeFin} onClick={fetchEligibles}
-              style={{ background:"#0a8f58", color:"#fff", border:"none", borderRadius:8, padding:"10px 16px", fontWeight:700, cursor:"pointer", marginTop:8 }}>
-              Voir les factures éligibles
-            </button>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div style={{ marginTop:16 }}>
-            <p style={{ color:"#8a8f89", fontSize:14 }}>
-              {eligibles.length} facture(s) trouvée(s) pour cette compagnie sur la période.
-            </p>
-            <div style={{ maxHeight:260, overflowY:"auto", border:"1px solid #eee", borderRadius:8 }}>
-              {eligibles.map(f => (
-                <label key={f.id} style={{ display:"flex", gap:10, alignItems:"center", padding:"8px 12px", borderBottom:"1px solid #f2f2f2" }}>
-                  <input type="checkbox" checked={selectedIds.includes(f.id)}
-                    onChange={e => setSelectedIds(prev => e.target.checked ? [...prev, f.id] : prev.filter(id => id !== f.id))} />
-                  <span style={{ flex:1 }}>{f.patient_nom || `Facture #${f.id}`}</span>
-                  <span>{f.montant_total ?? f.montant} F</span>
-                </label>
-              ))}
-            </div>
-            <button disabled={saving} onClick={create}
-              style={{ background:"#0a8f58", color:"#fff", border:"none", borderRadius:8, padding:"10px 16px", fontWeight:700, cursor:"pointer", width:"100%", marginTop:16 }}>
-              {saving ? "Création…" : `Créer le bordereau (${selectedIds.length} facture(s))`}
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Palette & helpers ─────────────────────────────────────────────
 /* TAILLES_POLICE_AUGMENTEES_30_POURCENT */
 const PALETTE_DARK = {
@@ -139,7 +40,8 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString("fr-CI",{day:"numeric"
 // actuellement fixe (vert de marque) -- a remplacer par la couleur du
 // logo de la clinique une fois l'outil de gestion des couleurs
 // d'impression construit.
-const genererLignesFactureHtml = (lignes, couleur = "#0A8F58") => {
+const COULEUR_SECTION_FACTURE = "#0A8F58";
+const genererLignesFactureHtml = (lignes) => {
   if (!lignes || !lignes.length) return `<tr><td colspan="4" style="padding:12px 0;color:#8BA0B5;text-align:center;">Détail non disponible pour cette facture</td></tr>`;
   const groupes = {};
   const ordreGroupes = [];
@@ -149,7 +51,7 @@ const genererLignesFactureHtml = (lignes, couleur = "#0A8F58") => {
     groupes[cat].push(l);
   });
   return ordreGroupes.map(cat => `
-    <tr><td colspan="4" style="padding:8px 10px;background:${couleur};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;">${cat}</td></tr>
+    <tr><td colspan="4" style="padding:8px 10px;background:${COULEUR_SECTION_FACTURE};color:#fff;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;">${cat}</td></tr>
     ${groupes[cat].map(l => `
       <tr>
         <td style="padding:8px 0 8px 10px;border-bottom:1px solid #e5e7eb;">${l.libelle_acte||'—'}</td>
@@ -215,12 +117,6 @@ const cAPI = {
   // Finance
   factures:      () => api.get("/factures"),
   updateFacture: (id,d) => api.put(`/factures/${id}`, d),
-  facturesParStatut: (statut) => api.get("/factures", { params: { statut } }),
-  chargesAPayer:   () => api.get("/charges-a-payer"),
-  addChargeAPayer: (d) => api.post("/charges-a-payer", d),
-  supprimerChargeAPayer: (id) => api.delete(`/charges-a-payer/${id}`),
-  payerFacture:    (d) => api.post("/caisse/payer-facture", d),
-  payerCharge:     (d) => api.post("/caisse/payer-charge", d),
   facturesPatient: (patientId) => api.get("/factures", { params: { patient_id: patientId } }),
   caisse:        (caisseId) => api.get("/caisse", { params: caisseId ? { caisse_id: caisseId } : {} }),
   actesCatalogue:  () => api.get("/actes"),
@@ -1597,28 +1493,28 @@ function PageDossiers() {
     let cl = null;
     try { const r = await api.get(`/factures/${f.id}/detail`); lignes = r.data?.lignes || []; } catch(e) { /* impression sans detail si echec */ }
     try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
-    const lignesHtml = genererLignesFactureHtml(lignes, cl?.couleur_primaire || "#0A8F58");
+    const lignesHtml = genererLignesFactureHtml(lignes);
     win.document.open();
     win.document.write(`
       <html><head><title>Facture ${f.reference||''}</title>
       <style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid ${cl?.couleur_primaire||'#0A8F58'};padding-bottom:12px;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
         .label{color:#8BA0B5;}
         .valeur{font-weight:700;}
         table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
         th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
-        .total{font-size:20px;color:${cl?.couleur_primaire||'#0A8F58'};font-weight:900;text-align:right;margin-top:10px;}
+        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
         .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
         @media print{button{display:none;}}
       </style></head><body>
       <div class="header">
         ${cl?.logo?`<img src="${cl.logo}" class="logo"/>`:''}
         <div>
-          <div style="font-size:16px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:16px;font-weight:700;color:#065F3C;">${cl?.nom||'MediConnect Africa'}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
         </div>
@@ -1727,21 +1623,21 @@ function PageDossiers() {
     win.document.write(`
       <html><head><title>${proforma?'Proforma':'Facture'} ${ref}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
         .ci{font-size:11px;color:#5A7A94;}
-        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .warn{background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;border-radius:8px;padding:8px 12px;font-size:11px;text-align:center;margin-bottom:14px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
         table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;}
-        th{background:${cl?.couleur_primaire||'#065F3C'};color:#fff;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;}
+        th{background:#065F3C;color:#fff;padding:8px;text-align:left;font-size:11px;text-transform:uppercase;}
         td{padding:8px;border-bottom:1px solid #e5e7eb;}
         .r{text-align:right;}
         .tot{background:#f8f9fa;font-weight:700;}
-        .final{background:${cl?.couleur_primaire||'#0A8F58'};color:#fff;font-size:15px;font-weight:800;}
+        .final{background:#0A8F58;color:#fff;font-size:15px;font-weight:800;}
         .footer{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:14px;font-size:10px;color:#8BA0B5;display:flex;justify-content:space-between;}
         @media print{button{display:none;}}
       </style></head><body>
@@ -1825,12 +1721,12 @@ function PageDossiers() {
     win.document.write(`
       <html><head><title>Rapport médical - ${selected?.prenom||''} ${selected?.nom||''}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:760px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
         .ci{font-size:11px;color:#5A7A94;}
-        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
-        h3{color:${cl?.couleur_primaire||'#065F3C'};font-size:13px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin:22px 0 10px;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h3{color:#065F3C;font-size:13px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin:22px 0 10px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
@@ -1990,11 +1886,11 @@ function PageDossiers() {
     win.document.write(`
       <html><head><title>Rapport médical - ${new Date(c.created_at).toLocaleDateString('fr-CI')}</title><style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:700px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
         .ci{font-size:11px;color:#5A7A94;}
-        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 14px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .meta{display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;}
         .box{background:#E8F8F1;border-radius:8px;padding:12px;flex:1;}
         .lbl{font-size:10px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
@@ -2081,16 +1977,16 @@ function PageDossiers() {
       <html><head><title>Ordonnance</title>
       <style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
-        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid ${cl?.couleur_primaire||'#0A8F58'};margin-bottom:20px;}
+        .header{display:flex;align-items:center;gap:16px;padding-bottom:12px;border-bottom:3px solid #0A8F58;margin-bottom:20px;}
         .logo{height:60px;object-fit:contain;}
-        .clinique-nom{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
+        .clinique-nom{font-size:18px;font-weight:700;color:#065F3C;}
         .clinique-info{font-size:11px;color:#5A7A94;}
-        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .section{margin-bottom:14px;}
         .label{font-size:11px;color:#8BA0B5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
         .value{font-size:14px;color:#1a2e25;font-weight:500;}
         .patient{background:#E8F8F1;border-radius:8px;padding:12px;margin-bottom:16px;}
-        .medicament{background:#f8f9fa;border-left:3px solid ${cl?.couleur_primaire||'#0A8F58'};padding:12px;border-radius:4px;margin-bottom:10px;}
+        .medicament{background:#f8f9fa;border-left:3px solid #0A8F58;padding:12px;border-radius:4px;margin-bottom:10px;}
         .footer{margin-top:40px;border-top:1px solid #e5e7eb;padding-top:16px;display:flex;justify-content:space-between;font-size:11px;color:#8BA0B5;}
         .signature{text-align:right;}
         @media print{button{display:none;}}
@@ -4233,14 +4129,14 @@ function PageFacturation() {
     } catch(e) { /* fallback : impression sans detail si la requete echoue */ }
     try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch(e) { /* impression sans en-tete si echec */ }
 
-    const lignesHtml = genererLignesFactureHtml(lignes, cl?.couleur_primaire || "#0A8F58");
+    const lignesHtml = genererLignesFactureHtml(lignes);
 
     win.document.open();
     win.document.write(`
       <html><head><title>Facture ${f.reference||''}</title>
       <style>
         body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:600px;margin:0 auto;}
-        h2{color:${cl?.couleur_primaire||'#0A8F58'};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        h2{color:#0A8F58;font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
         .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
         .label{color:#8BA0B5;}
         .valeur{font-weight:700;}
@@ -4248,13 +4144,13 @@ function PageFacturation() {
         th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
         .totaux{margin-top:16px;}
         .totaux .champ{font-size:15px;}
-        .total{font-size:20px;color:${cl?.couleur_primaire||'#0A8F58'};font-weight:900;text-align:right;margin-top:10px;}
+        .total{font-size:20px;color:#0A8F58;font-weight:900;text-align:right;margin-top:10px;}
         @media print{button{display:none;}}
       </style></head><body>
-      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid ${cl?.couleur_primaire||'#0A8F58'};padding-bottom:12px;margin-bottom:18px;">
+      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;">
         ${cl?.logo?`<img src="${cl.logo}" style="height:58px;object-fit:contain;"/>`:''}
         <div>
-          <div style="font-size:16px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:16px;font-weight:700;color:#065F3C;">${cl?.nom||'MediConnect Africa'}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
           <div style="font-size:11px;color:#5A7A94;">${cl?.telephone||''} ${cl?.email?'· '+cl.email:''}</div>
         </div>
@@ -4302,66 +4198,12 @@ function PageFacturation() {
     onError: e => toast.error(e?.response?.data?.message || "Erreur lors de la modification"),
   });
 
-  // ===== Bordereaux de facturation assurance =====
-  const [filtreBordereauStatut, setFiltreBordereauStatut] = useState("");
-  const [bordereauSelectionne, setBordereauSelectionne] = useState(null);
-  const [showCreationBordereau, setShowCreationBordereau] = useState(false);
-
-  const { data: bordereaux = [], isLoading: loadingBordereaux } = useQuery({
-    queryKey: ["cl-bordereaux", filtreBordereauStatut],
-    queryFn: async () => {
-      const r = await api.get("/bordereaux", { params: filtreBordereauStatut ? { statut: filtreBordereauStatut } : {} });
-      return r.data;
-    },
-  });
-
-  const ouvrirBordereau = async (id) => {
-    try {
-      const r = await api.get(`/bordereaux/${id}`);
-      setBordereauSelectionne(r.data);
-    } catch (e) {
-      toast.error(e?.response?.data?.message || "Impossible d'ouvrir ce bordereau");
-    }
-  };
-
-  const transitionBordereauMut = useMutation({
-    mutationFn: ({ id, statut }) => api.patch(`/bordereaux/${id}/statut`, { statut }),
-    onSuccess: (_, variables) => {
-      toast.success("Statut mis à jour");
-      qc.invalidateQueries(["cl-bordereaux"]);
-      if (bordereauSelectionne?.id === variables.id) ouvrirBordereau(variables.id);
-    },
-    onError: e => toast.error(e?.response?.data?.message || "Transition impossible"),
-  });
-
-  const BORDEREAU_STATUT_STYLE = {
-    brouillon: "gray", en_collecte: "green", controle: "amber", pret_depot: "green",
-    depose: "blue", valide_compagnie: "green", rejet_partiel: "amber",
-    rejet_total: "red", litige: "red", paye: "green",
-  };
-  const BORDEREAU_STATUT_LABEL = {
-    brouillon: "Brouillon", en_collecte: "En collecte", controle: "Contrôle",
-    pret_depot: "Prêt à déposer", depose: "Déposé", valide_compagnie: "Validé",
-    rejet_partiel: "Rejet partiel", rejet_total: "Rejet total", litige: "Litige", paye: "Payé",
-  };
-  const BORDEREAU_ACTIONS = {
-    brouillon: [["en_collecte", "Démarrer la collecte"]],
-    en_collecte: [["controle", "Envoyer au contrôle"]],
-    controle: [["pret_depot", "Marquer prêt à déposer"], ["en_collecte", "Renvoyer en collecte"]],
-    pret_depot: [["depose", "Confirmer le dépôt"]],
-    rejet_partiel: [["litige", "Ouvrir en litige"], ["paye", "Solder"]],
-    rejet_total: [["litige", "Ouvrir en litige"]],
-    litige: [["depose", "Redéposer"], ["paye", "Solder"]],
-    valide_compagnie: [["paye", "Marquer payé"]],
-  };
-
   const FINANCE_TABS = [
     { key:"tableau-bord", label:"Tableau de bord" },
     { key:"factures", label:"Factures" },
     { key:"actes", label:"Actes & tarifs" },
     { key:"budget", label:"Budget" },
     { key:"assurances", label:"Remboursements" },
-    { key:"bordereaux", label:"Bordereaux" },
     { key:"rapports", label:"Rapports" },
   ];
 
@@ -4481,94 +4323,6 @@ function PageFacturation() {
         <Panel title="Demandes de remboursement assurance">
           <Empty icon="🛡️" title="Remboursements assurance" subtitle="Gérez ici les demandes de remboursement tiers-payant — intégration module assurance" />
         </Panel>
-      )}
-
-      {tab==="bordereaux" && (
-        <>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-            <select value={filtreBordereauStatut} onChange={e=>setFiltreBordereauStatut(e.target.value)}
-              style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontFamily:"inherit" }}>
-              <option value="">Tous les statuts</option>
-              {Object.entries(BORDEREAU_STATUT_LABEL).map(([k,l])=>(<option key={k} value={k}>{l}</option>))}
-            </select>
-            <Btn onClick={()=>setShowCreationBordereau(true)}>+ Nouveau bordereau</Btn>
-          </div>
-
-          <Panel title="Bordereaux de facturation assurance">
-            {loadingBordereaux
-              ? <Empty icon="⏳" title="Chargement…" />
-              : bordereaux.length===0
-                ? <Empty icon="📑" title="Aucun bordereau" subtitle="Créez un bordereau pour grouper vos factures par compagnie d'assurance" />
-                : <Table columns={[
-                    { key:"reference", label:"Référence", render:v=><span style={{fontFamily:"monospace",fontSize:16,color:C.teal}}>{v}</span> },
-                    { key:"compagnie_nom", label:"Compagnie" },
-                    { key:"periode_debut", label:"Période", render:(_,b)=><span>{fmtDate(b.periode_debut)} → {fmtDate(b.periode_fin)}</span> },
-                    { key:"nb_lignes", label:"Lignes" },
-                    { key:"montant_total", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
-                    { key:"statut", label:"Statut", render:v=><Badge color={BORDEREAU_STATUT_STYLE[v]||"gray"}>{BORDEREAU_STATUT_LABEL[v]||v}</Badge> },
-                    { key:"id", label:"", render:(_,b)=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>ouvrirBordereau(b.id)}>Ouvrir</Btn> },
-                  ]} rows={bordereaux} />
-            }
-          </Panel>
-
-          {bordereauSelectionne && (
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
-              <div style={{ background:C.bg, borderRadius:16, padding:24, width:"90%", maxWidth:780, maxHeight:"85vh", overflowY:"auto" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                  <div>
-                    <h3 style={{ margin:0, color:C.text }}>{bordereauSelectionne.reference}</h3>
-                    <p style={{ margin:"4px 0", color:C.muted }}>{bordereauSelectionne.compagnie_nom}</p>
-                  </div>
-                  <Btn variant="outline" style={{padding:"4px 10px"}} onClick={()=>setBordereauSelectionne(null)}>✕</Btn>
-                </div>
-
-                <div style={{ margin:"12px 0" }}>
-                  <Badge color={BORDEREAU_STATUT_STYLE[bordereauSelectionne.statut]||"gray"}>
-                    {BORDEREAU_STATUT_LABEL[bordereauSelectionne.statut]||bordereauSelectionne.statut}
-                  </Badge>
-                </div>
-
-                <Grid cols={3} gap={12} style={{ marginBottom:16 }}>
-                  <Card label="Montant total" value={`${fmt(bordereauSelectionne.montant_total)} F`} icon="💰" color={C.blue} />
-                  <Card label="Validé" value={`${fmt(bordereauSelectionne.montant_valide)} F`} icon="✅" color={C.green} />
-                  <Card label="Rejeté" value={`${fmt(bordereauSelectionne.montant_rejete)} F`} icon="⚠️" color={C.red} />
-                </Grid>
-
-                {(bordereauSelectionne.lignes||[]).length>0 && (
-                  <Table columns={[
-                    { key:"montant_facture", label:"Facturé", render:v=>`${fmt(v)} F` },
-                    { key:"montant_contractuel", label:"Tarif contractuel", render:v=>v!=null?`${fmt(v)} F`:"—" },
-                    { key:"id", label:"Écart", render:(_,l)=>{
-                        if (l.montant_contractuel==null) return "—";
-                        const ecart = l.montant_facture - l.montant_contractuel;
-                        return <span style={{ color: ecart===0?C.green:Math.abs(ecart)<1000?C.amber:C.red, fontWeight:700 }}>
-                          {ecart>0?"+":""}{fmt(ecart)} F
-                        </span>;
-                      } },
-                    { key:"statut_ligne", label:"Statut ligne" },
-                  ]} rows={bordereauSelectionne.lignes} />
-                )}
-
-                {(BORDEREAU_ACTIONS[bordereauSelectionne.statut]||[]).length>0 && (
-                  <div style={{ display:"flex", gap:10, marginTop:20, flexWrap:"wrap" }}>
-                    {BORDEREAU_ACTIONS[bordereauSelectionne.statut].map(([to,label])=>(
-                      <Btn key={to} onClick={()=>transitionBordereauMut.mutate({ id:bordereauSelectionne.id, statut:to })}>
-                        {label}
-                      </Btn>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {showCreationBordereau && (
-            <CreationBordereauModal
-              onClose={()=>setShowCreationBordereau(false)}
-              onCreated={()=>{ setShowCreationBordereau(false); qc.invalidateQueries(["cl-bordereaux"]); }}
-            />
-          )}
-        </>
       )}
 
       {tab==="rapports" && (
@@ -5500,14 +5254,6 @@ function PageCaisse() {
   const [montantDecaisse, setMontantDecaisse] = useState("");
   const [motifDecaisse, setMotifDecaisse] = useState("");
   const [showHistorique, setShowHistorique] = useState(false);
-  const [showPayerFacture, setShowPayerFacture] = useState(null);
-  const [reductionType, setReductionType] = useState("pourcentage");
-  const [reductionValue, setReductionValue] = useState("");
-  const [modePaiementFacture, setModePaiementFacture] = useState("Espèces");
-  const [showPayerCharge, setShowPayerCharge] = useState(null);
-  const [modePaiementCharge, setModePaiementCharge] = useState("Espèces");
-  const [showAddCharge, setShowAddCharge] = useState(false);
-  const [chargeForm, setChargeForm] = useState({ categorie_charge_id:"", libelle:"", montant:"", date_echeance:"" });
 
   const { data: caissesData, isLoading: chargementCaisses } = useQuery({
     queryKey: ["cl-caisses"], queryFn: () => cAPI.caisses().then(r => r.data || []),
@@ -5548,9 +5294,9 @@ function PageCaisse() {
       <html><head><title>Historique caisse</title>
       <style>
         body{font-family:sans-serif;padding:32px;color:#16211C}
-        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid ${cl?.couleur_primaire||'#0A8F58'};padding-bottom:12px;margin-bottom:18px;}
+        .header{display:flex;align-items:center;gap:14px;border-bottom:2px solid #0A8F58;padding-bottom:12px;margin-bottom:18px;}
         .logo{height:58px;object-fit:contain;}
-        .cn{font-size:18px;font-weight:700;color:${cl?.couleur_primaire||'#065F3C'};}
+        .cn{font-size:18px;font-weight:700;color:#065F3C;}
         .ci{font-size:11px;color:#5A7A94;}
         h1{font-size:20px;margin-bottom:4px} p{color:#5B6B78;margin-top:0}
         table{width:100%;border-collapse:collapse;margin-top:20px}
@@ -5622,63 +5368,6 @@ function PageCaisse() {
     mutationFn: () => cAPI.cloturerCaisse(caisseId),
     onSuccess: () => { toast.success("Caisse clôturée !"); qc.invalidateQueries(["cl-caisses"]); },
     onError: e => toast.error(e?.response?.data?.message || "Erreur à la clôture"),
-  });
-
-  const { data: facturesEnAttenteData } = useQuery({
-    queryKey: ["cl-factures-en-attente"],
-    queryFn: () => cAPI.facturesParStatut("en_attente").then(r => r.data || []),
-  });
-  const facturesEnAttente = facturesEnAttenteData || [];
-
-  const { data: chargesAPayerData } = useQuery({
-    queryKey: ["cl-charges-a-payer"],
-    queryFn: () => cAPI.chargesAPayer().then(r => r.data || []),
-  });
-  const chargesAPayer = chargesAPayerData || [];
-
-  const { data: categoriesChargesData } = useQuery({
-    queryKey: ["cl-categories-charges-caisse"],
-    queryFn: () => api.get("/categories-charges").then(r => r.data || []),
-  });
-  const categoriesCharges = categoriesChargesData || [];
-
-  const payerFactureMut = useMutation({
-    mutationFn: () => cAPI.payerFacture({
-      facture_id: showPayerFacture.id, caisse_id: caisseId, mode_paiement: modePaiementFacture,
-      reduction_pourcentage: reductionType==="pourcentage" && reductionValue ? Number(reductionValue) : undefined,
-      reduction_montant_fixe: reductionType==="montant" && reductionValue ? Number(reductionValue) : undefined,
-    }),
-    onSuccess: (r) => {
-      const reduc = r?.reduction_appliquee;
-      toast.success(reduc>0 ? `Facture encaissée ! Réduction : ${fmt(reduc)} F` : "Facture encaissée !");
-      qc.invalidateQueries(["cl-factures-en-attente"]);
-      qc.invalidateQueries(["cl-caisses"]);
-      qc.invalidateQueries(["cl-caisse-historique", caisseId]);
-      setShowPayerFacture(null); setReductionValue(""); setReductionType("pourcentage");
-    },
-    onError: e => toast.error(e?.response?.data?.message || "Erreur lors de l'encaissement"),
-  });
-
-  const payerChargeMut = useMutation({
-    mutationFn: () => cAPI.payerCharge({ charge_id: showPayerCharge.id, caisse_id: caisseId, mode_paiement: modePaiementCharge }),
-    onSuccess: () => {
-      toast.success("Charge payée !");
-      qc.invalidateQueries(["cl-charges-a-payer"]);
-      qc.invalidateQueries(["cl-caisses"]);
-      qc.invalidateQueries(["cl-caisse-historique", caisseId]);
-      setShowPayerCharge(null);
-    },
-    onError: e => toast.error(e?.response?.data?.message || "Erreur lors du paiement"),
-  });
-
-  const addChargeMut = useMutation({
-    mutationFn: () => cAPI.addChargeAPayer(chargeForm),
-    onSuccess: () => {
-      toast.success("Charge à payer ajoutée !");
-      qc.invalidateQueries(["cl-charges-a-payer"]);
-      setShowAddCharge(false); setChargeForm({ categorie_charge_id:"", libelle:"", montant:"", date_echeance:"" });
-    },
-    onError: e => toast.error(e?.response?.data?.message || "Erreur"),
   });
 
   return (
@@ -5767,44 +5456,6 @@ function PageCaisse() {
                   </Panel>
                 )}
               </div>
-              <div style={{marginBottom:20}}>
-                <Panel title="📋 Demandes de paiement"
-                  actions={<Btn variant="outline" small onClick={()=>setShowAddCharge(true)}>+ Charge à payer</Btn>}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.dim,textTransform:"uppercase",marginBottom:8}}>Factures en attente ({facturesEnAttente.length})</div>
-                  {facturesEnAttente.length===0
-                    ? <p style={{color:C.dim,fontSize:14,marginBottom:16}}>Aucune facture en attente</p>
-                    : facturesEnAttente.map(f=>(
-                      <div key={f.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-                        <div>
-                          <div style={{fontSize:14,fontWeight:700,color:C.teal,fontFamily:"monospace"}}>{f.reference||"—"}</div>
-                          <div style={{fontSize:13,color:C.muted}}>{f.patient_nom||"—"}</div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{fontSize:16,fontWeight:800,color:C.green}}>{fmt(f.montant_total)} F</span>
-                          <Btn style={{padding:"6px 12px",fontSize:14}} onClick={()=>{ setShowPayerFacture(f); setReductionValue(""); setReductionType("pourcentage"); }}>💰 Encaisser</Btn>
-                        </div>
-                      </div>
-                    ))
-                  }
-                  <div style={{fontSize:14,fontWeight:700,color:C.dim,textTransform:"uppercase",marginTop:18,marginBottom:8}}>Charges à payer ({chargesAPayer.length})</div>
-                  {chargesAPayer.length===0
-                    ? <p style={{color:C.dim,fontSize:14}}>Aucune charge en attente</p>
-                    : chargesAPayer.map(c=>(
-                      <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
-                        <div>
-                          <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.libelle}</div>
-                          <div style={{fontSize:13,color:C.muted}}>{c.categorie_nom||"—"}</div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <span style={{fontSize:16,fontWeight:800,color:C.amber}}>{fmt(c.montant)} F</span>
-                          <Btn variant="outline" style={{padding:"6px 12px",fontSize:14}} onClick={()=>setShowPayerCharge(c)}>💳 Payer</Btn>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </Panel>
-              </div>
-
               <Grid cols={2} gap={20}>
                 <Panel title="📥 Encaissement">
                   <Inp label="Montant (FCFA)" type="number" placeholder="5000" value={montantEncaisse} onChange={e=>setMontantEncaisse(e.target.value)} style={{marginBottom:10}} />
@@ -5838,71 +5489,6 @@ function PageCaisse() {
             if(!nomNouvelleCaisse.trim()){toast.error("Nom requis");return;}
             addCaisseMut.mutate({ nom: nomNouvelleCaisse.trim() });
           }}>Créer la caisse</Btn>
-        </div>
-      </Modal>
-
-      {/* Modal: Encaisser une facture avec réduction */}
-      <Modal open={!!showPayerFacture} onClose={()=>setShowPayerFacture(null)} title={`💰 Encaisser — ${showPayerFacture?.reference||""}`} width={480}>
-        <div style={{background:C.hover,borderRadius:8,padding:"10px 12px",marginBottom:14}}>
-          <div style={{fontSize:14,color:C.muted}}>Patient : <strong style={{color:C.text}}>{showPayerFacture?.patient_nom||"—"}</strong></div>
-          <div style={{fontSize:20,fontWeight:800,color:C.green,marginTop:4}}>{fmt(showPayerFacture?.montant_total)} F</div>
-        </div>
-        <div style={{display:"flex",gap:4,background:C.input,borderRadius:8,padding:3,marginBottom:12}}>
-          {[["pourcentage","% Pourcentage"],["montant","FCFA Montant fixe"]].map(([v,l])=>(
-            <button key={v} onClick={()=>{ setReductionType(v); setReductionValue(""); }}
-              style={{flex:1,padding:"7px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",
-                background:reductionType===v?C.hover:"transparent",color:reductionType===v?C.text:C.muted}}>
-              {l}
-            </button>
-          ))}
-        </div>
-        <Inp label={reductionType==="pourcentage" ? "Réduction (%)" : "Réduction (FCFA)"} type="number" min="0"
-          max={reductionType==="pourcentage" ? "100" : undefined}
-          value={reductionValue} onChange={e=>setReductionValue(e.target.value)} placeholder="0" />
-        {reductionValue>0 && showPayerFacture && (
-          <div style={{fontSize:14,color:C.dim,marginBottom:10}}>
-            Net à encaisser : <strong style={{color:C.green}}>
-              {fmt(Math.max(0, Number(showPayerFacture.montant_total) - (reductionType==="pourcentage"
-                ? Math.round(Number(showPayerFacture.montant_total)*Number(reductionValue)/100)
-                : Number(reductionValue))))} F
-            </strong>
-          </div>
-        )}
-        <Sel label="Mode de paiement" value={modePaiementFacture} onChange={e=>setModePaiementFacture(e.target.value)} options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} />
-        <div style={{display:"flex",gap:10,marginTop:14}}>
-          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowPayerFacture(null)}>Annuler</Btn>
-          <Btn style={{flex:2}} loading={payerFactureMut.isPending} onClick={()=>payerFactureMut.mutate()}>Encaisser</Btn>
-        </div>
-      </Modal>
-
-      {/* Modal: Payer une charge */}
-      <Modal open={!!showPayerCharge} onClose={()=>setShowPayerCharge(null)} title={`💳 Payer — ${showPayerCharge?.libelle||""}`} width={420}>
-        <div style={{background:C.hover,borderRadius:8,padding:"10px 12px",marginBottom:14}}>
-          <div style={{fontSize:14,color:C.muted}}>{showPayerCharge?.categorie_nom||"—"}</div>
-          <div style={{fontSize:20,fontWeight:800,color:C.amber,marginTop:4}}>{fmt(showPayerCharge?.montant)} F</div>
-        </div>
-        <Sel label="Mode de paiement" value={modePaiementCharge} onChange={e=>setModePaiementCharge(e.target.value)} options={["Espèces","Mobile Money","Carte bancaire","Chèque"]} />
-        <div style={{display:"flex",gap:10,marginTop:14}}>
-          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowPayerCharge(null)}>Annuler</Btn>
-          <Btn variant="amber" style={{flex:2}} loading={payerChargeMut.isPending} onClick={()=>payerChargeMut.mutate()}>Payer</Btn>
-        </div>
-      </Modal>
-
-      {/* Modal: Nouvelle charge à payer */}
-      <Modal open={showAddCharge} onClose={()=>setShowAddCharge(false)} title="💸 Nouvelle charge à payer">
-        <Sel label="Type de charge" value={chargeForm.categorie_charge_id} onChange={e=>setChargeForm(f=>({...f,categorie_charge_id:e.target.value}))}
-          options={[{v:"",l:"-- Choisir (facultatif) --"}, ...categoriesCharges.map(c=>({v:c.id,l:c.nom}))]} />
-        <Inp label="Libellé *" required value={chargeForm.libelle} onChange={e=>setChargeForm(f=>({...f,libelle:e.target.value}))} placeholder="Ex: Loyer janvier" />
-        <Grid cols={2} gap={10}>
-          <Inp label="Montant (FCFA) *" required type="number" value={chargeForm.montant} onChange={e=>setChargeForm(f=>({...f,montant:e.target.value}))} placeholder="150000" />
-          <Inp label="Échéance" type="date" value={chargeForm.date_echeance} onChange={e=>setChargeForm(f=>({...f,date_echeance:e.target.value}))} />
-        </Grid>
-        <div style={{display:"flex",gap:10,marginTop:4}}>
-          <Btn variant="outline" style={{flex:1}} onClick={()=>setShowAddCharge(false)}>Annuler</Btn>
-          <Btn style={{flex:2}} loading={addChargeMut.isPending} onClick={()=>{
-            if(!chargeForm.libelle||!chargeForm.montant){toast.error("Libellé et montant requis");return;}
-            addChargeMut.mutate();
-          }}>Ajouter</Btn>
         </div>
       </Modal>
     </div>

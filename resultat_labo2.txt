@@ -1,0 +1,3838 @@
+=== A) Fichiers routes/ complets (petits, on prend tout) ===
+
+---------------------------------------------------------
+FICHIER: backend/routes/card.js
+---------------------------------------------------------
+const router = require('express').Router();
+const { db } = require('../config/db');
+const { auth, can } = require('../middleware/auth');
+
+// ── PUBLIC : Scanner QR Code ──────────────────────────────────────
+// Accessible sans auth — pour toute personne qui scanne la carte
+router.get('/public/scan/:numero_carte', async (req, res) => {
+  try {
+    const { numero_carte } = req.params;
+    const card = await db('SELECT * FROM mediconnect_cards WHERE numero_carte=$1', [numero_carte]);
+
+    if (!card.rows.length) {
+      // Fallback : carte issue du systeme de demandes (mediconnect_card_requests),
+      // pas encore liee a un vrai compte mediconnect_accounts
+      const request = await db('SELECT * FROM mediconnect_card_requests WHERE numero_carte=$1', [numero_carte]);
+      if (!request.rows.length) {
+        // Dernier recours : le numero scanne est peut-etre le code secret
+        // d'un dossier patient cree directement en clinique (jamais passe
+        // par l'achat/liaison d'une carte MediConnect). Sans ce repli, ce
+        // patient n'aurait structurellement aucun moyen d'avoir des
+        // contacts d'urgence accessibles par scan -- c'est exactement le
+        // trou ayant coute un temps precieux lors d'une urgence reelle.
+        const patient = await db(
+          'SELECT id, prenom, nom, telephone, ville, groupe_sanguin, allergies, antecedents_critiques, traitements_sensibles FROM patients WHERE UPPER(code_secret)=UPPER($1)',
+          [numero_carte]
+        );
+        if (!patient.rows.length) {
+          return res.status(404).json({ success: false, message: 'Carte introuvable' });
+        }
+        const p = patient.rows[0];
+        const contactsPatient = await db(
+          'SELECT prenom, nom, telephone, telephone_2, relation, est_principal FROM contacts_urgence WHERE patient_id=$1 ORDER BY ordre',
+          [p.id]
+        );
+        return res.json({
+          success: true,
+          data: {
+            liee: true,
+            carte: numero_carte,
+            patient: {
+              prenom: p.prenom, nom: p.nom, telephone: p.telephone, ville: p.ville,
+              groupe_sanguin: p.groupe_sanguin, allergies: p.allergies,
+              antecedents_critiques: p.antecedents_critiques, traitements_sensibles: p.traitements_sensibles,
+              niveau: null, photo_url: null,
+            },
+            contacts_urgence: contactsPatient.rows,
+          }
+        });
+      }
+      const r = request.rows[0];
+
+      const contacts = [];
+      if (r.contact_urgence) contacts.push({ prenom: r.contact_urgence, nom: '', telephone: r.telephone_urgence || '', relation: null, est_principal: true });
+      [2,3,4,5].forEach(i => {
+        const nom = r[`contact_urgence_${i}`];
+        const tel = r[`telephone_urgence_${i}`];
+        if (nom) contacts.push({ prenom: nom, nom: '', telephone: tel || '', relation: null, est_principal: false });
+      });
+
+      await db(
+        'INSERT INTO scans_qr_card (carte_id, account_id) VALUES ($1, $2)',
+        [null, null]
+      ).catch(() => {});
+
+      return res.json({
+        success: true,
+        data: {
+          liee: true,
+          carte: numero_carte,
+          patient: {
+            prenom: r.prenom,
+            nom: r.nom,
+            telephone: r.telephone,
+            ville: r.ville,
+            groupe_sanguin: r.groupe_sanguin,
+            allergies: r.allergies,
+            niveau: null,
+            photo_url: null,
+          },
+          contacts_urgence: contacts,
+        }
+      });
+    }
+
+    const carteId = card.rows[0].id;
+
+    // 1. Cas normal : carte liee directement a un compte principal
+    let account = await db(`
+      SELECT a.id, a.prenom, a.nom, a.telephone, a.ville, a.pays_code,
+             a.groupe_sanguin, a.allergies, a.niveau, a.numero_compte, a.photo_url
+      FROM mediconnect_accounts a
+      WHERE a.carte_id=$1 AND a.statut='actif'
+    `, [carteId]);
+
+    let titulaireAffiche = null;
+    let compteAccountId  = null;
+
+    if (account.rows.length) {
+      compteAccountId  = account.rows[0].id;
+      titulaireAffiche = account.rows[0];
+    } else {
+      // 2. Cas carte famille : chercher dans famille_cartes, puis remonter au compte principal
+      const membre = await db(`
+        SELECT f.*, u.id AS user_principal_id
+        FROM famille_cartes f
+        JOIN utilisateurs u ON u.id = f.user_principal_id
+        WHERE f.carte_id=$1
+      `, [carteId]);
+
+      if (!membre.rows.length) {
+        return res.json({ success: true, data: { carte: numero_carte, liee: false, message: 'Carte non liee a un compte' } });
+      }
+
+      const comptePrincipal = await db(`
+        SELECT id, prenom, nom, telephone, ville, pays_code, groupe_sanguin, allergies, niveau, numero_compte, photo_url
+        FROM mediconnect_accounts WHERE user_id=$1 AND statut='actif'
+      `, [membre.rows[0].user_principal_id]);
+
+      if (!comptePrincipal.rows.length) {
+        return res.json({ success: true, data: { carte: numero_carte, liee: false, message: 'Compte principal de la famille non actif' } });
+      }
+
+      compteAccountId  = comptePrincipal.rows[0].id;
+      // On affiche l'identite du MEMBRE de la famille (pas celle du titulaire principal),
+      // mais les contacts d'urgence du compte principal seront utilises.
+      titulaireAffiche = {
+        prenom: membre.rows[0].prenom,
+        nom: membre.rows[0].nom,
+        telephone: null,
+        ville: comptePrincipal.rows[0].ville,
+        groupe_sanguin: null,
+        allergies: null,
+        niveau: comptePrincipal.rows[0].niveau,
+        photo_url: null,
+        membre_famille: true,
+        compte_principal_nom: `${comptePrincipal.rows[0].prenom} ${comptePrincipal.rows[0].nom}`,
+      };
+    }
+
+    // Contacts d'urgence — toujours ceux du compte principal (partages pour toute la famille)
+    const contacts = await db(
+      'SELECT prenom, nom, telephone, telephone_2, relation, est_principal FROM contacts_urgence WHERE account_id=$1 ORDER BY ordre',
+      [compteAccountId]
+    );
+
+    // Enregistrer le scan
+    await db(
+      'INSERT INTO scans_qr_card (carte_id, account_id) VALUES ($1, $2)',
+      [carteId, compteAccountId]
+    ).catch(() => {});
+
+    res.json({
+      success: true,
+      data: {
+        liee: true,
+        carte: numero_carte,
+        patient: titulaireAffiche,
+        contacts_urgence: contacts.rows,
+      }
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── MON COMPTE CARD ───────────────────────────────────────────────
+router.get('/mon-compte', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT a.*, c.numero_carte, c.statut AS carte_statut
+      FROM mediconnect_accounts a
+      LEFT JOIN mediconnect_cards c ON c.id=a.carte_id
+      WHERE a.user_id=$1
+    `, [req.user.id]);
+
+    if (!r.rows.length) return res.json({ success: true, data: null });
+
+    const contacts = await db(
+      'SELECT * FROM contacts_urgence WHERE account_id=$1 ORDER BY ordre',
+      [r.rows[0].id]
+    );
+
+    const transactions = await db(
+      'SELECT * FROM transactions_card WHERE account_id=$1 ORDER BY created_at DESC LIMIT 20',
+      [r.rows[0].id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        ...r.rows[0],
+        contacts_urgence: contacts.rows,
+        transactions_recentes: transactions.rows,
+      }
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── CREER / LIER COMPTE CARD ──────────────────────────────────────
+router.post('/lier-carte', auth, async (req, res) => {
+  const {
+    prenom, nom, telephone, email, adresse, ville, pays_code,
+    date_naissance, groupe_sanguin, allergies, numero_carte,
+    contacts_urgence
+  } = req.body;
+
+  if (!prenom || !nom || !numero_carte)
+    return res.status(400).json({ success: false, message: 'Prenom, nom et numero de carte requis' });
+
+  try {
+    // Verifier que la carte existe et n'est pas deja liee
+    const card = await db("SELECT * FROM mediconnect_cards WHERE numero_carte=$1", [numero_carte]);
+    if (!card.rows.length)
+      return res.status(404).json({ success: false, message: 'Numero de carte invalide ou inexistant' });
+    if (card.rows[0].statut === 'liee')
+      return res.status(409).json({ success: false, message: 'Cette carte est deja liee a un compte' });
+
+    // Verifier que l'utilisateur n'a pas deja un compte card
+    const existing = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+    if (existing.rows.length)
+      return res.status(409).json({ success: false, message: 'Vous avez deja un compte MediConnect Card' });
+
+    // Generer numero de compte unique
+    const annee = new Date().getFullYear();
+    const codeP = pays_code || 'CI';
+    const seq = await db("SELECT COUNT(*)+1 AS n FROM mediconnect_accounts WHERE numero_compte LIKE $1", [`MCA-${codeP}-%`]);
+    const numCompte = `MCA-${codeP}-${annee}-${String(seq.rows[0].n).padStart(6,'0')}`;
+
+    // Creer le compte
+    const account = await db(`
+      INSERT INTO mediconnect_accounts
+        (user_id, numero_compte, carte_id, numero_carte, prenom, nom, telephone, email,
+         adresse, ville, pays_code, date_naissance, groupe_sanguin, allergies,
+         solde, statut, date_linkage)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,'actif',NOW())
+      RETURNING *`,
+      [req.user.id, numCompte, card.rows[0].id, numero_carte,
+       prenom, nom, telephone||null, email||null, adresse||null, ville||null,
+       pays_code||'CI', date_naissance||null, groupe_sanguin||null, allergies||null]
+    );
+
+    // Marquer la carte comme liee
+    await db("UPDATE mediconnect_cards SET statut='liee', updated_at=NOW() WHERE id=$1", [card.rows[0].id]);
+
+    // Ajouter les contacts d'urgence (max 5)
+    if (contacts_urgence?.length) {
+      for (let i = 0; i < Math.min(contacts_urgence.length, 5); i++) {
+        const c = contacts_urgence[i];
+        if (c.telephone && c.prenom) {
+          await db(`
+            INSERT INTO contacts_urgence
+              (account_id, ordre, prenom, nom, telephone, telephone_2, relation, est_principal)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [account.rows[0].id, i+1, c.prenom, c.nom||'', c.telephone,
+             c.telephone_2||null, c.relation||null, i===0]
+          ).catch(()=>{});
+        }
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: account.rows[0],
+      message: `Carte liee avec succes ! Votre numero de compte : ${numCompte}`
+    });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── METTRE A JOUR COMPTE CARD ─────────────────────────────────────
+router.put('/mon-compte', auth, async (req, res) => {
+  const { prenom, nom, telephone, email, adresse, ville, groupe_sanguin, allergies, photo_url } = req.body;
+  try {
+    const r = await db(`
+      UPDATE mediconnect_accounts SET
+        prenom=COALESCE($1,prenom), nom=COALESCE($2,nom),
+        telephone=COALESCE($3,telephone), email=COALESCE($4,email),
+        adresse=COALESCE($5,adresse), ville=COALESCE($6,ville),
+        groupe_sanguin=COALESCE($7,groupe_sanguin), allergies=COALESCE($8,allergies),
+        photo_url=COALESCE($9,photo_url), updated_at=NOW()
+      WHERE user_id=$10 RETURNING *`,
+      [prenom,nom,telephone,email,adresse,ville,groupe_sanguin,allergies,photo_url,req.user.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── CONTACTS D'URGENCE ────────────────────────────────────────────
+router.get('/contacts-urgence', auth, async (req, res) => {
+  try {
+    const account = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+    if (!account.rows.length) return res.json({ success: true, data: [] });
+    const r = await db('SELECT * FROM contacts_urgence WHERE account_id=$1 ORDER BY ordre', [account.rows[0].id]);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.post('/contacts-urgence', auth, async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation } = req.body;
+  if (!prenom || !telephone) return res.status(400).json({ success: false, message: 'Prenom et telephone requis' });
+  try {
+    const account = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+    if (!account.rows.length) return res.status(404).json({ success: false, message: 'Compte card non trouve' });
+    const count = await db("SELECT COUNT(*) c FROM contacts_urgence WHERE account_id=$1", [account.rows[0].id]);
+    if (+count.rows[0].c >= 5) return res.status(400).json({ success: false, message: "Maximum 5 contacts d'urgence" });
+    const r = await db(
+      'INSERT INTO contacts_urgence (account_id,ordre,prenom,nom,telephone,telephone_2,relation) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [account.rows[0].id, +count.rows[0].c+1, prenom, nom||'', telephone, telephone_2||null, relation||null]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.put('/contacts-urgence/:id', auth, async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation } = req.body;
+  try {
+    const r = await db(
+      'UPDATE contacts_urgence SET prenom=COALESCE($1,prenom),nom=COALESCE($2,nom),telephone=COALESCE($3,telephone),telephone_2=COALESCE($4,telephone_2),relation=COALESCE($5,relation) WHERE id=$6 RETURNING *',
+      [prenom,nom,telephone,telephone_2||null,relation||null,req.params.id]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.delete('/contacts-urgence/:id', auth, async (req, res) => {
+  try {
+    await db('DELETE FROM contacts_urgence WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── RECHARGE CARTE ────────────────────────────────────────────────
+router.post('/recharger', auth, async (req, res) => {
+  const { montant, mode_paiement, reference_paiement } = req.body;
+  if (!montant || montant <= 0) return res.status(400).json({ success: false, message: 'Montant invalide' });
+  if (montant < 1000) return res.status(400).json({ success: false, message: 'Montant minimum : 1 000 FCFA' });
+  try {
+    const account = await db("SELECT * FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+    if (!account.rows.length) return res.status(404).json({ success: false, message: 'Compte card non trouve' });
+    const a = account.rows[0];
+    const solde_avant = +a.solde;
+    const solde_apres = solde_avant + +montant;
+
+    await db(
+      'INSERT INTO recharges_card (account_id,carte_id,montant,mode_paiement,reference_paiement,statut,solde_avant,solde_apres) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [a.id, a.carte_id, montant, mode_paiement||'Wave', reference_paiement||null, 'success', solde_avant, solde_apres]
+    );
+
+    await db("UPDATE mediconnect_accounts SET solde=$1,updated_at=NOW() WHERE id=$2", [solde_apres, a.id]);
+    await db("UPDATE mediconnect_cards SET solde=$1,updated_at=NOW() WHERE id=$2", [solde_apres, a.carte_id]);
+
+    await db(
+      'INSERT INTO transactions_card (account_id,carte_id,type,montant,sens,solde_avant,solde_apres,description) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [a.id, a.carte_id, 'recharge', montant, 'credit', solde_avant, solde_apres, `Recharge via ${mode_paiement||'Wave'}`]
+    );
+
+    res.json({ success: true, data: { solde: solde_apres, montant_recharge: montant }, message: `Recharge de ${Number(montant).toLocaleString('fr-CI')} FCFA effectuee !` });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── TRANSACTIONS ──────────────────────────────────────────────────
+router.get('/transactions', auth, async (req, res) => {
+  try {
+    const account = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+    if (!account.rows.length) return res.json({ success: true, data: [] });
+    const r = await db(
+      'SELECT * FROM transactions_card WHERE account_id=$1 ORDER BY created_at DESC LIMIT 50',
+      [account.rows[0].id]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── ADMIN : Gestion des cartes ────────────────────────────────────
+router.get('/admin/cartes', auth, can('admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT c.*, a.prenom, a.nom, a.telephone, a.numero_compte, a.niveau
+      FROM mediconnect_cards c
+      LEFT JOIN mediconnect_accounts a ON a.carte_id=c.id
+      ORDER BY c.created_at DESC LIMIT 500
+    `);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+router.get('/admin/stats', auth, can('admin'), async (req, res) => {
+  try {
+    const [total, liees, solde_total, recharges_mois] = await Promise.all([
+      db("SELECT COUNT(*) c FROM mediconnect_cards").catch(()=>({rows:[{c:0}]})),
+      db("SELECT COUNT(*) c FROM mediconnect_cards WHERE statut='liee'").catch(()=>({rows:[{c:0}]})),
+      db("SELECT COALESCE(SUM(solde),0) s FROM mediconnect_accounts").catch(()=>({rows:[{s:0}]})),
+      db("SELECT COALESCE(SUM(montant),0) s FROM recharges_card WHERE date_trunc('month',created_at)=date_trunc('month',NOW())").catch(()=>({rows:[{s:0}]})),
+    ]);
+    res.json({ success: true, data: {
+      total_cartes:     +total.rows[0]?.c || 0,
+      cartes_liees:     +liees.rows[0]?.c || 0,
+      cartes_disponibles: (+total.rows[0]?.c||0) - (+liees.rows[0]?.c||0),
+      solde_total:      +solde_total.rows[0]?.s || 0,
+      recharges_ce_mois:+recharges_mois.rows[0]?.s || 0,
+    }});
+  } catch(e) { res.json({ success: true, data: {} }); }
+});
+
+router.post('/admin/generer-cartes', auth, can('admin'), async (req, res) => {
+  const { quantite = 10 } = req.body;
+  if (quantite > 1000) return res.status(400).json({ success: false, message: 'Maximum 1000 cartes par lot' });
+  try {
+    const annee = new Date().getFullYear();
+    const pays_code = req.body.pays_code || 'CI';
+    const existing = await db("SELECT COUNT(*) c FROM mediconnect_cards WHERE numero_carte LIKE $1", [`MC-${pays_code}-%`]);
+    let start = +existing.rows[0].c + 1;
+    const cartes = [];
+    for (let i = 0; i < quantite; i++) {
+      const num = `MC-${pays_code}-${annee}-${String(start+i).padStart(6,'0')}`;
+      cartes.push(num);
+    }
+    let created = 0;
+    for (const num of cartes) {
+      await db("INSERT INTO mediconnect_cards (numero_carte) VALUES ($1) ON CONFLICT DO NOTHING", [num]).catch(()=>{});
+      created++;
+    }
+    res.json({ success: true, data: { cartes_generees: created, premier: cartes[0], dernier: cartes[cartes.length-1] }, message: `${created} cartes generees avec succes` });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/admin/comptes', auth, can('admin'), async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT a.*, c.numero_carte, c.statut AS carte_statut,
+             COUNT(t.id) AS nb_transactions,
+             COALESCE(SUM(CASE WHEN t.type='recharge' THEN t.montant ELSE 0 END),0) AS total_recharge
+      FROM mediconnect_accounts a
+      LEFT JOIN mediconnect_cards c ON c.id=a.carte_id
+      LEFT JOIN transactions_card t ON t.account_id=a.id
+      GROUP BY a.id, c.numero_carte, c.statut
+      ORDER BY a.created_at DESC LIMIT 200
+    `);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+module.exports = router;
+
+---------------------------------------------------------
+FICHIER: backend/routes/patients_mobile.js
+---------------------------------------------------------
+// routes/patients_mobile.js — v2
+// Routes patient pour l'application mobile MediConnect
+const router = require('express').Router();
+const { db }  = require('../config/db');
+const { auth } = require('../middleware/auth');
+const { v4: uuid } = require('uuid');
+
+// ─── Calcul IMC ───────────────────────────────────────────────────
+const calcIMC = (poids, taille) => {
+  if (!poids || !taille || taille <= 0) return null;
+  return Math.round((poids / Math.pow(taille / 100, 2)) * 100) / 100;
+};
+
+// ─── PROFIL PATIENT ───────────────────────────────────────────────
+
+// GET /api/patients/profil
+router.get('/profil', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT u.id, u.email, u.prenom, u.nom, u.telephone, u.ville, u.adresse,
+             u.pays_code, u.date_naissance, u.groupe_sanguin,
+             u.taille, u.poids, u.imc, u.maladies_chroniques,
+             p.id AS patient_id, p.code_secret, p.antecedents, p.allergies,
+             p.assurance, p.numero_police
+      FROM utilisateurs u
+      LEFT JOIN patients p ON p.user_id = u.id
+      WHERE u.id = $1 LIMIT 1
+    `, [req.user.id]);
+    res.json({ success: true, data: r.rows[0] || null });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// PUT /api/patients/profil — mettre à jour le profil
+router.put('/profil', auth, async (req, res) => {
+  const {
+    prenom, nom, telephone, adresse, email,
+    pays_code, ville, date_naissance,
+    groupe_sanguin, taille, poids,
+    maladies_chroniques, antecedents, allergies,
+    assurance, numero_police,
+    tension_du_jour, bpm_du_jour,
+  } = req.body;
+
+  const imc = calcIMC(poids, taille);
+
+  try {
+    // Mise à jour utilisateurs
+    await db(`
+      UPDATE utilisateurs SET
+        prenom              = COALESCE($1,  prenom),
+        nom                 = COALESCE($2,  nom),
+        telephone           = COALESCE($3,  telephone),
+        adresse             = COALESCE($4,  adresse),
+        pays_code           = COALESCE($5,  pays_code),
+        ville               = COALESCE($6,  ville),
+        date_naissance      = COALESCE($7,  date_naissance),
+        groupe_sanguin      = COALESCE($8,  groupe_sanguin),
+        taille              = COALESCE($9,  taille),
+        poids               = COALESCE($10, poids),
+        imc                 = COALESCE($11, imc),
+        maladies_chroniques = COALESCE($12, maladies_chroniques),
+        tension_du_jour    = COALESCE($13, tension_du_jour),
+        bpm_du_jour        = COALESCE($14, bpm_du_jour)
+      WHERE id = $15
+    `, [prenom||null, nom||null, telephone||null, adresse||null,
+        pays_code||null, ville||null,
+        date_naissance ? new Date(date_naissance) : null,
+        groupe_sanguin||null,
+        taille ? parseFloat(taille) : null,
+        poids  ? parseFloat(poids)  : null,
+        imc,
+        maladies_chroniques ? (Array.isArray(maladies_chroniques) ? maladies_chroniques : [maladies_chroniques]) : null,
+        tension_du_jour||null,
+        bpm_du_jour ? parseInt(bpm_du_jour) : null,
+        req.user.id]);
+
+    // Mise à jour patients (si profil patient existe)
+    await db(`
+      UPDATE patients SET
+        prenom              = COALESCE($1,  prenom),
+        nom                 = COALESCE($2,  nom),
+        telephone           = COALESCE($3,  telephone),
+        ville               = COALESCE($4,  ville),
+        groupe_sanguin      = COALESCE($5,  groupe_sanguin),
+        taille              = COALESCE($6,  taille),
+        poids               = COALESCE($7,  poids),
+        imc                 = COALESCE($8,  imc),
+        maladies_chroniques = COALESCE($9,  maladies_chroniques),
+        antecedents         = COALESCE($10, antecedents),
+        allergies           = COALESCE($11, allergies),
+        assurance           = COALESCE($12, assurance),
+        numero_police       = COALESCE($13, numero_police),
+        updated_at          = NOW()
+      WHERE user_id = $14
+    `, [prenom||null, nom||null, telephone||null, ville||null,
+        groupe_sanguin||null,
+        taille ? parseFloat(taille) : null,
+        poids  ? parseFloat(poids)  : null,
+        imc,
+        maladies_chroniques ? (Array.isArray(maladies_chroniques) ? maladies_chroniques : [maladies_chroniques]) : null,
+        antecedents||null, allergies||null,
+        assurance||null, numero_police||null,
+        req.user.id]);
+
+    // Sync avec mediconnect_accounts si existe
+    await db(`
+      UPDATE mediconnect_accounts SET
+        prenom              = COALESCE($1, prenom),
+        nom                 = COALESCE($2, nom),
+        telephone           = COALESCE($3, telephone),
+        ville               = COALESCE($4, ville),
+        pays_code           = COALESCE($5, pays_code),
+        groupe_sanguin      = COALESCE($6, groupe_sanguin),
+        taille              = COALESCE($7, taille),
+        poids               = COALESCE($8, poids),
+        imc                 = COALESCE($9, imc),
+        maladies_chroniques = COALESCE($10, maladies_chroniques),
+        updated_at          = NOW()
+      WHERE user_id = $11
+    `, [prenom||null, nom||null, telephone||null, ville||null,
+        pays_code||null, groupe_sanguin||null,
+        taille ? parseFloat(taille) : null,
+        poids  ? parseFloat(poids)  : null,
+        imc,
+        maladies_chroniques ? (Array.isArray(maladies_chroniques) ? maladies_chroniques : [maladies_chroniques]) : null,
+        req.user.id]).catch(()=>{});
+
+    // Retourner le profil mis à jour
+    const updated = await db(`
+      SELECT u.*, p.antecedents, p.allergies, p.assurance, p.numero_police
+      FROM utilisateurs u
+      LEFT JOIN patients p ON p.user_id=u.id
+      WHERE u.id=$1
+    `, [req.user.id]);
+
+    const { password: _, ...userData } = updated.rows[0] || {};
+    res.json({ success: true, data: userData, message: 'Profil mis à jour' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── CARTE MEDICONNECT ────────────────────────────────────────────
+
+// GET /api/patients/carte
+router.get('/carte', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT ma.*, mc.numero_carte, mc.statut AS carte_statut, mc.solde, mc.qr_code_data,
+             u.taille, u.poids, u.imc, u.groupe_sanguin, u.maladies_chroniques
+      FROM mediconnect_accounts ma
+      LEFT JOIN mediconnect_cards mc ON mc.id = ma.carte_id
+      LEFT JOIN utilisateurs u ON u.id = ma.user_id
+      WHERE ma.user_id = $1 LIMIT 1
+    `, [req.user.id]);
+    if (!r.rows.length) return res.json({ success: true, data: null });
+    const acc = r.rows[0];
+    const createdAt = acc.created_at ? new Date(acc.created_at) : new Date();
+    const validite  = new Date(createdAt.setFullYear(createdAt.getFullYear() + 4));
+    res.json({ success: true, data: {
+      id:                  acc.id,
+      numero:              acc.numero_carte,
+      nom_complet:         `${acc.prenom} ${acc.nom}`,
+      validite:            validite.toLocaleDateString('fr-FR', { month:'2-digit', year:'2-digit' }),
+      statut:              acc.carte_statut === 'liee' ? 'active' : 'en_cours',
+      solde:               acc.solde || 0,
+      taille:              acc.taille,
+      poids:               acc.poids,
+      imc:                 acc.imc || calcIMC(acc.poids, acc.taille),
+      groupe_sanguin:      acc.groupe_sanguin,
+      maladies_chroniques: acc.maladies_chroniques || [],
+    }});
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /api/patients/carte/commander
+router.post("/carte/commander", auth, async (req, res) => {
+const { contacts_urgence } = req.body;
+try {
+const exists = await db("SELECT id FROM mediconnect_accounts WHERE user_id=$1", [req.user.id]);
+if (exists.rows.length) return res.status(409).json({ success: false, message: "Vous avez deja un compte MediConnect Card" });
+const user = await db("SELECT * FROM utilisateurs WHERE id=$1", [req.user.id]);
+const u    = user.rows[0];
+if (!u) return res.status(404).json({ success: false, message: "Utilisateur introuvable" });
+const carte     = await db("SELECT id, numero_carte FROM mediconnect_cards WHERE statut='non_liee' ORDER BY created_at LIMIT 1");
+const carteId   = carte.rows[0]?.id || null;
+const numCarte  = carte.rows[0]?.numero_carte || null;
+const numCompte = "MCA-" + Date.now().toString(36).toUpperCase();
+const imc       = calcIMC(u.poids, u.taille);
+const acc = await db(`
+INSERT INTO mediconnect_accounts
+(id,user_id,numero_compte,carte_id,numero_carte,prenom,nom,telephone,email,
+ville,pays_code,date_naissance,groupe_sanguin,taille,poids,imc,maladies_chroniques,statut)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'actif')
+RETURNING *
+`, [uuid(), req.user.id, numCompte, carteId, numCarte,
+u.prenom||"", u.nom||"", u.telephone||null, u.email||null,
+u.ville||null, u.pays_code||"CI", u.date_naissance||null,
+u.groupe_sanguin||null,
+u.taille ? parseFloat(u.taille) : null,
+u.poids  ? parseFloat(u.poids)  : null,
+imc, u.maladies_chroniques||null]);
+if (carteId) await db("UPDATE mediconnect_cards SET statut='en_cours', updated_at=NOW() WHERE id=$1", [carteId]);
+if (Array.isArray(contacts_urgence) && contacts_urgence.length) {
+for (let i = 0; i < Math.min(contacts_urgence.length, 5); i++) {
+const c = contacts_urgence[i];
+if (c.telephone && c.prenom) {
+await db(`
+INSERT INTO contacts_urgence
+(account_id, ordre, prenom, nom, telephone, telephone_2, relation, est_principal)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+[acc.rows[0].id, i+1, c.prenom, c.nom||"", c.telephone,
+c.telephone_2||null, c.relation||null, i===0]
+).catch(()=>{});
+}
+}
+}
+res.status(201).json({ success: true, data: acc.rows[0], message: "Commande de carte enregistree !" });
+} catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── FAMILLE ─────────────────────────────────────────────────────
+
+// GET /api/patients/famille
+router.get('/famille', auth, async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT f.*, mc.numero_carte, mc.statut AS carte_statut
+      FROM famille_cartes f
+      LEFT JOIN mediconnect_cards mc ON mc.id = f.carte_id
+      WHERE f.user_principal_id = $1 ORDER BY f.created_at
+    `, [req.user.id]);
+    res.json({ success: true, data: r.rows.map(m => ({ ...m, carte_active: m.carte_statut === 'liee' })) });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /api/patients/famille/membre
+router.post('/famille/membre', auth, async (req, res) => {
+  const { prenom, nom, date_naissance, statut_famille, email } = req.body;
+  if (!prenom || !nom || !statut_famille)
+    return res.status(400).json({ success: false, message: 'Prénom, nom et statut requis' });
+  if (statut_famille === 'enfant') {
+    if (!date_naissance) return res.status(400).json({ success: false, message: 'Date de naissance requise pour un enfant' });
+    const age = Math.floor((Date.now() - new Date(date_naissance).getTime()) / (1000*60*60*24*365.25));
+    if (age > 18) return res.status(400).json({ success: false, message: `Un enfant doit avoir 18 ans ou moins (âge : ${age} ans)` });
+  }
+  try {
+    const count = await db('SELECT COUNT(*) c FROM famille_cartes WHERE user_principal_id=$1', [req.user.id]);
+    if (+count.rows[0].c >= 10) return res.status(400).json({ success: false, message: 'Maximum 10 membres par famille' });
+    if (['pere','mere'].includes(statut_famille)) {
+      const dup = await db('SELECT id FROM famille_cartes WHERE user_principal_id=$1 AND statut_famille=$2', [req.user.id, statut_famille]);
+      if (dup.rows.length) return res.status(409).json({ success: false, message: `Un(e) ${statut_famille === 'pere' ? 'père' : 'mère'} est déjà enregistré(e)` });
+    }
+    const carte   = await db("SELECT id FROM mediconnect_cards WHERE statut='non_liee' ORDER BY created_at LIMIT 1");
+    const carteId = carte.rows[0]?.id || null;
+    const r = await db(`
+      INSERT INTO famille_cartes (id,user_principal_id,carte_id,prenom,nom,date_naissance,statut_famille,email)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+    `, [uuid(), req.user.id, carteId, prenom, nom, date_naissance||null, statut_famille, email||null]);
+    if (carteId) await db("UPDATE mediconnect_cards SET statut='en_cours', updated_at=NOW() WHERE id=$1", [carteId]);
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── MÉDICAMENTS ──────────────────────────────────────────────────
+
+// GET /api/patients/medicaments
+router.get('/medicaments', auth, async (req, res) => {
+  try {
+    const { search } = req.query;
+    let sql = 'SELECT * FROM medicaments_catalogue WHERE is_active=true'; const p = [];
+    if (search) { p.push(`%${search}%`); sql += ` AND (nom ILIKE $${p.length} OR dci ILIKE $${p.length})`; }
+    sql += ' ORDER BY nom LIMIT 200';
+    const r = await db(sql, p);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// POST /api/patients/medicament/commander
+router.post('/medicament/commander', auth, async (req, res) => {
+  const { medicament_id, medicament_nom, quantite, adresse_livraison } = req.body;
+  if (!medicament_nom) return res.status(400).json({ success: false, message: 'Médicament requis' });
+  try {
+    const r = await db(`
+      INSERT INTO commandes (id,patient_id,adresse_livraison,nombre_articles,medicament_nom,medicament_details,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,'en_attente') RETURNING *
+    `, [uuid(), req.user.id, adresse_livraison||null, quantite||1,
+        medicament_nom, JSON.stringify({ medicament_id, medicament_nom, quantite: quantite||1 })]);
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// GET /api/patients/commandes
+router.get('/commandes', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM commandes WHERE patient_id=$1 ORDER BY created_at DESC LIMIT 50', [req.user.id]);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ─── PHARMACIES DE GARDE ──────────────────────────────────────────
+
+// GET /api/public/pharmacies-garde
+router.get('/pharmacies-garde', async (req, res) => {
+  try {
+    const { pays_code, ville } = req.query;
+    let sql = "SELECT * FROM pharmacies WHERE est_garde=true AND is_active=true"; const p = [];
+    if (pays_code) { p.push(pays_code);     sql += ` AND pays_code=$${p.length}`; }
+    if (ville)     { p.push(`%${ville}%`);  sql += ` AND ville ILIKE $${p.length}`; }
+    sql += ' ORDER BY nom LIMIT 100';
+    const r = await db(sql, p);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ─── DOSSIER MÉDICAL ──────────────────────────────────────────────
+
+// GET /api/patients/dossier
+router.get('/dossier', auth, async (req, res) => {
+  try {
+    const uid = req.user.id;
+    const [notes, traitements, examens, ordonnances] = await Promise.all([
+      db(`SELECT nd.*, u.prenom||' '||u.nom AS medecin FROM notes_dossier nd LEFT JOIN utilisateurs u ON u.id=nd.medecin_id WHERE nd.patient_user_id=$1 AND nd.type='consultation' ORDER BY nd.created_at DESC LIMIT 50`, [uid]).catch(()=>({rows:[]})),
+      db(`SELECT nd.*, u.prenom||' '||u.nom AS medecin FROM notes_dossier nd LEFT JOIN utilisateurs u ON u.id=nd.medecin_id WHERE nd.patient_user_id=$1 AND nd.type='traitement' ORDER BY nd.created_at DESC LIMIT 50`, [uid]).catch(()=>({rows:[]})),
+      db(`SELECT nd.*, u.prenom||' '||u.nom AS medecin FROM notes_dossier nd LEFT JOIN utilisateurs u ON u.id=nd.medecin_id WHERE nd.patient_user_id=$1 AND nd.type IN ('examen','analyse') ORDER BY nd.created_at DESC LIMIT 50`, [uid]).catch(()=>({rows:[]})),
+      db(`SELECT * FROM ordonnances WHERE patient_id=$1 ORDER BY created_at DESC LIMIT 20`, [uid]).catch(()=>({rows:[]})),
+    ]);
+    res.json({ success: true, data: { notes: notes.rows, traitements: traitements.rows, examens: examens.rows, ordonnances: ordonnances.rows } });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /api/patients/dossier/note
+router.post('/dossier/note', auth, async (req, res) => {
+  const { type, contenu, date } = req.body;
+  if (!contenu) return res.status(400).json({ success: false, message: 'Contenu requis' });
+  try {
+    const r = await db(`
+      INSERT INTO notes_dossier (id,patient_user_id,medecin_id,type,contenu,date_note)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+    `, [uuid(), req.user.id, req.user.medecin_id||null, type||'consultation', contenu, date ? new Date(date) : new Date()]);
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /api/patients/ordonnances
+router.post('/ordonnances', auth, async (req, res) => {
+  const { medicament, posologie, duree, note } = req.body;
+  if (!medicament) return res.status(400).json({ success: false, message: 'Médicament requis' });
+  try {
+    const r = await db(`
+      INSERT INTO ordonnances (id,patient_id,medicaments,posologie,duree,notes_ord,uploaded_by)
+      VALUES ($1,$2,$3,$4,$5,$6,'patient') RETURNING *
+    `, [uuid(), req.user.id, medicament, posologie||null, duree||null, note||null]);
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── MÉDECINS CONSEILS ────────────────────────────────────────────
+
+// GET /api/public/medecins-conseils
+router.get('/medecins-conseils', async (req, res) => {
+  try {
+    const r = await db(`
+      SELECT m.*, u.email FROM medecins m
+      LEFT JOIN utilisateurs u ON u.id=m.user_id
+      WHERE (m.role_mc='medecin_conseil' OR u.role IN ('medecin_independant','medecin_conseil'))
+        AND m.statut='Disponible'
+      ORDER BY m.note_moyenne DESC NULLS LAST, m.nom LIMIT 100
+    `);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// POST /api/patients/demande-conseil
+router.post('/demande-conseil', auth, async (req, res) => {
+  const { medecin_id, message } = req.body;
+  if (!medecin_id) return res.status(400).json({ success: false, message: 'Médecin requis' });
+  try {
+    const exists = await db("SELECT id FROM demandes_medecin_conseil WHERE patient_id=$1 AND medecin_id=$2 AND statut='en_attente'", [req.user.id, medecin_id]);
+    if (exists.rows.length) return res.status(409).json({ success: false, message: 'Une demande est déjà en cours pour ce médecin' });
+    const r = await db(`
+      INSERT INTO demandes_medecin_conseil (id,patient_id,medecin_id,message)
+      VALUES ($1,$2,$3,$4) RETURNING *
+    `, [uuid(), req.user.id, medecin_id, message||null]);
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── ASSURANCES ───────────────────────────────────────────────────
+
+// GET /api/public/assureurs
+router.get('/assureurs', async (req, res) => {
+  try {
+    const r = await db("SELECT * FROM assureurs_partenaires WHERE is_active=true ORDER BY nom");
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// POST /api/patients/quotation-assurance
+router.post('/quotation-assurance', auth, async (req, res) => {
+  const { assureur_id, message } = req.body;
+  if (!assureur_id) return res.status(400).json({ success: false, message: 'Assureur requis' });
+  try {
+    const [user, assureur] = await Promise.all([
+      db('SELECT * FROM utilisateurs WHERE id=$1', [req.user.id]),
+      db('SELECT * FROM assureurs_partenaires WHERE id=$1', [assureur_id]),
+    ]);
+    if (!assureur.rows.length) return res.status(404).json({ success: false, message: 'Assureur introuvable' });
+    const u   = user.rows[0];
+    const ref = 'QUO-' + Date.now().toString(36).toUpperCase();
+    const r   = await db(`
+      INSERT INTO quotations_assurance (id,reference,patient_id,patient_nom,assureur_id,assureur_nom,message)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *
+    `, [uuid(), ref, req.user.id, `${u?.prenom||''} ${u?.nom||''}`.trim(), assureur_id, assureur.rows[0].nom, message||null]);
+    res.status(201).json({ success: true, data: r.rows[0], message: 'Demande de quotation envoyée !' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── ABONNEMENT ───────────────────────────────────────────────────
+
+// GET /api/patients/abonnement
+router.get('/abonnement', auth, async (req, res) => {
+  try {
+    const r = await db("SELECT * FROM abonnements WHERE patient_id=$1 AND statut='actif' ORDER BY created_at DESC LIMIT 1", [req.user.id]);
+    res.json({ success: true, data: r.rows[0] || null });
+  } catch(e) { res.json({ success: true, data: null }); }
+});
+
+// POST /api/patients/abonnement/payer
+router.post('/abonnement/payer', auth, async (req, res) => {
+  const { plan, mode_paiement, reference_paiement } = req.body;
+  const PLANS = { mensuel:{prix:2500,duree:30}, trimestriel:{prix:6500,duree:90}, annuel:{prix:20000,duree:365} };
+  const p = PLANS[plan];
+  if (!p) return res.status(400).json({ success: false, message: 'Plan invalide' });
+  try {
+    const fin = new Date(Date.now() + p.duree * 24 * 60 * 60 * 1000);
+    await db("UPDATE abonnements SET statut='expire' WHERE patient_id=$1 AND statut='actif'", [req.user.id]);
+    const r = await db(`
+      INSERT INTO abonnements (id,patient_id,plan,prix,date_debut,date_fin,mode_paiement,reference_paiement,statut)
+      VALUES ($1,$2,$3,$4,NOW(),$5,$6,$7,'actif') RETURNING *
+    `, [uuid(), req.user.id, plan, p.prix, fin, mode_paiement||'Wave', reference_paiement||null]);
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// ─── PHARMACIES (liste complète) ──────────────────────────────────
+router.get('/pharmacies-toutes', async (req, res) => {
+  try {
+    const { ville } = req.query;
+    let sql = "SELECT id, nom, ville, adresse, telephone, est_garde FROM pharmacies WHERE is_active=true"; const p = [];
+    if (ville) { p.push(`%${ville}%`); sql += ` AND ville ILIKE $${p.length}`; }
+    sql += ' ORDER BY nom LIMIT 200';
+    const r = await db(sql, p);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ─── UPLOAD ORDONNANCE ─────────────────────────────────────────────
+router.post('/ordonnance-upload', auth, async (req, res) => {
+  const { fichier_data, fichier_type, fichier_nom, note } = req.body;
+  if (!fichier_data) return res.status(400).json({ success: false, message: 'Fichier requis' });
+  if (fichier_data.length > 6000000)
+    return res.status(413).json({ success: false, message: 'Fichier trop volumineux (max ~4 Mo)' });
+  try {
+    const r = await db(`
+      INSERT INTO ordonnances (id,patient_id,medicaments,fichier_data,fichier_type,fichier_nom,notes_ord,uploaded_by,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'patient','en_attente') RETURNING id,patient_id,fichier_type,fichier_nom,statut,created_at
+    `, [uuid(), req.user.id, 'Ordonnance scannee', fichier_data, fichier_type || 'image/jpeg', fichier_nom || 'ordonnance.jpg', note || null]);
+    res.status(201).json({ success: true, data: r.rows[0], message: 'Ordonnance envoyee !' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/ordonnance/:id/fichier', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT fichier_data, fichier_type FROM ordonnances WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Introuvable' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── COMMANDE MEDICAMENT LIEE A UNE ORDONNANCE ────────────────────
+router.post('/commande-medicament', auth, async (req, res) => {
+  const { ordonnance_id, pharmacie_id, pharmacie_nom, adresse_livraison, articles, notes } = req.body;
+  if (!ordonnance_id) return res.status(400).json({ success: false, message: 'Ordonnance requise' });
+  if (!adresse_livraison) return res.status(400).json({ success: false, message: 'Adresse de livraison requise' });
+  try {
+    const ord = await db('SELECT id FROM ordonnances WHERE id=$1 AND patient_id=$2', [ordonnance_id, req.user.id]);
+    if (!ord.rows.length) return res.status(404).json({ success: false, message: 'Ordonnance introuvable' });
+
+    const listeArticles = Array.isArray(articles) && articles.length ? articles : [{ nom: 'Medicaments selon ordonnance', quantite: 1, prix_estime: 0 }];
+    const fraisLivraison = 1000;
+    const montantArticles = listeArticles.reduce((s, a) => s + (Number(a.prix_estime) || 0) * (Number(a.quantite) || 1), 0);
+
+    const cmd = await db(`
+      INSERT INTO commandes (id,patient_id,ordonnance_id,pharmacie_id,adresse_livraison,nombre_articles,articles_json,frais_livraison,notes,statut)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'en_attente') RETURNING *
+    `, [uuid(), req.user.id, ordonnance_id, pharmacie_id || null, adresse_livraison,
+        listeArticles.length, JSON.stringify(listeArticles), fraisLivraison, notes || null]);
+
+    const commande = cmd.rows[0];
+
+    const ref = 'PRO-' + Date.now().toString(36).toUpperCase();
+    const montantTotal = montantArticles + fraisLivraison;
+    const fact = await db(`
+      INSERT INTO factures_proforma (id,reference,commande_id,patient_id,pharmacie_id,pharmacie_nom,lignes_json,montant_articles,frais_livraison,montant_total)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *
+    `, [uuid(), ref, commande.id, req.user.id, pharmacie_id || null, pharmacie_nom || 'Pharmacie partenaire',
+        JSON.stringify(listeArticles), montantArticles, fraisLivraison, montantTotal]);
+
+    await db('UPDATE ordonnances SET statut=$1, pharmacie_id=$2 WHERE id=$3', ['traitee', pharmacie_id || null, ordonnance_id]);
+
+    res.status(201).json({ success: true, data: { commande, facture_proforma: fact.rows[0] }, message: 'Commande envoyee a la pharmacie !' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.get('/commande/:id/facture-proforma', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM factures_proforma WHERE commande_id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!r.rows.length) return res.json({ success: true, data: null });
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+const ETAPES_SUIVI = ['en_attente', 'preparation', 'prete', 'en_livraison', 'livree'];
+router.get('/commande/:id/suivi', auth, async (req, res) => {
+  try {
+    const r = await db('SELECT * FROM commandes WHERE id=$1 AND patient_id=$2', [req.params.id, req.user.id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Commande introuvable' });
+    const cmd = r.rows[0];
+    const idxActuel = cmd.statut === 'annulee' ? -1 : ETAPES_SUIVI.indexOf(cmd.statut);
+    res.json({ success: true, data: {
+      commande: cmd,
+      etapes: ETAPES_SUIVI,
+      etape_actuelle: idxActuel,
+      annulee: cmd.statut === 'annulee',
+    }});
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+module.exports = router;
+
+---------------------------------------------------------
+FICHIER: backend/routes/auth.js
+---------------------------------------------------------
+const router = require('express').Router();
+const bcrypt = require('bcryptjs');
+const jwt    = require('jsonwebtoken');
+const { v4: uuid } = require('uuid');
+const { db }  = require('../config/db');
+const JWT_SECRET = process.env.JWT_SECRET || 'mediconnect_dev_secret_2024';
+
+// ── POST /api/auth/login (tous profils par email) ─────────────────
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password)
+    return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
+  try {
+    // Jointures pour resoudre l'etablissement des comptes
+    // laboratoire/imagerie/pharmacie/optique/assureur via leur user_id
+    // (lien inverse) -- utilisateurs n'a pas encore ses propres colonnes
+    // pour ces types (Phase 2 a venir), donc on les retrouve ici.
+    const r = await db(
+      `SELECT u.*, l.id AS laboratoire_id, im.id AS imagerie_id,
+              ph.id AS pharmacie_id, a.id AS assureur_id, co.id AS optique_id
+         FROM utilisateurs u
+         LEFT JOIN laboratoires l ON l.user_id = u.id
+         LEFT JOIN imageries im ON im.user_id = u.id
+         LEFT JOIN pharmacies ph ON ph.user_id = u.id
+         LEFT JOIN assureurs a ON a.user_id = u.id
+         LEFT JOIN cabinets_optiques co ON co.user_id = u.id
+        WHERE u.email=$1 AND u.is_active IS NOT false LIMIT 1`,
+      [email]
+    );
+    if (!r.rows.length)
+      return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
+    const user = r.rows[0];
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok)
+      return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
+    // Avant ce correctif, seul clinique_id etait transmis -- les comptes
+    // laboratoire/imagerie/pharmacie/optique/assureur ne recevaient
+    // jamais leur propre identifiant d'etablissement dans le token.
+    const token = jwt.sign(
+      { id: user.id, role: user.role, clinique_id: user.clinique_id,
+        patient_id: user.patient_id, medecin_id: user.medecin_id,
+        sous_role: user.sous_role || null,
+        laboratoire_id: user.laboratoire_id, imagerie_id: user.imagerie_id,
+        pharmacie_id: user.pharmacie_id, assureur_id: user.assureur_id,
+        optique_id: user.optique_id },
+      JWT_SECRET, { expiresIn: '7d' }
+    );
+    const { password: _, ...u } = user;
+    res.json({ success: true, token, user: u });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── POST /api/auth/login-patient (telephone + PIN 4 chiffres) ─────
+router.post('/login-patient', async (req, res) => {
+  const { telephone, pin } = req.body;
+  if (!telephone || !pin)
+    return res.status(400).json({ success: false, message: 'Téléphone et PIN requis' });
+  if (!/^\d{4}$/.test(pin))
+    return res.status(400).json({ success: false, message: 'PIN doit être 4 chiffres' });
+  try {
+    const r = await db(
+      `SELECT u.*, p.id as pid, p.groupe_sanguin, p.allergies, p.date_naissance
+       FROM utilisateurs u
+       LEFT JOIN patients p ON p.user_id = u.id
+       WHERE u.telephone=$1 AND u.role='patient' AND u.is_active IS NOT false LIMIT 1`,
+      [telephone]
+    );
+    if (!r.rows.length)
+      return res.status(401).json({ success: false, message: 'Numéro de téléphone non trouvé' });
+    const user = r.rows[0];
+    const ok = await bcrypt.compare(pin, user.password);
+    if (!ok)
+      return res.status(401).json({ success: false, message: 'PIN incorrect' });
+    const token = jwt.sign(
+      { id: user.id, role: 'patient', patient_id: user.patient_id || user.pid },
+      JWT_SECRET, { expiresIn: '30d' }
+    );
+    const { password: _, ...u } = user;
+    res.json({ success: true, token, user: u });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── POST /api/auth/register (tous profils) ────────────────────────
+router.post('/register', async (req, res) => {
+  const { email, password, prenom, nom, role, telephone, pays_code, ville,
+          // Champs spécifiques clinique
+          nom_clinique, adresse, specialites, nombre_lits,
+          // Rattachement a une clinique deja existante en base (evite les
+          // doublons quand plusieurs comptes appartiennent a la meme
+          // structure : secretaire, gerant, medecins...)
+          clinique_id_existante,
+          // Position GPS optionnelle (geolocalisation navigateur a
+          // l'inscription), utilisee par la recherche par rayon de
+          // rdv.mediconnect4africa.cloud.
+          latitude, longitude } = req.body;
+  if (!email || !password)
+    return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
+  try {
+    const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+    if (exists.rows.length)
+      return res.status(409).json({ success: false, message: 'Email déjà utilisé' });
+    const hash = await bcrypt.hash(password, 10);
+    const userId = uuid();
+    const roleVal = role || 'patient';
+
+    // 1. Créer l'utilisateur
+    const r = await db(
+      'INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,pays_code,ville) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+      [userId, email, hash, prenom||'', nom||'', roleVal, telephone||null, pays_code||'CI', ville||null]
+    );
+
+    let clinique_id = null;
+    let pharmacie_id = null;
+    let labo_id = null;
+    let imagerie_id = null;
+    let optique_id = null;
+    let assureur_id = null;
+
+    // 2. Créer l'entrée dans la table métier selon le rôle
+    if (roleVal === 'clinique') {
+      if (clinique_id_existante) {
+        // Rattachement : on verifie que la clinique existe reellement avant
+        // de lier, pour ne jamais laisser un utilisateur avec un
+        // clinique_id qui pointe sur rien.
+        const check = await db('SELECT id FROM cliniques WHERE id=$1', [clinique_id_existante]);
+        if (!check.rows.length) {
+          return res.status(400).json({ success:false, message:'Clinique introuvable, rafraichissez la recherche' });
+        }
+        await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [clinique_id_existante, userId]);
+        clinique_id = clinique_id_existante;
+      } else {
+        if (!nom_clinique) {
+          return res.status(400).json({ success:false, message:'Nom de la clinique requis' });
+        }
+        const cid = uuid();
+        // Coordonnees GPS optionnelles, capturees via geolocalisation
+        // navigateur au moment de l'inscription (rdv.mediconnect4africa.cloud
+        // recherche par rayon en depend). Absentes = NULL, pas d'erreur :
+        // la clinique reste utilisable, seulement invisible dans une
+        // recherche par distance tant que la position n'est pas connue.
+        const lat = (latitude !== undefined && latitude !== null && latitude !== '') ? parseFloat(latitude) : null;
+        const lng = (longitude !== undefined && longitude !== null && longitude !== '') ? parseFloat(longitude) : null;
+        await db(
+          `INSERT INTO cliniques (id, nom, adresse, ville, telephone, email, user_id, latitude, longitude)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT DO NOTHING`,
+          [cid, nom_clinique, adresse||null, ville||null,
+           telephone||null, email, userId, lat, lng]
+        );
+        await db('UPDATE utilisateurs SET clinique_id=$1 WHERE id=$2', [cid, userId]);
+        clinique_id = cid;
+      }
+
+    } else if (roleVal === 'pharmacie') {
+      const pid = uuid();
+      await db(
+        `INSERT INTO pharmacies (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [pid, nom||prenom||'Pharmacie', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      pharmacie_id = pid;
+
+    } else if (roleVal === 'laboratoire') {
+      const lid = uuid();
+      await db(
+        `INSERT INTO laboratoires (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [lid, nom||prenom||'Laboratoire', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      labo_id = lid;
+
+    } else if (roleVal === 'imagerie') {
+      const iid = uuid();
+      await db(
+        `INSERT INTO imageries (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [iid, nom||prenom||'Imagerie', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      imagerie_id = iid;
+
+    } else if (roleVal === 'optique') {
+      const oid = uuid();
+      await db(
+        `INSERT INTO cabinets_optiques (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [oid, nom||prenom||'Cabinet Optique', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      optique_id = oid;
+
+    } else if (roleVal === 'assureur') {
+      const aid = uuid();
+      await db(
+        `INSERT INTO assureurs (id, nom, adresse, ville, telephone, email, user_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
+        [aid, nom||prenom||'Assureur', adresse||null, ville||null, telephone||null, email, userId]
+      );
+      assureur_id = aid;
+    }
+
+    // 3. Générer le token avec l'identifiant de l'etablissement selon le
+    // role -- avant ce correctif, seul clinique_id etait transmis ; les
+    // comptes laboratoire/imagerie/pharmacie/optique/assureur ne
+    // recevaient jamais leur propre identifiant dans le token, les
+    // empechant de fonctionner comme la clinique le fait deja.
+    const tokenPayload = {
+      id: userId, role: roleVal, clinique_id, pharmacie_id,
+      laboratoire_id: labo_id, imagerie_id, optique_id, assureur_id,
+    };
+    const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+
+    const { password: _, ...u } = r.rows[0];
+    res.status(201).json({
+      success: true,
+      token,
+      user: { ...u, clinique_id },
+      message: `Compte ${roleVal} créé avec succès`
+    });
+  } catch(e) {
+    console.error('register error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// ── POST /api/auth/register-patient ──────────────────────────────
+// Login : telephone + PIN 4 chiffres
+// Crée : utilisateurs + patients + mediconnect_card_requests
+// Transaction atomique : si une etape echoue, tout est annule (pas de compte orphelin)
+router.post('/register-patient', async (req, res) => {
+  const {
+    prenom, nom, telephone, pin,
+    date_naissance, groupe_sanguin, allergies,
+    email, ville, pays_code,
+    taille, poids,
+    contact_parent, telephone_parent,
+    contact_urgence_1, telephone_urgence_1,
+    contact_urgence_2, telephone_urgence_2,
+    contact_urgence_3, telephone_urgence_3,
+    contact_urgence_4, telephone_urgence_4,
+    contact_urgence_5, telephone_urgence_5,
+  } = req.body;
+
+  // Validations
+  if (!prenom || !nom || !telephone || !pin)
+    return res.status(400).json({ success: false, message: 'Prénom, nom, téléphone et PIN requis' });
+  if (!/^\d{4}$/.test(pin))
+    return res.status(400).json({ success: false, message: 'Le PIN doit être exactement 4 chiffres' });
+
+  const { pool } = require('../config/db');
+  const client = await pool.connect();
+
+  try {
+    // Vérifier si téléphone déjà utilisé
+    const existsTel = await client.query(
+      'SELECT id FROM utilisateurs WHERE telephone=$1 AND role=$2',
+      [telephone, 'patient']
+    );
+    if (existsTel.rows.length) {
+      client.release();
+      return res.status(409).json({ success: false, message: 'Ce numéro de téléphone est déjà utilisé' });
+    }
+
+    // Vérifier email seulement si fourni et non vide
+    if (email && email.trim()) {
+      const existsEmail = await client.query('SELECT id FROM utilisateurs WHERE email=$1 AND role=\'patient\'', [email.trim()]);
+      if (existsEmail.rows.length) {
+        client.release();
+        return res.status(409).json({ success: false, message: 'Cet email est déjà utilisé. Connectez-vous plutôt.' });
+      }
+    }
+
+    const hash = await bcrypt.hash(pin, 10);
+    const userId = uuid();
+    const patientId = uuid();
+    const pc = pays_code || 'CI';
+    const emailFinal = email || `${telephone.replace(/[^0-9]/g,'')}_${Date.now()}@mediconnect.patient`;
+
+    await client.query('BEGIN');
+
+    // ── 1. Créer utilisateur ──────────────────────────────────────
+    await client.query(
+      `INSERT INTO utilisateurs
+       (id, email, password, prenom, nom, role, telephone, pays_code, ville, patient_id)
+       VALUES ($1,$2,$3,$4,$5,'patient',$6,$7,$8,$9)`,
+      [userId, emailFinal, hash, prenom, nom, telephone, pc, ville||null, patientId]
+    );
+
+    // ── 2. Créer profil patient ───────────────────────────────────
+    await client.query(
+      `INSERT INTO patients
+       (id, user_id, prenom, nom, telephone, email, date_naissance,
+        groupe_sanguin, allergies, ville,
+        contact_urgence_1, telephone_urgence_1,
+        contact_urgence_2, telephone_urgence_2,
+        contact_urgence_3, telephone_urgence_3,
+        contact_urgence_4, telephone_urgence_4,
+        contact_urgence_5, telephone_urgence_5)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [patientId, userId, prenom, nom, telephone, email||null,
+       date_naissance||null, groupe_sanguin||null, allergies||null, ville||null,
+       contact_urgence_1||null, telephone_urgence_1||null,
+       contact_urgence_2||null, telephone_urgence_2||null,
+       contact_urgence_3||null, telephone_urgence_3||null,
+       contact_urgence_4||null, telephone_urgence_4||null,
+       contact_urgence_5||null, telephone_urgence_5||null]
+    );
+
+    // Code dossier lisible (le PIN reste hashe pour l'auth)
+    const codeDossier = 'MC-' + ((prenom||'X')[0]+(nom||'X')[0]).toUpperCase() + '-' + Math.floor(1000+Math.random()*9000);
+    await client.query('UPDATE patients SET code_secret=$1 WHERE id=$2', [codeDossier, patientId]);
+
+    // ── 3. Générer numéro de carte unique (collision-proof) ───────
+    let numeroCarte, attempts = 0;
+    while (attempts < 10) {
+      const count = await client.query('SELECT COUNT(*) FROM mediconnect_card_requests');
+      const seq = String(parseInt(count.rows[0].count) + 1 + attempts).padStart(6, '0');
+      const candidate = `MC-${pc}-${new Date().getFullYear()}-${seq}`;
+      const exists = await client.query('SELECT id FROM mediconnect_card_requests WHERE numero_carte=$1', [candidate]);
+      if (!exists.rows.length) { numeroCarte = candidate; break; }
+      attempts++;
+    }
+    if (!numeroCarte) {
+      numeroCarte = `MC-${pc}-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+    }
+
+    // ── 4. Créer demande MediConnect Card ─────────────────────────
+    await client.query(
+      `INSERT INTO mediconnect_card_requests
+       (id, numero_carte, prenom, nom, date_naissance, groupe_sanguin, allergies,
+        contact_urgence, telephone_urgence, email, telephone, ville, pays_code,
+        contact_parent, telephone_parent, taille, poids,
+        contact_urgence_2, telephone_urgence_2,
+        contact_urgence_3, telephone_urgence_3,
+        contact_urgence_4, telephone_urgence_4,
+        contact_urgence_5, telephone_urgence_5,
+        statut)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'en_attente')`,
+      [uuid(), numeroCarte, prenom, nom, date_naissance||null, groupe_sanguin||null,
+       allergies||null, contact_urgence_1||null, telephone_urgence_1||null, email||null, telephone,
+       ville||null, pc, contact_parent||null, telephone_parent||null,
+       taille||null, poids||null,
+       contact_urgence_2||null, telephone_urgence_2||null,
+       contact_urgence_3||null, telephone_urgence_3||null,
+       contact_urgence_4||null, telephone_urgence_4||null,
+       contact_urgence_5||null, telephone_urgence_5||null]
+    );
+
+    await client.query('COMMIT');
+    client.release();
+
+    // ── 5. Générer token JWT ──────────────────────────────────────
+    const token = jwt.sign(
+      { id: userId, role: 'patient', patient_id: patientId },
+      JWT_SECRET, { expiresIn: '30d' }
+    );
+
+    res.status(201).json({
+      success: true,
+      token,
+      message: 'Compte patient créé avec succès',
+      data: {
+        user_id: userId,
+        patient_id: patientId,
+        numero_carte: numeroCarte,
+        prenom, nom, telephone
+      }
+    });
+
+  } catch(e) {
+    try { await client.query('ROLLBACK'); } catch(_) {}
+    client.release();
+    console.error('register-patient error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+module.exports = router;
+
+=== B) backend/server.js — sections BULLETINS / laboratoire / resultats_labo / imagerie ===
+
+--- Lignes correspondantes (numéro:contenu) ---
+473:// personnel labo/imagerie/clinique pour identifier un patient sans
+618:app.post('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+639:app.get('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+651:app.put('/api/laboratoire/personnel/:id', auth, requireSousRole(), async (req, res) => {
+1603:// ── Creneaux disponibles pour laboratoire/imagerie (pas de "medecin"
+1766:app.get('/api/public/laboratoires', async (req, res) => {
+1775:app.get('/api/public/imageries', async (req, res) => {
+2922:app.get('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
+2947:app.post('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
+2969:    let sql = 'SELECT * FROM resultats_labo WHERE 1=1';
+2975:      await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+2977:        patient_id UUID, clinique_id UUID, labo_id UUID,
+2994:      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+3018:      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+3037:    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+3039:      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+3045:    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+3046:    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+
+--- Extrait de code autour de chaque zone trouvée (150 lignes après chaque match) ---
+
+>>> Contexte autour de la ligne 473 <<<
+// personnel labo/imagerie/clinique pour identifier un patient sans
+// naviguer dans une liste. Correspondance exacte uniquement (pas de LIKE) :
+// un labo doit connaitre le code precis, pas le deviner par tatonnement,
+// comme presenter une carte physique plutot que la decrire.
+app.get('/api/patients/by-code/:code', auth, async (req, res) => {
+  try {
+    const code = (req.params.code || '').trim().toUpperCase();
+    if (!code) return res.status(400).json({ success:false, message:'Code requis' });
+    const r = await db('SELECT * FROM patients WHERE UPPER(code_secret)=$1 LIMIT 1', [code]);
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Aucun patient avec ce code' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+app.post('/api/patients', auth, async (req, res) => {
+  const { prenom, nom, telephone, email, date_naissance, groupe_sanguin, allergies, antecedents, ville, assurance, numero_police, assureur_id, formule_assurance_id } = req.body;
+  if (!prenom||!nom) return res.status(400).json({ success:false, message:'Prénom et nom requis' });
+  try {
+    const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
+    const patientId = uuid();
+    // BUG CRITIQUE CORRIGE : la table patients n'a pas de colonne clinique_id
+    // (le patient est un dossier partage entre cliniques, rattache via
+    // consultations/factures/rendez_vous, pas directement). L'INSERT
+    // precedent la visait quand meme -> "column clinique_id does not
+    // exist" -> AUCUNE creation de patient ne fonctionnait, pour aucune
+    // clinique, depuis l'origine.
+    const r = await db(
+      'INSERT INTO patients (id,code_secret,prenom,nom,telephone,email,date_naissance,groupe_sanguin,allergies,antecedents,ville,assurance,numero_police,clinique_id,assureur_id,formule_assurance_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+      [patientId, code, prenom, nom, telephone||null, email||null, vd(date_naissance), groupe_sanguin||null, allergies||null, antecedents||null, ville||null, assurance||null, numero_police||null, req.user?.clinique_id||null, assureur_id||null, formule_assurance_id||null]
+    );
+
+    // Liaison automatique : si ce numero correspond a un compte de
+    // connexion (app patient / rdv-site) encore orphelin, on le relie
+    // desormais a ce dossier -- comparaison sur les 8 derniers chiffres
+    // pour absorber les differences d'indicatif +225 / zero initial.
+    if (telephone) {
+      db(
+        `UPDATE utilisateurs SET patient_id=$1
+          WHERE role='patient' AND patient_id IS NULL
+            AND RIGHT(regexp_replace(telephone, '[^0-9]', '', 'g'), 8) = RIGHT(regexp_replace($2, '[^0-9]', '', 'g'), 8)`,
+        [patientId, telephone]
+      ).catch(() => {});
+    }
+
+    // Retourner explicitement le code_secret pour affichage
+    res.status(201).json({ success:true, data:{ ...r.rows[0], code_secret:code } });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RBAC PERSONNEL CLINIQUE
+// ══════════════════════════════════════════════════════════════════
+// sous_role : NULL = acces complet (compte historique/proprietaire).
+// Valeurs possibles : bureau_entrees, medecin, finance, rh.
+// Le compte personnel recoit le MEME clinique_id que le proprietaire
+// (pas proprietaire_clinique_id, reserve a la vue financiere du
+// proprietaire) : ainsi les 39+ routes existantes qui filtrent par
+// req.user.clinique_id fonctionnent sans modification.
+const SOUS_ROLES_VALIDES = ['bureau_entrees', 'medecin', 'finance', 'rh'];
+
+function requireSousRole(...autorises) {
+  return (req, res, next) => {
+    const sr = req.user?.sous_role;
+    if (!sr) return next(); // compte complet (proprietaire / historique)
+    if (autorises.includes(sr)) return next();
+    return res.status(403).json({ success:false, message:"Accès refusé pour votre rôle" });
+  };
+}
+
+app.post('/api/admin/init-rbac-clinique', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db("ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS sous_role VARCHAR(30)");
+    res.json({ success:true, message:'Colonne sous_role prête' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Creation d'un compte de personnel, reserve aux comptes a acces complet
+// (sous_role NULL) : un bureau_entrees ne peut pas creer d'autres comptes.
+app.post('/api/clinique/personnel', auth, requireSousRole(), async (req, res) => {
+  const { prenom, nom, email, password, telephone, sous_role } = req.body;
+  if (!prenom || !nom || !email || !password) {
+    return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+  }
+  if (!SOUS_ROLES_VALIDES.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES.join(', ')}` });
+  }
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const exists = await db('SELECT id FROM utilisateurs WHERE email=$1', [email]);
+    if (exists.rows.length) return res.status(409).json({ success:false, message:'Email déjà utilisé' });
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(password, 10);
+    const r = await db(
+      `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,clinique_id,sous_role,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,'clinique',$5,$6,$7,true) RETURNING id,email,prenom,nom,sous_role,clinique_id`,
+      [email, hash, prenom, nom, telephone||null, cid, sous_role]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// Liste du personnel de la clinique (comptes lies au meme clinique_id,
+// sous_role non nul)
+app.get('/api/clinique/personnel', auth, requireSousRole(), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  if (!cid) return res.json({ success:true, data:[] });
+  try {
+    const r = await db(
+      `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+         FROM utilisateurs WHERE clinique_id=$1 AND sous_role IS NOT NULL
+        ORDER BY created_at DESC`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.put('/api/clinique/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const { sous_role, is_active } = req.body;
+  if (sous_role && !SOUS_ROLES_VALIDES.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES.join(', ')}` });
+  }
+  const cid = req.user?.clinique_id;
+  try {
+    // On ne modifie jamais un compte d'une AUTRE clinique, meme avec l'id exact.
+    const r = await db(
+      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+        WHERE id=$3 AND clinique_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+      [sous_role||null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  ADMINISTRATION LABORATOIRE (Phase 3) -- meme schema que clinique,
+//  scope sur laboratoire_id (Phase 2) au lieu de clinique_id.
+//  requireSousRole() est generique (ne verifie que sous_role, jamais
+//  l'etablissement) : reutilisable ici sans modification.
+// ══════════════════════════════════════════════════════════════════
+const SOUS_ROLES_VALIDES_LABORATOIRE = ['technicien', 'reception', 'biologiste'];
+
+app.post('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+  const { prenom, nom, email, password, telephone, sous_role } = req.body;
+  const lid = req.user?.laboratoire_id;
+  if (!lid) return res.status(400).json({ success:false, message:'Compte non rattaché à un laboratoire' });
+  if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+  if (!SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+
+>>> Contexte autour de la ligne 618 <<<
+app.post('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+  const { prenom, nom, email, password, telephone, sous_role } = req.body;
+  const lid = req.user?.laboratoire_id;
+  if (!lid) return res.status(400).json({ success:false, message:'Compte non rattaché à un laboratoire' });
+  if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+  if (!SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES_LABORATOIRE.join(', ')}` });
+  }
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const r = await db(
+      `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,laboratoire_id,sous_role,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,'laboratoire',$5,$6,$7,true) RETURNING id,email,prenom,nom,sous_role,laboratoire_id`,
+      [email, hash, prenom, nom, telephone||null, lid, sous_role]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Cet email est déjà utilisé' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+app.get('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+         FROM utilisateurs WHERE laboratoire_id=$1 AND sous_role IS NOT NULL
+        ORDER BY created_at DESC`,
+      [lid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.put('/api/laboratoire/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const { sous_role, is_active } = req.body;
+  if (sous_role && !SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES_LABORATOIRE.join(', ')}` });
+  }
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+        WHERE id=$3 AND laboratoire_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+      [sous_role||null, is_active===undefined?null:is_active, req.params.id, lid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre laboratoire' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  ADMINISTRATION IMAGERIE / PHARMACIE / ASSUREUR (Phase 4) -- meme
+//  schema que laboratoire, seuls le champ FK et les sous-roles changent.
+// ══════════════════════════════════════════════════════════════════
+const SOUS_ROLES_VALIDES_IMAGERIE = ['technicien', 'reception', 'radiologue'];
+const SOUS_ROLES_VALIDES_PHARMACIE = ['preparateur', 'caissier', 'pharmacien'];
+const SOUS_ROLES_VALIDES_ASSUREUR = ['gestionnaire', 'agent', 'comptable'];
+
+function routesPersonnel(prefixe, champFk, sousRolesValides) {
+  app.post(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const { prenom, nom, email, password, telephone, sous_role } = req.body;
+    const eid = req.user?.[champFk];
+    if (!eid) return res.status(400).json({ success:false, message:`Compte non rattaché à un(e) ${prefixe}` });
+    if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+    if (!sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    try {
+      const hash = await bcrypt.hash(password, 10);
+      const r = await db(
+        `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,${champFk},sous_role,is_active)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING id,email,prenom,nom,sous_role,${champFk}`,
+        [email, hash, prenom, nom, prefixe, telephone||null, eid, sous_role]
+      );
+      res.status(201).json({ success:true, data:r.rows[0] });
+    } catch(e) {
+      if (e.code === '23505') return res.status(409).json({ success:false, message:'Cet email est déjà utilisé' });
+      res.status(500).json({ success:false, message:e.message });
+    }
+  });
+  app.get(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+           FROM utilisateurs WHERE ${champFk}=$1 AND sous_role IS NOT NULL
+          ORDER BY created_at DESC`,
+        [eid]
+      );
+      res.json({ success:true, data:r.rows });
+    } catch(e) { res.json({ success:true, data:[] }); }
+  });
+  app.put(`/api/${prefixe}/personnel/:id`, auth, requireSousRole(), async (req, res) => {
+    const { sous_role, is_active } = req.body;
+    if (sous_role && !sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+          WHERE id=$3 AND ${champFk}=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+        [sous_role||null, is_active===undefined?null:is_active, req.params.id, eid]
+      );
+      if (!r.rows.length) return res.status(404).json({ success:false, message:`Compte introuvable dans votre ${prefixe}` });
+      res.json({ success:true, data:r.rows[0] });
+    } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+  });
+}
+routesPersonnel('imagerie', 'imagerie_id', SOUS_ROLES_VALIDES_IMAGERIE);
+routesPersonnel('pharmacie', 'pharmacie_id', SOUS_ROLES_VALIDES_PHARMACIE);
+routesPersonnel('assureur', 'assureur_id', SOUS_ROLES_VALIDES_ASSUREUR);
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPAGNIES D'ASSURANCE (liste de reference) + CONVENTIONS
+//  (taux de couverture negocie par la clinique avec chaque compagnie)
+// ══════════════════════════════════════════════════════════════════
+
+// Liste de reference, ouverte a tous les comptes authentifies (utile
+// pour peupler des menus deroulants patient/carte).
+app.get('/api/assureurs-liste', auth, async (req, res) => {
+  try {
+    const r = await db("SELECT id,nom,taux_defaut FROM assureurs WHERE is_active IS NOT false ORDER BY nom");
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// Conventions de la clinique connectee : une ligne par assureur avec
+// son taux negocie, plafond eventuel, periode de validite.
+app.get('/api/conventions', auth, requireSousRole('bureau_entrees', 'finance', 'medecin'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `SELECT c.*, a.nom AS assureur_nom
+         FROM conventions c JOIN assureurs a ON a.id = c.assureur_id
+        WHERE c.clinique_id=$1
+        ORDER BY a.nom`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.post('/api/conventions', auth, requireSousRole('finance'), async (req, res) => {
+  const { assureur_id, taux, plafond_acte, date_debut, date_fin } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!assureur_id || taux === undefined) return res.status(400).json({ success:false, message:'assureur_id et taux requis' });
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      `INSERT INTO conventions (id,assureur_id,clinique_id,taux,plafond_acte,date_debut,date_fin,is_active)
+
+>>> Contexte autour de la ligne 639 <<<
+app.get('/api/laboratoire/personnel', auth, requireSousRole(), async (req, res) => {
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+         FROM utilisateurs WHERE laboratoire_id=$1 AND sous_role IS NOT NULL
+        ORDER BY created_at DESC`,
+      [lid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+app.put('/api/laboratoire/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const { sous_role, is_active } = req.body;
+  if (sous_role && !SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES_LABORATOIRE.join(', ')}` });
+  }
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+        WHERE id=$3 AND laboratoire_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+      [sous_role||null, is_active===undefined?null:is_active, req.params.id, lid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre laboratoire' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  ADMINISTRATION IMAGERIE / PHARMACIE / ASSUREUR (Phase 4) -- meme
+//  schema que laboratoire, seuls le champ FK et les sous-roles changent.
+// ══════════════════════════════════════════════════════════════════
+const SOUS_ROLES_VALIDES_IMAGERIE = ['technicien', 'reception', 'radiologue'];
+const SOUS_ROLES_VALIDES_PHARMACIE = ['preparateur', 'caissier', 'pharmacien'];
+const SOUS_ROLES_VALIDES_ASSUREUR = ['gestionnaire', 'agent', 'comptable'];
+
+function routesPersonnel(prefixe, champFk, sousRolesValides) {
+  app.post(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const { prenom, nom, email, password, telephone, sous_role } = req.body;
+    const eid = req.user?.[champFk];
+    if (!eid) return res.status(400).json({ success:false, message:`Compte non rattaché à un(e) ${prefixe}` });
+    if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+    if (!sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    try {
+      const hash = await bcrypt.hash(password, 10);
+      const r = await db(
+        `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,${champFk},sous_role,is_active)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING id,email,prenom,nom,sous_role,${champFk}`,
+        [email, hash, prenom, nom, prefixe, telephone||null, eid, sous_role]
+      );
+      res.status(201).json({ success:true, data:r.rows[0] });
+    } catch(e) {
+      if (e.code === '23505') return res.status(409).json({ success:false, message:'Cet email est déjà utilisé' });
+      res.status(500).json({ success:false, message:e.message });
+    }
+  });
+  app.get(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+           FROM utilisateurs WHERE ${champFk}=$1 AND sous_role IS NOT NULL
+          ORDER BY created_at DESC`,
+        [eid]
+      );
+      res.json({ success:true, data:r.rows });
+    } catch(e) { res.json({ success:true, data:[] }); }
+  });
+  app.put(`/api/${prefixe}/personnel/:id`, auth, requireSousRole(), async (req, res) => {
+    const { sous_role, is_active } = req.body;
+    if (sous_role && !sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+          WHERE id=$3 AND ${champFk}=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+        [sous_role||null, is_active===undefined?null:is_active, req.params.id, eid]
+      );
+      if (!r.rows.length) return res.status(404).json({ success:false, message:`Compte introuvable dans votre ${prefixe}` });
+      res.json({ success:true, data:r.rows[0] });
+    } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+  });
+}
+routesPersonnel('imagerie', 'imagerie_id', SOUS_ROLES_VALIDES_IMAGERIE);
+routesPersonnel('pharmacie', 'pharmacie_id', SOUS_ROLES_VALIDES_PHARMACIE);
+routesPersonnel('assureur', 'assureur_id', SOUS_ROLES_VALIDES_ASSUREUR);
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPAGNIES D'ASSURANCE (liste de reference) + CONVENTIONS
+//  (taux de couverture negocie par la clinique avec chaque compagnie)
+// ══════════════════════════════════════════════════════════════════
+
+// Liste de reference, ouverte a tous les comptes authentifies (utile
+// pour peupler des menus deroulants patient/carte).
+app.get('/api/assureurs-liste', auth, async (req, res) => {
+  try {
+    const r = await db("SELECT id,nom,taux_defaut FROM assureurs WHERE is_active IS NOT false ORDER BY nom");
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// Conventions de la clinique connectee : une ligne par assureur avec
+// son taux negocie, plafond eventuel, periode de validite.
+app.get('/api/conventions', auth, requireSousRole('bureau_entrees', 'finance', 'medecin'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `SELECT c.*, a.nom AS assureur_nom
+         FROM conventions c JOIN assureurs a ON a.id = c.assureur_id
+        WHERE c.clinique_id=$1
+        ORDER BY a.nom`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.post('/api/conventions', auth, requireSousRole('finance'), async (req, res) => {
+  const { assureur_id, taux, plafond_acte, date_debut, date_fin } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!assureur_id || taux === undefined) return res.status(400).json({ success:false, message:'assureur_id et taux requis' });
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      `INSERT INTO conventions (id,assureur_id,clinique_id,taux,plafond_acte,date_debut,date_fin,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,COALESCE($5,CURRENT_DATE),$6,true) RETURNING *`,
+      [assureur_id, cid, parseInt(taux), plafond_acte||null, date_debut||null, date_fin||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Une convention existe déjà pour cet assureur' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+
+app.put('/api/conventions/:id', auth, requireSousRole('finance'), async (req, res) => {
+  const { taux, plafond_acte, date_debut, date_fin, is_active } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE conventions SET
+         taux=COALESCE($1,taux), plafond_acte=COALESCE($2,plafond_acte),
+         date_debut=COALESCE($3,date_debut), date_fin=COALESCE($4,date_fin),
+         is_active=COALESCE($5,is_active)
+       WHERE id=$6 AND clinique_id=$7 RETURNING *`,
+      [taux??null, plafond_acte??null, date_debut||null, date_fin||null, is_active===undefined?null:is_active, req.params.id, cid]
+
+>>> Contexte autour de la ligne 651 <<<
+app.put('/api/laboratoire/personnel/:id', auth, requireSousRole(), async (req, res) => {
+  const { sous_role, is_active } = req.body;
+  if (sous_role && !SOUS_ROLES_VALIDES_LABORATOIRE.includes(sous_role)) {
+    return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${SOUS_ROLES_VALIDES_LABORATOIRE.join(', ')}` });
+  }
+  const lid = req.user?.laboratoire_id;
+  try {
+    const r = await db(
+      `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+        WHERE id=$3 AND laboratoire_id=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+      [sous_role||null, is_active===undefined?null:is_active, req.params.id, lid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Compte introuvable dans votre laboratoire' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  ADMINISTRATION IMAGERIE / PHARMACIE / ASSUREUR (Phase 4) -- meme
+//  schema que laboratoire, seuls le champ FK et les sous-roles changent.
+// ══════════════════════════════════════════════════════════════════
+const SOUS_ROLES_VALIDES_IMAGERIE = ['technicien', 'reception', 'radiologue'];
+const SOUS_ROLES_VALIDES_PHARMACIE = ['preparateur', 'caissier', 'pharmacien'];
+const SOUS_ROLES_VALIDES_ASSUREUR = ['gestionnaire', 'agent', 'comptable'];
+
+function routesPersonnel(prefixe, champFk, sousRolesValides) {
+  app.post(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const { prenom, nom, email, password, telephone, sous_role } = req.body;
+    const eid = req.user?.[champFk];
+    if (!eid) return res.status(400).json({ success:false, message:`Compte non rattaché à un(e) ${prefixe}` });
+    if (!prenom||!nom||!email||!password) return res.status(400).json({ success:false, message:'Prénom, nom, email et mot de passe requis' });
+    if (!sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    try {
+      const hash = await bcrypt.hash(password, 10);
+      const r = await db(
+        `INSERT INTO utilisateurs (id,email,password,prenom,nom,role,telephone,${champFk},sous_role,is_active)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,true) RETURNING id,email,prenom,nom,sous_role,${champFk}`,
+        [email, hash, prenom, nom, prefixe, telephone||null, eid, sous_role]
+      );
+      res.status(201).json({ success:true, data:r.rows[0] });
+    } catch(e) {
+      if (e.code === '23505') return res.status(409).json({ success:false, message:'Cet email est déjà utilisé' });
+      res.status(500).json({ success:false, message:e.message });
+    }
+  });
+  app.get(`/api/${prefixe}/personnel`, auth, requireSousRole(), async (req, res) => {
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `SELECT id,email,prenom,nom,telephone,sous_role,is_active,created_at
+           FROM utilisateurs WHERE ${champFk}=$1 AND sous_role IS NOT NULL
+          ORDER BY created_at DESC`,
+        [eid]
+      );
+      res.json({ success:true, data:r.rows });
+    } catch(e) { res.json({ success:true, data:[] }); }
+  });
+  app.put(`/api/${prefixe}/personnel/:id`, auth, requireSousRole(), async (req, res) => {
+    const { sous_role, is_active } = req.body;
+    if (sous_role && !sousRolesValides.includes(sous_role)) {
+      return res.status(400).json({ success:false, message:`sous_role doit être l'un de : ${sousRolesValides.join(', ')}` });
+    }
+    const eid = req.user?.[champFk];
+    try {
+      const r = await db(
+        `UPDATE utilisateurs SET sous_role=COALESCE($1,sous_role), is_active=COALESCE($2,is_active)
+          WHERE id=$3 AND ${champFk}=$4 AND sous_role IS NOT NULL RETURNING id,email,sous_role,is_active`,
+        [sous_role||null, is_active===undefined?null:is_active, req.params.id, eid]
+      );
+      if (!r.rows.length) return res.status(404).json({ success:false, message:`Compte introuvable dans votre ${prefixe}` });
+      res.json({ success:true, data:r.rows[0] });
+    } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+  });
+}
+routesPersonnel('imagerie', 'imagerie_id', SOUS_ROLES_VALIDES_IMAGERIE);
+routesPersonnel('pharmacie', 'pharmacie_id', SOUS_ROLES_VALIDES_PHARMACIE);
+routesPersonnel('assureur', 'assureur_id', SOUS_ROLES_VALIDES_ASSUREUR);
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPAGNIES D'ASSURANCE (liste de reference) + CONVENTIONS
+//  (taux de couverture negocie par la clinique avec chaque compagnie)
+// ══════════════════════════════════════════════════════════════════
+
+// Liste de reference, ouverte a tous les comptes authentifies (utile
+// pour peupler des menus deroulants patient/carte).
+app.get('/api/assureurs-liste', auth, async (req, res) => {
+  try {
+    const r = await db("SELECT id,nom,taux_defaut FROM assureurs WHERE is_active IS NOT false ORDER BY nom");
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+// Conventions de la clinique connectee : une ligne par assureur avec
+// son taux negocie, plafond eventuel, periode de validite.
+app.get('/api/conventions', auth, requireSousRole('bureau_entrees', 'finance', 'medecin'), async (req, res) => {
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `SELECT c.*, a.nom AS assureur_nom
+         FROM conventions c JOIN assureurs a ON a.id = c.assureur_id
+        WHERE c.clinique_id=$1
+        ORDER BY a.nom`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.json({ success:true, data:[] }); }
+});
+
+app.post('/api/conventions', auth, requireSousRole('finance'), async (req, res) => {
+  const { assureur_id, taux, plafond_acte, date_debut, date_fin } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!assureur_id || taux === undefined) return res.status(400).json({ success:false, message:'assureur_id et taux requis' });
+  if (!cid) return res.status(400).json({ success:false, message:'Compte non rattaché à une clinique' });
+  try {
+    const r = await db(
+      `INSERT INTO conventions (id,assureur_id,clinique_id,taux,plafond_acte,date_debut,date_fin,is_active)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,COALESCE($5,CURRENT_DATE),$6,true) RETURNING *`,
+      [assureur_id, cid, parseInt(taux), plafond_acte||null, date_debut||null, date_fin||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) {
+    if (e.code === '23505') return res.status(409).json({ success:false, message:'Une convention existe déjà pour cet assureur' });
+    res.status(500).json({ success:false, message:e.message });
+  }
+});
+
+app.put('/api/conventions/:id', auth, requireSousRole('finance'), async (req, res) => {
+  const { taux, plafond_acte, date_debut, date_fin, is_active } = req.body;
+  const cid = req.user?.clinique_id;
+  try {
+    const r = await db(
+      `UPDATE conventions SET
+         taux=COALESCE($1,taux), plafond_acte=COALESCE($2,plafond_acte),
+         date_debut=COALESCE($3,date_debut), date_fin=COALESCE($4,date_fin),
+         is_active=COALESCE($5,is_active)
+       WHERE id=$6 AND clinique_id=$7 RETURNING *`,
+      [taux??null, plafond_acte??null, date_debut||null, date_fin||null, is_active===undefined?null:is_active, req.params.id, cid]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Convention introuvable dans votre clinique' });
+    res.json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  COMPAGNIES D'ASSURANCE + FORMULES (taux reel = celui de la formule
+//  personnelle du patient, independant de la clinique qui facture)
+// ══════════════════════════════════════════════════════════════════
+
+// CRUD compagnies -- ouvert a tout compte authentifie (donnee de
+
+>>> Contexte autour de la ligne 1603 <<<
+// ── Creneaux disponibles pour laboratoire/imagerie (pas de "medecin"
+// individuel a ces etablissements, donc pas de table disponibilites
+// applicable). Genere des creneaux standards 8h-17h par 30 min sur les
+// 14 prochains jours ouvres, en excluant ce qui est deja reserve dans
+// rendez_vous pour ce prestataire precis -- pas de double reservation
+// meme sans plage horaire saisie manuellement par l'etablissement.
+app.get('/api/public/etablissements/:type/:id/disponibilites', async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    if (!['laboratoire', 'imagerie'].includes(type)) {
+      return res.status(400).json({ success: false, message: 'Type invalide' });
+    }
+    const pris = await db(
+      `SELECT date_rdv, heure_rdv FROM rendez_vous
+        WHERE prestataire_type=$1 AND prestataire_id=$2 AND date_rdv >= CURRENT_DATE
+          AND statut IS DISTINCT FROM 'annule'`,
+      [type, id]
+    );
+    const occupes = new Set(pris.rows.map(p => {
+      const d = new Date(p.date_rdv).toISOString().split('T')[0];
+      return `${d} ${String(p.heure_rdv).slice(0,5)}`;
+    }));
+
+    const creneaux = [];
+    const aujourdhui = new Date();
+    for (let jourOffset = 1; creneaux.length < 60 && jourOffset <= 21; jourOffset++) {
+      const jour = new Date(aujourdhui);
+      jour.setDate(jour.getDate() + jourOffset);
+      if ([0, 6].includes(jour.getDay())) continue; // week-end exclu
+      const jourStr = jour.toISOString().split('T')[0];
+      for (let h = 8; h < 17; h++) {
+        for (const m of [0, 30]) {
+          const heureStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+          const cle = `${jourStr} ${heureStr}`;
+          if (!occupes.has(cle)) creneaux.push(cle);
+        }
+      }
+    }
+    res.json({ success: true, data: creneaux.slice(0, 60) });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/public/rdv', async (req, res) => {
+  const { patient_nom, patient_telephone, clinique_id, medecin_id, etablissement_externe, prestataire_type, prestataire_id, date_rdv, heure_rdv, motif } = req.body;
+  if (!date_rdv||!heure_rdv) return res.status(400).json({ success:false, message:'Date et heure requises' });
+  if (!patient_nom||!patient_telephone) return res.status(400).json({ success:false, message:'Nom et téléphone requis' });
+
+  // clinique_id / hopital utilisent la colonne clinique_id existante (dashboard clinique)
+  // les autres types (laboratoire, imagerie, assurance, pharmacie) utilisent prestataire_type/prestataire_id
+  let finalCliniqueId = clinique_id || null;
+  let finalPrestataireType = prestataire_type || null;
+  let finalPrestataireId = prestataire_id || null;
+  if ((prestataire_type === 'clinique' || prestataire_type === 'hopital') && prestataire_id) {
+    finalCliniqueId = prestataire_id;
+    finalPrestataireType = null;
+    finalPrestataireId = null;
+  }
+
+  if (!finalCliniqueId && !medecin_id && !etablissement_externe && !finalPrestataireId)
+    return res.status(400).json({ success:false, message:'Etablissement requis' });
+
+  try {
+    const ref='MC-RDV-'+Math.random().toString(36).slice(2,8).toUpperCase();
+    const r=await db(
+      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,etablissement_externe,prestataire_type,prestataire_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [uuid(),ref,finalCliniqueId,medecin_id||null,etablissement_externe||null,finalPrestataireType,finalPrestataireId,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
+    );
+    res.status(201).json({ success:true, data:{ reference:ref, rdv_id:r.rows[0].id }, message:'RDV confirmé !' });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── CHATBOT
+app.use("/api/chatbot", require("./routes/chatbot"));
+app.use("/api/cards-admin", require("./routes/cards_admin"));
+
+
+// ── PATCH PATIENT WORKFLOW ────────────────────────────────────────
+app.post('/api/admin/patch-patient', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  const results = [];
+  const ops = [
+    "ALTER TABLE utilisateurs DROP CONSTRAINT IF EXISTS utilisateurs_role_check",
+    "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS patient_id UUID",
+    "ALTER TABLE utilisateurs ADD COLUMN IF NOT EXISTS pays_code VARCHAR(5) DEFAULT 'CI'",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS prenom VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS nom VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS email VARCHAR(200)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS ville VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS taille VARCHAR(10)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS poids VARCHAR(10)",
+    "ALTER TABLE patients ALTER COLUMN code_secret DROP NOT NULL",
+    "ALTER TABLE patients ALTER COLUMN user_id DROP NOT NULL",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_1 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_1 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_2 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_2 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_3 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_3 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_4 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_4 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_5 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_5 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_2 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_2 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_3 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_3 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_4 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_4 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_5 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_5 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_1 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_1 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_2 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_2 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_3 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_3 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_4 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_4 VARCHAR(30)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS contact_urgence_5 VARCHAR(100)",
+    "ALTER TABLE patients ADD COLUMN IF NOT EXISTS telephone_urgence_5 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_2 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_2 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_3 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_3 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_4 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_4 VARCHAR(30)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS contact_urgence_5 VARCHAR(100)",
+    "ALTER TABLE mediconnect_card_requests ADD COLUMN IF NOT EXISTS telephone_urgence_5 VARCHAR(30)",
+  ];
+  for (const op of ops) {
+    try {
+      await db(op);
+      results.push({ ok: true, op });
+    } catch(e) {
+      results.push({ ok: false, op, err: e.message });
+    }
+  }
+  res.json({ success: true, results });
+});
+
+
+// ── ROUTES PUBLIQUES ETABLISSEMENTS ──────────────────────────────
+app.get('/api/public/pharmacies', async (req, res) => {
+  try {
+    const r = await db(`SELECT p.id, p.nom, p.adresse, p.ville, p.telephone, p.email,
+      u.is_active FROM pharmacies p LEFT JOIN utilisateurs u ON u.id=p.user_id
+      WHERE u.is_active IS NOT false ORDER BY p.nom`);
+    res.json({ success: true, data: r.rows });
+
+>>> Contexte autour de la ligne 1766 <<<
+app.get('/api/public/laboratoires', async (req, res) => {
+  try {
+    const r = await db(`SELECT l.id, l.nom, l.adresse, l.ville, l.telephone, l.email
+      FROM laboratoires l LEFT JOIN utilisateurs u ON u.id=l.user_id
+      WHERE u.is_active IS NOT false ORDER BY l.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/imageries', async (req, res) => {
+  try {
+    const r = await db(`SELECT i.id, i.nom, i.adresse, i.ville, i.telephone, i.email
+      FROM imageries i LEFT JOIN utilisateurs u ON u.id=i.user_id
+      WHERE u.is_active IS NOT false ORDER BY i.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/optiques', async (req, res) => {
+  try {
+    const r = await db(`SELECT c.id, c.nom, c.adresse, c.ville, c.telephone, c.email
+      FROM cabinets_optiques c LEFT JOIN utilisateurs u ON u.id=c.user_id
+      WHERE u.is_active IS NOT false ORDER BY c.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/medecins-independants', async (req, res) => {
+  try {
+    const r = await db(`SELECT m.id, m.prenom, m.nom, m.specialite, m.telephone,
+      m.email, m.ville, m.tarif, m.experience_ans, m.statut
+      FROM medecins m LEFT JOIN utilisateurs u ON u.id=m.user_id
+      WHERE u.role IN ('medecin_independant','medecin_conseil','medecin_prive')
+      AND u.is_active IS NOT false ORDER BY m.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RECHERCHE UNIFIEE — rdv.mediconnect4africa.cloud (Phase 2)
+// ══════════════════════════════════════════════════════════════════
+// Fusionne cliniques + laboratoires + imageries en une seule liste, avec
+// un champ 'type' commun pour les distinguer cote client. Le calcul de
+// distance (Haversine) est fait en SQL pur : aucune cle Google requise
+// pour cette etape, seulement pour l'affichage carte cote frontend.
+// lat/lng absents en base (clinique jamais geolocalisee) -> distance_km
+// vaut NULL et la clinique reste trouvable par ville/pays/nom, juste
+// exclue si un filtre "rayon" est explicitement demande.
+// Metropoles ouest-africaines dont les etablissements sont enregistres
+// par commune plutot que par le nom de l'agglomeration elle-meme.
+// A completer au fil des besoins (Dakar, Ouagadougou...).
+const AGGLOMERATIONS = {
+  'abidjan': ['ABIDJAN','COCODY','YOPOUGON','ABOBO','ADJAME','PLATEAU','TREICHVILLE',
+    'MARCORY','KOUMASSI','PORT-BOUET','ATTECOUBE','BINGERVILLE','ANYAMA','SONGON'],
+};
+
+app.get('/api/public/recherche-etablissements', async (req, res) => {
+  try {
+    const { type, q, pays, ville, specialite, lat, lng, rayon_km } = req.query;
+
+    const typesDemandes = type
+      ? type.split(',').map(t => t.trim()).filter(Boolean)
+      : ['clinique', 'laboratoire', 'imagerie'];
+
+    const hasGeo = lat && lng;
+    const latNum = hasGeo ? parseFloat(lat) : null;
+    const lngNum = hasGeo ? parseFloat(lng) : null;
+    const rayonNum = rayon_km ? parseFloat(rayon_km) : null;
+
+    // Formule de Haversine : distance en km entre deux points GPS.
+    // Retourne NULL si l'etablissement n'a pas de coordonnees -- on ne
+    // fait jamais semblant de connaitre une distance qu'on ignore.
+    const distanceExpr = hasGeo
+      ? `CASE WHEN t.latitude IS NOT NULL AND t.longitude IS NOT NULL THEN
+           6371 * acos(LEAST(1, GREATEST(-1,
+             cos(radians(${latNum})) * cos(radians(t.latitude)) *
+             cos(radians(t.longitude) - radians(${lngNum})) +
+             sin(radians(${latNum})) * sin(radians(t.latitude))
+           )))
+         ELSE NULL END`
+      : 'NULL';
+
+    const blocs = [];
+    const params = [];
+    let idx = 1;
+
+    if (typesDemandes.includes('clinique')) {
+      blocs.push(`
+        SELECT c.id, c.nom, c.ville, c.pays_code, c.adresse, c.telephone, c.email,
+               c.latitude, c.longitude, 'clinique' AS type,
+               array_remove(array_agg(DISTINCT sc.nom), NULL) AS specialites,
+               NULL::text[] AS analyses, NULL::text[] AS equipements
+          FROM cliniques c
+          LEFT JOIN specialites_clinique sc ON sc.clinique_id = c.id AND sc.disponible IS NOT false
+         WHERE (c.is_active IS NOT false)
+         GROUP BY c.id
+      `);
+    }
+    if (typesDemandes.includes('laboratoire')) {
+      blocs.push(`
+        SELECT l.id, l.nom, l.ville, l.pays_code, l.adresse, l.telephone, l.email,
+               l.latitude, l.longitude, 'laboratoire' AS type,
+               NULL::text[] AS specialites, l.analyses, NULL::text[] AS equipements
+          FROM laboratoires l
+         WHERE (l.is_active IS NOT false)
+      `);
+    }
+    if (typesDemandes.includes('imagerie')) {
+      blocs.push(`
+        SELECT i.id, i.nom, i.ville, i.pays_code, i.adresse, i.telephone, i.email,
+               i.latitude, i.longitude, 'imagerie' AS type,
+               NULL::text[] AS specialites, NULL::text[] AS analyses, i.equipements
+          FROM imageries i
+         WHERE (i.is_active IS NOT false)
+      `);
+    }
+
+    if (!blocs.length) return res.json({ success: true, data: [] });
+
+    let sql = `SELECT t.*, ${distanceExpr} AS distance_km FROM (${blocs.join(' UNION ALL ')}) t WHERE 1=1`;
+
+    if (q) {
+      // Avant : un seul LIKE '%phrase entiere%' -- "polyclinique abidjan
+      // sud" ne matchait jamais "Polyclinique du Sud" car les mots ne se
+      // suivent pas dans cet ordre dans le nom reel. On decoupe en mots
+      // et on exige que CHACUN apparaisse quelque part dans le nom,
+      // independamment de l'ordre -- comportement attendu d'une recherche.
+      const motsQ = q.trim().split(/\s+/).filter(Boolean);
+      motsQ.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND LOWER(t.nom) LIKE $${idx++}`;
+      });
+    }
+    if (pays) { params.push(pays); sql += ` AND t.pays_code = $${idx++}`; }
+    if (ville) {
+      // Les cliniques importees en masse sont enregistrees par COMMUNE
+      // (Cocody, Yopougon, Abobo...), pas par la metropole qui les
+      // englobe. Chercher "Abidjan" ne matchait donc presque rien alors
+      // que la grande majorite des cliniques y sont bel et bien situees.
+      // AGGLOMERATIONS mappe une metropole vers ses communes connues ;
+      // on elargit la recherche uniquement quand la ville demandee est
+      // une metropole reconnue, sinon comportement inchange (LIKE simple).
+      const communes = AGGLOMERATIONS[ville.trim().toLowerCase()];
+      if (communes) {
+        const placeholders = communes.map(c => { params.push(c.toLowerCase()); return `$${idx++}`; });
+        sql += ` AND LOWER(t.ville) IN (${placeholders.join(',')})`;
+      } else {
+        params.push('%' + ville.toLowerCase() + '%');
+        sql += ` AND LOWER(t.ville) LIKE $${idx++}`;
+      }
+    }
+
+>>> Contexte autour de la ligne 1775 <<<
+app.get('/api/public/imageries', async (req, res) => {
+  try {
+    const r = await db(`SELECT i.id, i.nom, i.adresse, i.ville, i.telephone, i.email
+      FROM imageries i LEFT JOIN utilisateurs u ON u.id=i.user_id
+      WHERE u.is_active IS NOT false ORDER BY i.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/optiques', async (req, res) => {
+  try {
+    const r = await db(`SELECT c.id, c.nom, c.adresse, c.ville, c.telephone, c.email
+      FROM cabinets_optiques c LEFT JOIN utilisateurs u ON u.id=c.user_id
+      WHERE u.is_active IS NOT false ORDER BY c.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/medecins-independants', async (req, res) => {
+  try {
+    const r = await db(`SELECT m.id, m.prenom, m.nom, m.specialite, m.telephone,
+      m.email, m.ville, m.tarif, m.experience_ans, m.statut
+      FROM medecins m LEFT JOIN utilisateurs u ON u.id=m.user_id
+      WHERE u.role IN ('medecin_independant','medecin_conseil','medecin_prive')
+      AND u.is_active IS NOT false ORDER BY m.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RECHERCHE UNIFIEE — rdv.mediconnect4africa.cloud (Phase 2)
+// ══════════════════════════════════════════════════════════════════
+// Fusionne cliniques + laboratoires + imageries en une seule liste, avec
+// un champ 'type' commun pour les distinguer cote client. Le calcul de
+// distance (Haversine) est fait en SQL pur : aucune cle Google requise
+// pour cette etape, seulement pour l'affichage carte cote frontend.
+// lat/lng absents en base (clinique jamais geolocalisee) -> distance_km
+// vaut NULL et la clinique reste trouvable par ville/pays/nom, juste
+// exclue si un filtre "rayon" est explicitement demande.
+// Metropoles ouest-africaines dont les etablissements sont enregistres
+// par commune plutot que par le nom de l'agglomeration elle-meme.
+// A completer au fil des besoins (Dakar, Ouagadougou...).
+const AGGLOMERATIONS = {
+  'abidjan': ['ABIDJAN','COCODY','YOPOUGON','ABOBO','ADJAME','PLATEAU','TREICHVILLE',
+    'MARCORY','KOUMASSI','PORT-BOUET','ATTECOUBE','BINGERVILLE','ANYAMA','SONGON'],
+};
+
+app.get('/api/public/recherche-etablissements', async (req, res) => {
+  try {
+    const { type, q, pays, ville, specialite, lat, lng, rayon_km } = req.query;
+
+    const typesDemandes = type
+      ? type.split(',').map(t => t.trim()).filter(Boolean)
+      : ['clinique', 'laboratoire', 'imagerie'];
+
+    const hasGeo = lat && lng;
+    const latNum = hasGeo ? parseFloat(lat) : null;
+    const lngNum = hasGeo ? parseFloat(lng) : null;
+    const rayonNum = rayon_km ? parseFloat(rayon_km) : null;
+
+    // Formule de Haversine : distance en km entre deux points GPS.
+    // Retourne NULL si l'etablissement n'a pas de coordonnees -- on ne
+    // fait jamais semblant de connaitre une distance qu'on ignore.
+    const distanceExpr = hasGeo
+      ? `CASE WHEN t.latitude IS NOT NULL AND t.longitude IS NOT NULL THEN
+           6371 * acos(LEAST(1, GREATEST(-1,
+             cos(radians(${latNum})) * cos(radians(t.latitude)) *
+             cos(radians(t.longitude) - radians(${lngNum})) +
+             sin(radians(${latNum})) * sin(radians(t.latitude))
+           )))
+         ELSE NULL END`
+      : 'NULL';
+
+    const blocs = [];
+    const params = [];
+    let idx = 1;
+
+    if (typesDemandes.includes('clinique')) {
+      blocs.push(`
+        SELECT c.id, c.nom, c.ville, c.pays_code, c.adresse, c.telephone, c.email,
+               c.latitude, c.longitude, 'clinique' AS type,
+               array_remove(array_agg(DISTINCT sc.nom), NULL) AS specialites,
+               NULL::text[] AS analyses, NULL::text[] AS equipements
+          FROM cliniques c
+          LEFT JOIN specialites_clinique sc ON sc.clinique_id = c.id AND sc.disponible IS NOT false
+         WHERE (c.is_active IS NOT false)
+         GROUP BY c.id
+      `);
+    }
+    if (typesDemandes.includes('laboratoire')) {
+      blocs.push(`
+        SELECT l.id, l.nom, l.ville, l.pays_code, l.adresse, l.telephone, l.email,
+               l.latitude, l.longitude, 'laboratoire' AS type,
+               NULL::text[] AS specialites, l.analyses, NULL::text[] AS equipements
+          FROM laboratoires l
+         WHERE (l.is_active IS NOT false)
+      `);
+    }
+    if (typesDemandes.includes('imagerie')) {
+      blocs.push(`
+        SELECT i.id, i.nom, i.ville, i.pays_code, i.adresse, i.telephone, i.email,
+               i.latitude, i.longitude, 'imagerie' AS type,
+               NULL::text[] AS specialites, NULL::text[] AS analyses, i.equipements
+          FROM imageries i
+         WHERE (i.is_active IS NOT false)
+      `);
+    }
+
+    if (!blocs.length) return res.json({ success: true, data: [] });
+
+    let sql = `SELECT t.*, ${distanceExpr} AS distance_km FROM (${blocs.join(' UNION ALL ')}) t WHERE 1=1`;
+
+    if (q) {
+      // Avant : un seul LIKE '%phrase entiere%' -- "polyclinique abidjan
+      // sud" ne matchait jamais "Polyclinique du Sud" car les mots ne se
+      // suivent pas dans cet ordre dans le nom reel. On decoupe en mots
+      // et on exige que CHACUN apparaisse quelque part dans le nom,
+      // independamment de l'ordre -- comportement attendu d'une recherche.
+      const motsQ = q.trim().split(/\s+/).filter(Boolean);
+      motsQ.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND LOWER(t.nom) LIKE $${idx++}`;
+      });
+    }
+    if (pays) { params.push(pays); sql += ` AND t.pays_code = $${idx++}`; }
+    if (ville) {
+      // Les cliniques importees en masse sont enregistrees par COMMUNE
+      // (Cocody, Yopougon, Abobo...), pas par la metropole qui les
+      // englobe. Chercher "Abidjan" ne matchait donc presque rien alors
+      // que la grande majorite des cliniques y sont bel et bien situees.
+      // AGGLOMERATIONS mappe une metropole vers ses communes connues ;
+      // on elargit la recherche uniquement quand la ville demandee est
+      // une metropole reconnue, sinon comportement inchange (LIKE simple).
+      const communes = AGGLOMERATIONS[ville.trim().toLowerCase()];
+      if (communes) {
+        const placeholders = communes.map(c => { params.push(c.toLowerCase()); return `$${idx++}`; });
+        sql += ` AND LOWER(t.ville) IN (${placeholders.join(',')})`;
+      } else {
+        params.push('%' + ville.toLowerCase() + '%');
+        sql += ` AND LOWER(t.ville) LIKE $${idx++}`;
+      }
+    }
+    if (specialite) {
+      // Meme decoupage en mots-cles independants que pour 'q' ci-dessus,
+      // mais chaque mot doit matcher AU MOINS UN des 4 champs (nom OU
+      // specialite OU analyse OU equipement) -- et TOUS les mots doivent
+      // etre satisfaits (AND entre mots, OR entre champs pour un meme mot).
+      const motsSpe = specialite.trim().split(/\s+/).filter(Boolean);
+      motsSpe.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND (
+
+>>> Contexte autour de la ligne 2922 <<<
+app.get('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    let sql = 'SELECT * FROM examens_imagerie WHERE 1=1';
+    const p = [];
+    if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        sql += ` AND clinique_id=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p).catch(async () => {
+      // Table inexistante — créer et retourner vide
+      await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, medecin_id UUID,
+        type_examen VARCHAR(100), resultat TEXT, observations TEXT,
+        fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
+  const { patient_id, type_examen, resultat, observations, date_examen, fichier_url } = req.body;
+  if (!patient_id || !type_examen) return res.status(400).json({ success: false, message: 'Patient et type examen requis' });
+  try {
+    const r = await db(
+      `INSERT INTO examens_imagerie (id,patient_id,clinique_id,medecin_id,type_examen,resultat,observations,fichier_url,date_examen)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,req.user?.medecin_id||null,
+       type_examen,resultat||null,observations||null,fichier_url||null,
+       date_examen||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RÉSULTATS LABORATOIRE
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    let sql = 'SELECT * FROM resultats_labo WHERE 1=1';
+    const p = [];
+    if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        sql += ` AND clinique_id=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p).catch(async () => {
+      await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, labo_id UUID,
+        type_analyse VARCHAR(200), valeurs JSONB, interpretation TEXT,
+        fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
+  const { patient_id, type_analyse, valeurs, interpretation, date_prelevement, fichier_url } = req.body;
+  if (!patient_id || !type_analyse) return res.status(400).json({ success: false, message: 'Patient et type analyse requis' });
+  try {
+    const r = await db(
+      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,type_analyse,
+       valeurs?JSON.stringify(valeurs):null,interpretation||null,fichier_url||null,
+       date_prelevement||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  EXAMENS (bulletins d'analyse + radio combinés)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const p = [];
+    let where = 'WHERE 1=1';
+    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
+
+    const [imagerie, labo] = await Promise.all([
+      db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+
+>>> Contexte autour de la ligne 2947 <<<
+app.post('/api/imagerie', auth, requireSousRole('medecin'), async (req, res) => {
+  const { patient_id, type_examen, resultat, observations, date_examen, fichier_url } = req.body;
+  if (!patient_id || !type_examen) return res.status(400).json({ success: false, message: 'Patient et type examen requis' });
+  try {
+    const r = await db(
+      `INSERT INTO examens_imagerie (id,patient_id,clinique_id,medecin_id,type_examen,resultat,observations,fichier_url,date_examen)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,req.user?.medecin_id||null,
+       type_examen,resultat||null,observations||null,fichier_url||null,
+       date_examen||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RÉSULTATS LABORATOIRE
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    let sql = 'SELECT * FROM resultats_labo WHERE 1=1';
+    const p = [];
+    if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        sql += ` AND clinique_id=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p).catch(async () => {
+      await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, labo_id UUID,
+        type_analyse VARCHAR(200), valeurs JSONB, interpretation TEXT,
+        fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
+  const { patient_id, type_analyse, valeurs, interpretation, date_prelevement, fichier_url } = req.body;
+  if (!patient_id || !type_analyse) return res.status(400).json({ success: false, message: 'Patient et type analyse requis' });
+  try {
+    const r = await db(
+      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,type_analyse,
+       valeurs?JSON.stringify(valeurs):null,interpretation||null,fichier_url||null,
+       date_prelevement||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  EXAMENS (bulletins d'analyse + radio combinés)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const p = [];
+    let where = 'WHERE 1=1';
+    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
+
+    const [imagerie, labo] = await Promise.all([
+      db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+
+>>> Contexte autour de la ligne 2969 <<<
+    let sql = 'SELECT * FROM resultats_labo WHERE 1=1';
+    const p = [];
+    if (patient_id) { p.push(patient_id); sql += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        sql += ` AND clinique_id=$${p.length}`; }
+    sql += ' ORDER BY created_at DESC LIMIT 100';
+    const r = await db(sql, p).catch(async () => {
+      await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, labo_id UUID,
+        type_analyse VARCHAR(200), valeurs JSONB, interpretation TEXT,
+        fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
+  const { patient_id, type_analyse, valeurs, interpretation, date_prelevement, fichier_url } = req.body;
+  if (!patient_id || !type_analyse) return res.status(400).json({ success: false, message: 'Patient et type analyse requis' });
+  try {
+    const r = await db(
+      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,type_analyse,
+       valeurs?JSON.stringify(valeurs):null,interpretation||null,fichier_url||null,
+       date_prelevement||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  EXAMENS (bulletins d'analyse + radio combinés)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const p = [];
+    let where = 'WHERE 1=1';
+    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
+
+    const [imagerie, labo] = await Promise.all([
+      db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+
+>>> Contexte autour de la ligne 2975 <<<
+      await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID, clinique_id UUID, labo_id UUID,
+        type_analyse VARCHAR(200), valeurs JSONB, interpretation TEXT,
+        fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+        statut VARCHAR(30) DEFAULT 'en_attente',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )`).catch(()=>{});
+      return { rows: [] };
+    });
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.post('/api/resultats-labo', auth, requireSousRole('medecin'), async (req, res) => {
+  const { patient_id, type_analyse, valeurs, interpretation, date_prelevement, fichier_url } = req.body;
+  if (!patient_id || !type_analyse) return res.status(400).json({ success: false, message: 'Patient et type analyse requis' });
+  try {
+    const r = await db(
+      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,type_analyse,
+       valeurs?JSON.stringify(valeurs):null,interpretation||null,fichier_url||null,
+       date_prelevement||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  EXAMENS (bulletins d'analyse + radio combinés)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const p = [];
+    let where = 'WHERE 1=1';
+    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
+
+    const [imagerie, labo] = await Promise.all([
+      db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+
+>>> Contexte autour de la ligne 2994 <<<
+      `INSERT INTO resultats_labo (id,patient_id,clinique_id,type_analyse,valeurs,interpretation,fichier_url,date_prelevement)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [uuid(),patient_id,req.user?.clinique_id||null,type_analyse,
+       valeurs?JSON.stringify(valeurs):null,interpretation||null,fichier_url||null,
+       date_prelevement||new Date().toISOString().split('T')[0]]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  EXAMENS (bulletins d'analyse + radio combinés)
+// ══════════════════════════════════════════════════════════════════
+app.get('/api/examens', auth, requireSousRole('medecin'), async (req, res) => {
+  try {
+    const { patient_id } = req.query;
+    const cid = req.user?.clinique_id;
+    const p = [];
+    let where = 'WHERE 1=1';
+    if (patient_id) { p.push(patient_id); where += ` AND patient_id=$${p.length}`; }
+    else if (cid)   { p.push(cid);        where += ` AND clinique_id=$${p.length}`; }
+
+    const [imagerie, labo] = await Promise.all([
+      db(`SELECT *,'imagerie' AS type_source FROM examens_imagerie ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+    const cim = [
+      ['B54','Paludisme non precise','Maladies infectieuses'],
+      ['B50','Paludisme a Plasmodium falciparum','Maladies infectieuses'],
+      ['A09','Diarrhee et gastro-enterite infectieuse','Maladies infectieuses'],
+      ['A01','Fievre typhoide','Maladies infectieuses'],
+      ['J06','Infection respiratoire haute aigue','Appareil respiratoire'],
+      ['J18','Pneumopathie','Appareil respiratoire'],
+      ['J45','Asthme','Appareil respiratoire'],
+      ['I10','Hypertension arterielle essentielle','Appareil circulatoire'],
+      ['I50','Insuffisance cardiaque','Appareil circulatoire'],
+      ['E11','Diabete de type 2','Endocrinien / metabolique'],
+      ['E44','Malnutrition proteino-energetique','Endocrinien / metabolique'],
+      ['D50','Anemie par carence en fer','Sang'],
+      ['K29','Gastrite et duodenite','Appareil digestif'],
+      ['K59','Constipation / trouble fonctionnel intestinal','Appareil digestif'],
+      ['N39','Infection urinaire','Appareil genito-urinaire'],
+      ['O26','Suivi de grossesse','Grossesse et accouchement'],
+      ['M54','Lombalgie / dorsalgie','Osteo-articulaire'],
+      ['M79','Douleurs musculaires diffuses','Osteo-articulaire'],
+
+>>> Contexte autour de la ligne 3018 <<<
+      db(`SELECT *,'labo' AS type_source FROM resultats_labo ${where} ORDER BY created_at DESC LIMIT 50`, p).catch(()=>({rows:[]})),
+    ]);
+    const data = [...imagerie.rows, ...labo.rows].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    res.json({ success: true, data });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ── Init tables examens ───────────────────────────────────────────
+app.post('/api/admin/init-examens', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024') return res.status(403).json({ success: false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS examens_imagerie (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, medecin_id UUID, consultation_id UUID,
+      type_examen VARCHAR(100) NOT NULL, resultat TEXT, observations TEXT,
+      fichier_url TEXT, date_examen DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+    const cim = [
+      ['B54','Paludisme non precise','Maladies infectieuses'],
+      ['B50','Paludisme a Plasmodium falciparum','Maladies infectieuses'],
+      ['A09','Diarrhee et gastro-enterite infectieuse','Maladies infectieuses'],
+      ['A01','Fievre typhoide','Maladies infectieuses'],
+      ['J06','Infection respiratoire haute aigue','Appareil respiratoire'],
+      ['J18','Pneumopathie','Appareil respiratoire'],
+      ['J45','Asthme','Appareil respiratoire'],
+      ['I10','Hypertension arterielle essentielle','Appareil circulatoire'],
+      ['I50','Insuffisance cardiaque','Appareil circulatoire'],
+      ['E11','Diabete de type 2','Endocrinien / metabolique'],
+      ['E44','Malnutrition proteino-energetique','Endocrinien / metabolique'],
+      ['D50','Anemie par carence en fer','Sang'],
+      ['K29','Gastrite et duodenite','Appareil digestif'],
+      ['K59','Constipation / trouble fonctionnel intestinal','Appareil digestif'],
+      ['N39','Infection urinaire','Appareil genito-urinaire'],
+      ['O26','Suivi de grossesse','Grossesse et accouchement'],
+      ['M54','Lombalgie / dorsalgie','Osteo-articulaire'],
+      ['M79','Douleurs musculaires diffuses','Osteo-articulaire'],
+      ['G43','Migraine','Systeme nerveux'],
+      ['H10','Conjonctivite','Oeil'],
+      ['H66','Otite moyenne','Oreille'],
+      ['L23','Dermatite allergique de contact','Peau'],
+      ['R50','Fievre non precisee','Symptomes / signes'],
+      ['R51','Cephalees','Symptomes / signes'],
+      ['Z00','Examen medical general / bilan','Facteurs de recours'],
+    ];
+    for (const [code,lib,ch] of cim) {
+      await db('INSERT INTO affections_cim10 (code,libelle,chapitre) VALUES ($1,$2,$3) ON CONFLICT (code) DO NOTHING',[code,lib,ch]);
+    }
+    res.json({ success:true, message:`Nomenclature initialisee : ${actes.length} actes, ${cim.length} affections CIM-10` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Liste des actes (clinique + catalogue global) ─────────────────
+// ══════════════════════════════════════════════════════════════════
+//  CONTACTS D'URGENCE (dossier patient) -- accessibles au bureau des
+//  entrees et au medecin, jusqu'a 10 par patient. Evenement reel ayant
+//  motive cette fonctionnalite : patient decede en salle d'attente,
+//  famille injoignable pendant plusieurs heures.
+// ══════════════════════════════════════════════════════════════════
+app.post('/api/patients/:id/contacts-urgence', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+
+>>> Contexte autour de la ligne 3037 <<<
+    await db(`CREATE TABLE IF NOT EXISTS resultats_labo (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID, clinique_id UUID, labo_id UUID, consultation_id UUID,
+      type_analyse VARCHAR(200) NOT NULL, valeurs JSONB, interpretation TEXT,
+      fichier_url TEXT, date_prelevement DATE DEFAULT CURRENT_DATE,
+      statut VARCHAR(30) DEFAULT 'en_attente', created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_imagerie_patient ON examens_imagerie(patient_id)');
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+    const cim = [
+      ['B54','Paludisme non precise','Maladies infectieuses'],
+      ['B50','Paludisme a Plasmodium falciparum','Maladies infectieuses'],
+      ['A09','Diarrhee et gastro-enterite infectieuse','Maladies infectieuses'],
+      ['A01','Fievre typhoide','Maladies infectieuses'],
+      ['J06','Infection respiratoire haute aigue','Appareil respiratoire'],
+      ['J18','Pneumopathie','Appareil respiratoire'],
+      ['J45','Asthme','Appareil respiratoire'],
+      ['I10','Hypertension arterielle essentielle','Appareil circulatoire'],
+      ['I50','Insuffisance cardiaque','Appareil circulatoire'],
+      ['E11','Diabete de type 2','Endocrinien / metabolique'],
+      ['E44','Malnutrition proteino-energetique','Endocrinien / metabolique'],
+      ['D50','Anemie par carence en fer','Sang'],
+      ['K29','Gastrite et duodenite','Appareil digestif'],
+      ['K59','Constipation / trouble fonctionnel intestinal','Appareil digestif'],
+      ['N39','Infection urinaire','Appareil genito-urinaire'],
+      ['O26','Suivi de grossesse','Grossesse et accouchement'],
+      ['M54','Lombalgie / dorsalgie','Osteo-articulaire'],
+      ['M79','Douleurs musculaires diffuses','Osteo-articulaire'],
+      ['G43','Migraine','Systeme nerveux'],
+      ['H10','Conjonctivite','Oeil'],
+      ['H66','Otite moyenne','Oreille'],
+      ['L23','Dermatite allergique de contact','Peau'],
+      ['R50','Fievre non precisee','Symptomes / signes'],
+      ['R51','Cephalees','Symptomes / signes'],
+      ['Z00','Examen medical general / bilan','Facteurs de recours'],
+    ];
+    for (const [code,lib,ch] of cim) {
+      await db('INSERT INTO affections_cim10 (code,libelle,chapitre) VALUES ($1,$2,$3) ON CONFLICT (code) DO NOTHING',[code,lib,ch]);
+    }
+    res.json({ success:true, message:`Nomenclature initialisee : ${actes.length} actes, ${cim.length} affections CIM-10` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Liste des actes (clinique + catalogue global) ─────────────────
+// ══════════════════════════════════════════════════════════════════
+//  CONTACTS D'URGENCE (dossier patient) -- accessibles au bureau des
+//  entrees et au medecin, jusqu'a 10 par patient. Evenement reel ayant
+//  motive cette fonctionnalite : patient decede en salle d'attente,
+//  famille injoignable pendant plusieurs heures.
+// ══════════════════════════════════════════════════════════════════
+app.post('/api/patients/:id/contacts-urgence', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  if (!prenom || !telephone) return res.status(400).json({ success:false, message:'Prénom et téléphone requis' });
+  try {
+    const compte = await db('SELECT COUNT(*) c FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    if (parseInt(compte.rows[0].c) >= 10) {
+      return res.status(400).json({ success:false, message:'Maximum 10 contacts d\'urgence par patient' });
+    }
+    const ordreR = await db('SELECT COALESCE(MAX(ordre),0)+1 AS n FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    const r = await db(
+      `INSERT INTO contacts_urgence (id,patient_id,ordre,prenom,nom,telephone,telephone_2,relation,est_principal)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.params.id, ordreR.rows[0].n, prenom, nom||null, telephone, telephone_2||null, relation||null, !!est_principal]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/contacts-urgence/:id', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  try {
+
+>>> Contexte autour de la ligne 3045 <<<
+    await db('CREATE INDEX IF NOT EXISTS idx_labo_patient ON resultats_labo(patient_id)');
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+    const cim = [
+      ['B54','Paludisme non precise','Maladies infectieuses'],
+      ['B50','Paludisme a Plasmodium falciparum','Maladies infectieuses'],
+      ['A09','Diarrhee et gastro-enterite infectieuse','Maladies infectieuses'],
+      ['A01','Fievre typhoide','Maladies infectieuses'],
+      ['J06','Infection respiratoire haute aigue','Appareil respiratoire'],
+      ['J18','Pneumopathie','Appareil respiratoire'],
+      ['J45','Asthme','Appareil respiratoire'],
+      ['I10','Hypertension arterielle essentielle','Appareil circulatoire'],
+      ['I50','Insuffisance cardiaque','Appareil circulatoire'],
+      ['E11','Diabete de type 2','Endocrinien / metabolique'],
+      ['E44','Malnutrition proteino-energetique','Endocrinien / metabolique'],
+      ['D50','Anemie par carence en fer','Sang'],
+      ['K29','Gastrite et duodenite','Appareil digestif'],
+      ['K59','Constipation / trouble fonctionnel intestinal','Appareil digestif'],
+      ['N39','Infection urinaire','Appareil genito-urinaire'],
+      ['O26','Suivi de grossesse','Grossesse et accouchement'],
+      ['M54','Lombalgie / dorsalgie','Osteo-articulaire'],
+      ['M79','Douleurs musculaires diffuses','Osteo-articulaire'],
+      ['G43','Migraine','Systeme nerveux'],
+      ['H10','Conjonctivite','Oeil'],
+      ['H66','Otite moyenne','Oreille'],
+      ['L23','Dermatite allergique de contact','Peau'],
+      ['R50','Fievre non precisee','Symptomes / signes'],
+      ['R51','Cephalees','Symptomes / signes'],
+      ['Z00','Examen medical general / bilan','Facteurs de recours'],
+    ];
+    for (const [code,lib,ch] of cim) {
+      await db('INSERT INTO affections_cim10 (code,libelle,chapitre) VALUES ($1,$2,$3) ON CONFLICT (code) DO NOTHING',[code,lib,ch]);
+    }
+    res.json({ success:true, message:`Nomenclature initialisee : ${actes.length} actes, ${cim.length} affections CIM-10` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Liste des actes (clinique + catalogue global) ─────────────────
+// ══════════════════════════════════════════════════════════════════
+//  CONTACTS D'URGENCE (dossier patient) -- accessibles au bureau des
+//  entrees et au medecin, jusqu'a 10 par patient. Evenement reel ayant
+//  motive cette fonctionnalite : patient decede en salle d'attente,
+//  famille injoignable pendant plusieurs heures.
+// ══════════════════════════════════════════════════════════════════
+app.post('/api/patients/:id/contacts-urgence', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  if (!prenom || !telephone) return res.status(400).json({ success:false, message:'Prénom et téléphone requis' });
+  try {
+    const compte = await db('SELECT COUNT(*) c FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    if (parseInt(compte.rows[0].c) >= 10) {
+      return res.status(400).json({ success:false, message:'Maximum 10 contacts d\'urgence par patient' });
+    }
+    const ordreR = await db('SELECT COALESCE(MAX(ordre),0)+1 AS n FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    const r = await db(
+      `INSERT INTO contacts_urgence (id,patient_id,ordre,prenom,nom,telephone,telephone_2,relation,est_principal)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.params.id, ordreR.rows[0].n, prenom, nom||null, telephone, telephone_2||null, relation||null, !!est_principal]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/contacts-urgence/:id', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  try {
+    const r = await db(
+      `UPDATE contacts_urgence SET prenom=COALESCE($1,prenom), nom=COALESCE($2,nom),
+         telephone=COALESCE($3,telephone), telephone_2=COALESCE($4,telephone_2),
+         relation=COALESCE($5,relation), est_principal=COALESCE($6,est_principal)
+       WHERE id=$7 AND patient_id IS NOT NULL RETURNING *`,
+      [prenom||null, nom||null, telephone||null, telephone_2||null, relation||null, est_principal===undefined?null:est_principal, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Contact introuvable' });
+
+>>> Contexte autour de la ligne 3046 <<<
+    res.json({ success: true, message: 'Tables examens_imagerie et resultats_labo créées' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  NOMENCLATURE : ACTES MEDICAUX + AFFECTIONS CIM-10
+// ══════════════════════════════════════════════════════════════════
+
+app.post('/api/admin/init-nomenclature', async (req, res) => {
+  if (req.headers['x-admin-key'] !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success:false });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS actes_medicaux (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      clinique_id UUID,
+      code VARCHAR(20) NOT NULL,
+      libelle VARCHAR(300) NOT NULL,
+      categorie VARCHAR(60),
+      tarif_base DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 70,
+      actif BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS affections_cim10 (
+      code VARCHAR(10) PRIMARY KEY,
+      libelle VARCHAR(300) NOT NULL,
+      chapitre VARCHAR(120)
+    )`);
+    await db(`CREATE TABLE IF NOT EXISTS prise_en_charge_actes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      patient_id UUID NOT NULL,
+      clinique_id UUID,
+      consultation_id UUID,
+      rdv_id UUID,
+      acte_id UUID,
+      code_acte VARCHAR(20),
+      libelle_acte VARCHAR(300),
+      quantite INTEGER DEFAULT 1,
+      prix_unitaire DECIMAL(12,2) DEFAULT 0,
+      taux_assurance INTEGER DEFAULT 0,
+      part_assurance DECIMAL(12,2) DEFAULT 0,
+      part_patient DECIMAL(12,2) DEFAULT 0,
+      statut VARCHAR(20) DEFAULT 'a_facturer',
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db("CREATE INDEX IF NOT EXISTS idx_pec_patient ON prise_en_charge_actes(patient_id)");
+    await db("ALTER TABLE consultations ADD COLUMN IF NOT EXISTS code_cim10 VARCHAR(10)");
+
+    // Actes de base (nomenclature CI — tarifs indicatifs FCFA)
+    const actes = [
+      ['C1','Consultation generaliste','Consultation',10000,70],
+      ['C2','Consultation specialiste','Consultation',20000,70],
+      ['C3','Consultation urgence','Consultation',25000,80],
+      ['CS1','Consultation de suivi','Consultation',7000,70],
+      ['K10','Pansement simple','Soins infirmiers',3000,70],
+      ['K20','Injection IM / IV','Soins infirmiers',2500,70],
+      ['K30','Perfusion','Soins infirmiers',8000,70],
+      ['K40','Suture plaie simple','Petite chirurgie',15000,70],
+      ['B10','Prise de sang / prelevement','Laboratoire',2000,70],
+      ['B20','NFS - Numeration formule sanguine','Laboratoire',6000,70],
+      ['B30','Glycemie a jeun','Laboratoire',3000,70],
+      ['B40','Test paludisme (TDR)','Laboratoire',2500,80],
+      ['B50','Serologie / CRP','Laboratoire',8000,70],
+      ['R10','Radiographie thorax','Imagerie',15000,70],
+      ['R20','Radiographie membre','Imagerie',12000,70],
+      ['E10','Echographie abdominale','Imagerie',20000,70],
+      ['E20','Echographie obstetricale','Imagerie',18000,70],
+      ['ECG','Electrocardiogramme','Explorations',12000,70],
+      ['H1','Hospitalisation jour','Hospitalisation',25000,80],
+      ['ACC','Frais de dossier / accueil','Administratif',2000,0],
+    ];
+    for (const [code,lib,cat,tarif,taux] of actes) {
+      await db(`INSERT INTO actes_medicaux (code,libelle,categorie,tarif_base,taux_assurance)
+                SELECT $1::varchar,$2::varchar,$3::varchar,$4::decimal,$5::integer
+                WHERE NOT EXISTS (SELECT 1 FROM actes_medicaux WHERE code=$1::varchar AND clinique_id IS NULL)`,
+                [code,lib,cat,tarif,taux]);
+    }
+
+    // Affections CIM-10 les plus courantes en Afrique de l'Ouest
+    const cim = [
+      ['B54','Paludisme non precise','Maladies infectieuses'],
+      ['B50','Paludisme a Plasmodium falciparum','Maladies infectieuses'],
+      ['A09','Diarrhee et gastro-enterite infectieuse','Maladies infectieuses'],
+      ['A01','Fievre typhoide','Maladies infectieuses'],
+      ['J06','Infection respiratoire haute aigue','Appareil respiratoire'],
+      ['J18','Pneumopathie','Appareil respiratoire'],
+      ['J45','Asthme','Appareil respiratoire'],
+      ['I10','Hypertension arterielle essentielle','Appareil circulatoire'],
+      ['I50','Insuffisance cardiaque','Appareil circulatoire'],
+      ['E11','Diabete de type 2','Endocrinien / metabolique'],
+      ['E44','Malnutrition proteino-energetique','Endocrinien / metabolique'],
+      ['D50','Anemie par carence en fer','Sang'],
+      ['K29','Gastrite et duodenite','Appareil digestif'],
+      ['K59','Constipation / trouble fonctionnel intestinal','Appareil digestif'],
+      ['N39','Infection urinaire','Appareil genito-urinaire'],
+      ['O26','Suivi de grossesse','Grossesse et accouchement'],
+      ['M54','Lombalgie / dorsalgie','Osteo-articulaire'],
+      ['M79','Douleurs musculaires diffuses','Osteo-articulaire'],
+      ['G43','Migraine','Systeme nerveux'],
+      ['H10','Conjonctivite','Oeil'],
+      ['H66','Otite moyenne','Oreille'],
+      ['L23','Dermatite allergique de contact','Peau'],
+      ['R50','Fievre non precisee','Symptomes / signes'],
+      ['R51','Cephalees','Symptomes / signes'],
+      ['Z00','Examen medical general / bilan','Facteurs de recours'],
+    ];
+    for (const [code,lib,ch] of cim) {
+      await db('INSERT INTO affections_cim10 (code,libelle,chapitre) VALUES ($1,$2,$3) ON CONFLICT (code) DO NOTHING',[code,lib,ch]);
+    }
+    res.json({ success:true, message:`Nomenclature initialisee : ${actes.length} actes, ${cim.length} affections CIM-10` });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+// ── Liste des actes (clinique + catalogue global) ─────────────────
+// ══════════════════════════════════════════════════════════════════
+//  CONTACTS D'URGENCE (dossier patient) -- accessibles au bureau des
+//  entrees et au medecin, jusqu'a 10 par patient. Evenement reel ayant
+//  motive cette fonctionnalite : patient decede en salle d'attente,
+//  famille injoignable pendant plusieurs heures.
+// ══════════════════════════════════════════════════════════════════
+app.post('/api/patients/:id/contacts-urgence', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  if (!prenom || !telephone) return res.status(400).json({ success:false, message:'Prénom et téléphone requis' });
+  try {
+    const compte = await db('SELECT COUNT(*) c FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    if (parseInt(compte.rows[0].c) >= 10) {
+      return res.status(400).json({ success:false, message:'Maximum 10 contacts d\'urgence par patient' });
+    }
+    const ordreR = await db('SELECT COALESCE(MAX(ordre),0)+1 AS n FROM contacts_urgence WHERE patient_id=$1', [req.params.id]);
+    const r = await db(
+      `INSERT INTO contacts_urgence (id,patient_id,ordre,prenom,nom,telephone,telephone_2,relation,est_principal)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.params.id, ordreR.rows[0].n, prenom, nom||null, telephone, telephone_2||null, relation||null, !!est_principal]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.put('/api/contacts-urgence/:id', auth, requireSousRole('bureau_entrees', 'medecin', 'finance', 'rh'), async (req, res) => {
+  const { prenom, nom, telephone, telephone_2, relation, est_principal } = req.body;
+  try {
+    const r = await db(
+      `UPDATE contacts_urgence SET prenom=COALESCE($1,prenom), nom=COALESCE($2,nom),
+         telephone=COALESCE($3,telephone), telephone_2=COALESCE($4,telephone_2),
+         relation=COALESCE($5,relation), est_principal=COALESCE($6,est_principal)
+       WHERE id=$7 AND patient_id IS NOT NULL RETURNING *`,
+      [prenom||null, nom||null, telephone||null, telephone_2||null, relation||null, est_principal===undefined?null:est_principal, req.params.id]
+    );
+    if (!r.rows.length) return res.status(404).json({ success:false, message:'Contact introuvable' });
+    res.json({ success:true, data:r.rows[0] });
+

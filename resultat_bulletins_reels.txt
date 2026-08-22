@@ -1,0 +1,376 @@
+=== A) Section BULLETINS dans backend/server.js (300 lignes a partir de la ligne 1767) ===
+app.get('/api/public/laboratoires', async (req, res) => {
+  try {
+    const r = await db(`SELECT l.id, l.nom, l.adresse, l.ville, l.telephone, l.email
+      FROM laboratoires l LEFT JOIN utilisateurs u ON u.id=l.user_id
+      WHERE u.is_active IS NOT false ORDER BY l.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/imageries', async (req, res) => {
+  try {
+    const r = await db(`SELECT i.id, i.nom, i.adresse, i.ville, i.telephone, i.email
+      FROM imageries i LEFT JOIN utilisateurs u ON u.id=i.user_id
+      WHERE u.is_active IS NOT false ORDER BY i.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/optiques', async (req, res) => {
+  try {
+    const r = await db(`SELECT c.id, c.nom, c.adresse, c.ville, c.telephone, c.email
+      FROM cabinets_optiques c LEFT JOIN utilisateurs u ON u.id=c.user_id
+      WHERE u.is_active IS NOT false ORDER BY c.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+app.get('/api/public/medecins-independants', async (req, res) => {
+  try {
+    const r = await db(`SELECT m.id, m.prenom, m.nom, m.specialite, m.telephone,
+      m.email, m.ville, m.tarif, m.experience_ans, m.statut
+      FROM medecins m LEFT JOIN utilisateurs u ON u.id=m.user_id
+      WHERE u.role IN ('medecin_independant','medecin_conseil','medecin_prive')
+      AND u.is_active IS NOT false ORDER BY m.nom`);
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  RECHERCHE UNIFIEE — rdv.mediconnect4africa.cloud (Phase 2)
+// ══════════════════════════════════════════════════════════════════
+// Fusionne cliniques + laboratoires + imageries en une seule liste, avec
+// un champ 'type' commun pour les distinguer cote client. Le calcul de
+// distance (Haversine) est fait en SQL pur : aucune cle Google requise
+// pour cette etape, seulement pour l'affichage carte cote frontend.
+// lat/lng absents en base (clinique jamais geolocalisee) -> distance_km
+// vaut NULL et la clinique reste trouvable par ville/pays/nom, juste
+// exclue si un filtre "rayon" est explicitement demande.
+// Metropoles ouest-africaines dont les etablissements sont enregistres
+// par commune plutot que par le nom de l'agglomeration elle-meme.
+// A completer au fil des besoins (Dakar, Ouagadougou...).
+const AGGLOMERATIONS = {
+  'abidjan': ['ABIDJAN','COCODY','YOPOUGON','ABOBO','ADJAME','PLATEAU','TREICHVILLE',
+    'MARCORY','KOUMASSI','PORT-BOUET','ATTECOUBE','BINGERVILLE','ANYAMA','SONGON'],
+};
+
+app.get('/api/public/recherche-etablissements', async (req, res) => {
+  try {
+    const { type, q, pays, ville, specialite, lat, lng, rayon_km } = req.query;
+
+    const typesDemandes = type
+      ? type.split(',').map(t => t.trim()).filter(Boolean)
+      : ['clinique', 'laboratoire', 'imagerie'];
+
+    const hasGeo = lat && lng;
+    const latNum = hasGeo ? parseFloat(lat) : null;
+    const lngNum = hasGeo ? parseFloat(lng) : null;
+    const rayonNum = rayon_km ? parseFloat(rayon_km) : null;
+
+    // Formule de Haversine : distance en km entre deux points GPS.
+    // Retourne NULL si l'etablissement n'a pas de coordonnees -- on ne
+    // fait jamais semblant de connaitre une distance qu'on ignore.
+    const distanceExpr = hasGeo
+      ? `CASE WHEN t.latitude IS NOT NULL AND t.longitude IS NOT NULL THEN
+           6371 * acos(LEAST(1, GREATEST(-1,
+             cos(radians(${latNum})) * cos(radians(t.latitude)) *
+             cos(radians(t.longitude) - radians(${lngNum})) +
+             sin(radians(${latNum})) * sin(radians(t.latitude))
+           )))
+         ELSE NULL END`
+      : 'NULL';
+
+    const blocs = [];
+    const params = [];
+    let idx = 1;
+
+    if (typesDemandes.includes('clinique')) {
+      blocs.push(`
+        SELECT c.id, c.nom, c.ville, c.pays_code, c.adresse, c.telephone, c.email,
+               c.latitude, c.longitude, 'clinique' AS type,
+               array_remove(array_agg(DISTINCT sc.nom), NULL) AS specialites,
+               NULL::text[] AS analyses, NULL::text[] AS equipements
+          FROM cliniques c
+          LEFT JOIN specialites_clinique sc ON sc.clinique_id = c.id AND sc.disponible IS NOT false
+         WHERE (c.is_active IS NOT false)
+         GROUP BY c.id
+      `);
+    }
+    if (typesDemandes.includes('laboratoire')) {
+      blocs.push(`
+        SELECT l.id, l.nom, l.ville, l.pays_code, l.adresse, l.telephone, l.email,
+               l.latitude, l.longitude, 'laboratoire' AS type,
+               NULL::text[] AS specialites, l.analyses, NULL::text[] AS equipements
+          FROM laboratoires l
+         WHERE (l.is_active IS NOT false)
+      `);
+    }
+    if (typesDemandes.includes('imagerie')) {
+      blocs.push(`
+        SELECT i.id, i.nom, i.ville, i.pays_code, i.adresse, i.telephone, i.email,
+               i.latitude, i.longitude, 'imagerie' AS type,
+               NULL::text[] AS specialites, NULL::text[] AS analyses, i.equipements
+          FROM imageries i
+         WHERE (i.is_active IS NOT false)
+      `);
+    }
+
+    if (!blocs.length) return res.json({ success: true, data: [] });
+
+    let sql = `SELECT t.*, ${distanceExpr} AS distance_km FROM (${blocs.join(' UNION ALL ')}) t WHERE 1=1`;
+
+    if (q) {
+      // Avant : un seul LIKE '%phrase entiere%' -- "polyclinique abidjan
+      // sud" ne matchait jamais "Polyclinique du Sud" car les mots ne se
+      // suivent pas dans cet ordre dans le nom reel. On decoupe en mots
+      // et on exige que CHACUN apparaisse quelque part dans le nom,
+      // independamment de l'ordre -- comportement attendu d'une recherche.
+      const motsQ = q.trim().split(/\s+/).filter(Boolean);
+      motsQ.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND LOWER(t.nom) LIKE $${idx++}`;
+      });
+    }
+    if (pays) { params.push(pays); sql += ` AND t.pays_code = $${idx++}`; }
+    if (ville) {
+      // Les cliniques importees en masse sont enregistrees par COMMUNE
+      // (Cocody, Yopougon, Abobo...), pas par la metropole qui les
+      // englobe. Chercher "Abidjan" ne matchait donc presque rien alors
+      // que la grande majorite des cliniques y sont bel et bien situees.
+      // AGGLOMERATIONS mappe une metropole vers ses communes connues ;
+      // on elargit la recherche uniquement quand la ville demandee est
+      // une metropole reconnue, sinon comportement inchange (LIKE simple).
+      const communes = AGGLOMERATIONS[ville.trim().toLowerCase()];
+      if (communes) {
+        const placeholders = communes.map(c => { params.push(c.toLowerCase()); return `$${idx++}`; });
+        sql += ` AND LOWER(t.ville) IN (${placeholders.join(',')})`;
+      } else {
+        params.push('%' + ville.toLowerCase() + '%');
+        sql += ` AND LOWER(t.ville) LIKE $${idx++}`;
+      }
+    }
+    if (specialite) {
+      // Meme decoupage en mots-cles independants que pour 'q' ci-dessus,
+      // mais chaque mot doit matcher AU MOINS UN des 4 champs (nom OU
+      // specialite OU analyse OU equipement) -- et TOUS les mots doivent
+      // etre satisfaits (AND entre mots, OR entre champs pour un meme mot).
+      const motsSpe = specialite.trim().split(/\s+/).filter(Boolean);
+      motsSpe.forEach(mot => {
+        params.push('%' + mot.toLowerCase() + '%');
+        sql += ` AND (
+          LOWER(t.nom) LIKE $${idx}
+          OR EXISTS (SELECT 1 FROM unnest(t.specialites) s WHERE LOWER(s) LIKE $${idx})
+          OR EXISTS (SELECT 1 FROM unnest(t.analyses) a WHERE LOWER(a) LIKE $${idx})
+          OR EXISTS (SELECT 1 FROM unnest(t.equipements) e WHERE LOWER(e) LIKE $${idx})
+        )`;
+        idx++;
+      });
+    }
+
+    // Tri : par nom en SQL dans tous les cas -- trier par distance_km en
+    // SQL echoue ("column distance_km does not exist") des que l'alias
+    // est mele a une autre expression dans le meme ORDER BY. Le tri par
+    // distance se fait donc en JS ci-dessous, sur un resultat deja borne
+    // a 200 lignes : negligeable en cout, et evite le piege Postgres.
+    sql += ' ORDER BY t.nom ASC LIMIT 200';
+
+    const r = await db(sql, params);
+    let rows = r.rows;
+
+    // Filtre par rayon, PUIS tri par proximite si une position a ete
+    // fournie. Fait en JS pour la meme raison que ci-dessus : plus simple
+    // et tout aussi correct que de re-ecrire la requete avec une
+    // sous-requete juste pour satisfaire Postgres sur cet alias.
+    if (hasGeo) {
+      if (rayonNum) {
+        // AVANT : row.distance_km !== null && ... excluait TOUT
+        // etablissement sans coordonnees GPS -- or la quasi-totalite des
+        // 277+ etablissements importes en masse n'ont jamais eu de GPS
+        // saisi (seules les nouvelles inscriptions cliniques le
+        // capturent). Resultat : "Pres de moi" retournait 0 resultat
+        // presque systematiquement, meme avec un grand rayon. On ne peut
+        // pas savoir si un etablissement sans coordonnees est dans le
+        // rayon ou non -- on choisit de ne PAS le cacher plutot que de
+        // masquer la quasi-totalite de la base par prudence excessive.
+        rows = rows.filter(row => row.distance_km === null || row.distance_km <= rayonNum);
+      }
+      rows = rows.slice().sort((a, b) => {
+        if (a.distance_km === null && b.distance_km === null) return 0;
+        if (a.distance_km === null) return 1;
+        if (b.distance_km === null) return -1;
+        return a.distance_km - b.distance_km;
+      });
+    }
+
+    res.json({ success: true, data: rows, total: rows.length });
+  } catch(e) {
+    console.error('recherche-etablissements:', e.message);
+    res.status(500).json({ success: false, message: e.message, data: [] });
+  }
+});
+
+
+// ── TABLE ETABLISSEMENTS SANTE ────────────────────────────────────
+app.post('/api/admin/init-etablissements', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    await db(`CREATE TABLE IF NOT EXISTS etablissements_sante (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code VARCHAR(20) UNIQUE NOT NULL,
+      nom VARCHAR(300) NOT NULL,
+      responsable VARCHAR(200),
+      email VARCHAR(200),
+      telephone VARCHAR(100),
+      ville VARCHAR(100),
+      adresse TEXT,
+      specialites TEXT,
+      type VARCHAR(50) DEFAULT 'clinique',
+      secteur VARCHAR(100),
+      membre_mediconnect BOOLEAN DEFAULT false,
+      user_id UUID,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await db('CREATE INDEX IF NOT EXISTS idx_etab_ville ON etablissements_sante(ville)');
+    await db('CREATE INDEX IF NOT EXISTS idx_etab_type ON etablissements_sante(type)');
+    await db('CREATE INDEX IF NOT EXISTS idx_etab_membre ON etablissements_sante(membre_mediconnect)');
+    res.json({ success: true, message: 'Table etablissements_sante creee' });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.post('/api/admin/import-etablissements', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  const { etablissements } = req.body;
+  if (!etablissements || !Array.isArray(etablissements))
+    return res.status(400).json({ success: false, message: 'Donnees invalides' });
+  let inserted = 0; let errors = 0;
+  for (const e of etablissements) {
+    try {
+      await db(
+        `INSERT INTO etablissements_sante (code, nom, responsable, email, telephone, ville, adresse, specialites, type, secteur, membre_mediconnect)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false)
+         ON CONFLICT (code) DO UPDATE SET nom=EXCLUDED.nom, telephone=EXCLUDED.telephone, ville=EXCLUDED.ville`,
+        [e.code, e.nom, e.responsable||'', e.email||'', e.telephone||'', e.ville||'', e.adresse||'', e.specialites||'', e.type||'clinique', e.secteur||'']
+      );
+      inserted++;
+    } catch(err) { errors++; }
+  }
+  res.json({ success: true, inserted, errors });
+});
+
+app.get('/api/public/etablissements', async (req, res) => {
+  try {
+    const { q, ville, type, limite } = req.query;
+    let where = []; let params = []; let idx = 1;
+    if (q) { where.push(`(UPPER(nom) LIKE UPPER($${idx}) OR UPPER(ville) LIKE UPPER($${idx}) OR UPPER(specialites) LIKE UPPER($${idx}))`); params.push('%'+q+'%'); idx++; }
+    if (ville) { where.push(`UPPER(ville) LIKE UPPER($${idx})`); params.push('%'+ville+'%'); idx++; }
+    if (type) { where.push(`type = $${idx}`); params.push(type); idx++; }
+    const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const lim = Math.min(parseInt(limite)||100, 500);
+    const r = await db(
+      `SELECT id, code, nom, responsable, email, telephone, ville, adresse, specialites, type, membre_mediconnect
+       FROM etablissements_sante ${whereClause}
+       ORDER BY membre_mediconnect DESC, nom ASC LIMIT ${lim}`,
+      params
+    );
+    res.json({ success: true, data: r.rows, total: r.rows.length });
+  } catch(e) { res.status(500).json({ success: false, message: e.message, data: [] }); }
+});
+
+app.put('/api/admin/etablissements/:code/membre', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+    return res.status(403).json({ success: false, message: 'Non autorise' });
+  try {
+    const r = await db('UPDATE etablissements_sante SET membre_mediconnect=true WHERE code=$1 RETURNING *', [req.params.code]);
+    res.json({ success: true, data: r.rows[0] });
+  } catch(e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ══════════════════════════════════════════════════════════════════
+//  FILE D'ATTENTE DIGITALISEE — MEDICONNECT AFRICA
+// ══════════════════════════════════════════════════════════════════
+
+// ── Init table ────────────────────────────────────────────────────
+app.post('/api/admin/init-file-attente', async (req, res) => {
+  const key = req.headers['x-admin-key'];
+  if (key !== 'mediconnect_dev_secret_2024')
+
+=== B) Definition de labAPI cote frontend ===
+frontend/src/pages/laboratoire/Dashboard.jsx
+
+frontend/src/pages/laboratoire/Dashboard.jsx:53:const labAPI = {
+
+=== C) Fichiers contenant 'addBulletin' ou 'updBulletin' (definition + usages) ===
+frontend/src/pages/laboratoire/Dashboard.jsx
+frontend/src/pages/imagerie/Dashboard.jsx
+frontend/src/pages/patient/PageDossier.jsx
+
+=== D) Recherche des vraies routes backend liees aux bulletins/emetteur/fichier_prescription ===
+backend/server.js:54:      patient_nom VARCHAR(200), patient_telephone VARCHAR(30), medecin_id UUID, medecin_nom VARCHAR(200),
+backend/server.js:87:      patient_nom VARCHAR(200), montant DECIMAL(12,2) DEFAULT 0,
+backend/server.js:100:      reference VARCHAR(50), clinique_id UUID, patient_id UUID, patient_nom VARCHAR(200),
+backend/server.js:125:      patient_nom VARCHAR(200), patient_id UUID, emetteur_nom VARCHAR(200),
+backend/server.js:127:      statut VARCHAR(20) DEFAULT 'nouveau',
+backend/server.js:141:    "ALTER TABLE rendez_vous ADD COLUMN IF NOT EXISTS patient_nom VARCHAR(200)",
+backend/server.js:181:    `CREATE TABLE IF NOT EXISTS ordonnances_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, patient_id UUID, patient_nom VARCHAR(200), medecin_prescripteur VARCHAR(200), date_prescription DATE DEFAULT CURRENT_DATE, date_validite DATE, od_sphere DECIMAL(5,2), od_cylindre DECIMAL(5,2), od_axe INTEGER, od_addition DECIMAL(4,2), od_prisme DECIMAL(4,2), og_sphere DECIMAL(5,2), og_cylindre DECIMAL(5,2), og_axe INTEGER, og_addition DECIMAL(4,2), og_prisme DECIMAL(4,2), ecart_pupillaire_vl DECIMAL(5,1), ecart_pupillaire_vp DECIMAL(5,1), type_correction VARCHAR(50) DEFAULT 'unifocal', diagnostic_ophtalmologique TEXT, notes TEXT, statut VARCHAR(20) DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:185:    `CREATE TABLE IF NOT EXISTS ventes_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, patient_id UUID, patient_nom VARCHAR(200) NOT NULL, ordonnance_id UUID, monture_id UUID, monture_desc VARCHAR(200), monture_prix DECIMAL(10,2) DEFAULT 0, verre_od_id UUID, verre_og_id UUID, verres_desc VARCHAR(200), verres_prix DECIMAL(10,2) DEFAULT 0, pose_prix DECIMAL(10,2) DEFAULT 0, accessoires_json JSONB DEFAULT '[]', montant_total DECIMAL(12,2) DEFAULT 0, remise_montant DECIMAL(10,2) DEFAULT 0, montant_net DECIMAL(12,2) DEFAULT 0, est_assure BOOLEAN DEFAULT false, assurance VARCHAR(100), numero_police VARCHAR(100), taux_prise_en_charge INTEGER DEFAULT 0, montant_assurance DECIMAL(10,2) DEFAULT 0, montant_patient DECIMAL(10,2) DEFAULT 0, mode_paiement VARCHAR(50) DEFAULT 'Espèces', acompte_verse DECIMAL(10,2) DEFAULT 0, solde_restant DECIMAL(10,2) DEFAULT 0, statut_paiement VARCHAR(30) DEFAULT 'en_attente', statut VARCHAR(30) DEFAULT 'en_cours', date_livraison_prevue DATE, date_livraison_effective DATE, notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:186:    `CREATE TABLE IF NOT EXISTS factures_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, vente_id UUID, patient_nom VARCHAR(200) NOT NULL, patient_id UUID, montant_total DECIMAL(12,2) DEFAULT 0, montant_assurance DECIMAL(10,2) DEFAULT 0, montant_patient DECIMAL(10,2) DEFAULT 0, montant_paye DECIMAL(12,2) DEFAULT 0, lignes_json JSONB DEFAULT '[]', statut VARCHAR(30) DEFAULT 'emise', mode_paiement VARCHAR(50) DEFAULT 'Espèces', date_echeance DATE, notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:187:    `CREATE TABLE IF NOT EXISTS assurances_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, vente_id UUID, patient_nom VARCHAR(200) NOT NULL, patient_id UUID, compagnie VARCHAR(100) NOT NULL, numero_police VARCHAR(100), plafond_monture DECIMAL(10,2), plafond_verres DECIMAL(10,2), montant_monture DECIMAL(10,2) DEFAULT 0, montant_verres DECIMAL(10,2) DEFAULT 0, montant_total_soumis DECIMAL(10,2) DEFAULT 0, montant_pris_en_charge DECIMAL(10,2) DEFAULT 0, ticket_moderateur DECIMAL(10,2) DEFAULT 0, statut VARCHAR(30) DEFAULT 'soumis', motif_rejet TEXT, date_soumission DATE DEFAULT CURRENT_DATE, date_reponse DATE, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:289:      `CREATE TABLE IF NOT EXISTS ordonnances_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), cabinet_id UUID, patient_id UUID, patient_nom VARCHAR(200), medecin_prescripteur VARCHAR(200), date_prescription DATE DEFAULT CURRENT_DATE, date_validite DATE, od_sphere DECIMAL(5,2), od_cylindre DECIMAL(5,2), od_axe INTEGER, od_addition DECIMAL(4,2), og_sphere DECIMAL(5,2), og_cylindre DECIMAL(5,2), og_axe INTEGER, og_addition DECIMAL(4,2), ecart_pupillaire_vl DECIMAL(5,1), ecart_pupillaire_vp DECIMAL(5,1), type_correction VARCHAR(50) DEFAULT 'unifocal', diagnostic_ophtalmologique TEXT, notes TEXT, statut VARCHAR(20) DEFAULT 'active', created_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:293:      `CREATE TABLE IF NOT EXISTS ventes_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, patient_id UUID, patient_nom VARCHAR(200) NOT NULL, montant_total DECIMAL(12,2) DEFAULT 0, montant_net DECIMAL(12,2) DEFAULT 0, est_assure BOOLEAN DEFAULT false, assurance VARCHAR(100), montant_assurance DECIMAL(10,2) DEFAULT 0, montant_patient DECIMAL(10,2) DEFAULT 0, mode_paiement VARCHAR(50) DEFAULT 'Espèces', acompte_verse DECIMAL(10,2) DEFAULT 0, solde_restant DECIMAL(10,2) DEFAULT 0, statut_paiement VARCHAR(30) DEFAULT 'en_attente', statut VARCHAR(30) DEFAULT 'en_cours', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:294:      `CREATE TABLE IF NOT EXISTS factures_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, vente_id UUID, patient_nom VARCHAR(200) NOT NULL, montant_total DECIMAL(12,2) DEFAULT 0, montant_assurance DECIMAL(10,2) DEFAULT 0, montant_patient DECIMAL(10,2) DEFAULT 0, montant_paye DECIMAL(12,2) DEFAULT 0, statut VARCHAR(30) DEFAULT 'emise', mode_paiement VARCHAR(50) DEFAULT 'Espèces', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:295:      `CREATE TABLE IF NOT EXISTS assurances_optiques (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), reference VARCHAR(50) UNIQUE NOT NULL, cabinet_id UUID, patient_nom VARCHAR(200) NOT NULL, compagnie VARCHAR(100) NOT NULL, montant_total_soumis DECIMAL(10,2) DEFAULT 0, montant_pris_en_charge DECIMAL(10,2) DEFAULT 0, ticket_moderateur DECIMAL(10,2) DEFAULT 0, statut VARCHAR(30) DEFAULT 'soumis', created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW())`,
+backend/server.js:923:  const { patient_nom, patient_id, medecin_nom, medecin_id, date_rdv, heure_rdv, motif, statut, assurance, notes } = req.body;
+backend/server.js:928:      'INSERT INTO rendez_vous (id,reference,clinique_id,patient_id,patient_nom,medecin_id,medecin_nom,date_rdv,heure_rdv,motif,statut,assurance,notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+backend/server.js:929:      [uuid(),ref,req.user?.clinique_id,patient_id||null,patient_nom||null,medecin_id||null,medecin_nom||null,date_rdv,heure_rdv,motif||null,statut||'en_attente',assurance||null,notes||null]
+backend/server.js:935:  const { statut, motif, heure_rdv, date_rdv, medecin_nom, patient_nom, notes } = req.body;
+backend/server.js:938:      'UPDATE rendez_vous SET statut=COALESCE($1,statut),motif=COALESCE($2,motif),heure_rdv=COALESCE($3,heure_rdv),date_rdv=COALESCE($4,date_rdv),medecin_nom=COALESCE($5,medecin_nom),patient_nom=COALESCE($6,patient_nom),notes=COALESCE($7,notes),updated_at=NOW() WHERE id=$8 RETURNING *',
+backend/server.js:939:      [statut,motif,heure_rdv,date_rdv,medecin_nom,patient_nom,notes,req.params.id]
+backend/server.js:1244:  const { patient_nom, patient_id, montant, mode_paiement, statut, assurance } = req.body;
+backend/server.js:1248:      'INSERT INTO factures (id,reference,clinique_id,patient_id,patient_nom,montant,mode_paiement,statut,assurance) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+backend/server.js:1249:      [uuid(),ref,req.user?.clinique_id,patient_id||null,patient_nom||null,montant||0,mode_paiement||'Espèces',statut||'en_attente',assurance||null]
+backend/server.js:1378:  const { patient_nom, patient_id, compagnie, numero_police, montant_total, montant_assur, ticket_moder, taux_couverture, diagnostic } = req.body;
+backend/server.js:1379:  if (!patient_nom||!compagnie) return res.status(400).json({ success:false, message:'Patient et compagnie requis' });
+backend/server.js:1383:      'INSERT INTO dossiers_assurance (id,reference,clinique_id,patient_id,patient_nom,compagnie,numero_police,montant_total,montant_assur,ticket_moder,taux_couverture,diagnostic) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *',
+backend/server.js:1384:      [uuid(),ref,req.user?.clinique_id,patient_id||null,patient_nom,compagnie,numero_police||null,montant_total||0,montant_assur||0,ticket_moder||0,taux_couverture||80,diagnostic||null]
+backend/server.js:1646:  const { patient_nom, patient_telephone, clinique_id, medecin_id, etablissement_externe, prestataire_type, prestataire_id, date_rdv, heure_rdv, motif } = req.body;
+backend/server.js:1648:  if (!patient_nom||!patient_telephone) return res.status(400).json({ success:false, message:'Nom et téléphone requis' });
+backend/server.js:1667:      'INSERT INTO rendez_vous (id,reference,clinique_id,medecin_id,etablissement_externe,prestataire_type,prestataire_id,patient_nom,patient_telephone,date_rdv,heure_rdv,motif,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+backend/server.js:1668:      [uuid(),ref,finalCliniqueId,medecin_id||null,etablissement_externe||null,finalPrestataireType,finalPrestataireId,patient_nom,patient_telephone,date_rdv,heure_rdv,motif||null,'public_rdv']
+backend/server.js:2074:      patient_nom VARCHAR(200),
+backend/server.js:2126:    let patient_nom = 'Patient anonyme', patient_telephone = null, medecin_nom = null;
+backend/server.js:2133:        patient_nom = `${pat.rows[0].prenom} ${pat.rows[0].nom}`;
+backend/server.js:2154:       (clinique_id, patient_id, patient_nom, patient_telephone, medecin_id, medecin_nom, rang, motif)
+backend/server.js:2156:      [clinique_id, patient_id||null, patient_nom, patient_telephone,
+backend/server.js:2459:      patient_nom VARCHAR(200),
+backend/server.js:2477:  const { type, montant, description, categorie, patient_nom, medecin_nom, mode_paiement, reference } = req.body;
+backend/server.js:2489:       (clinique_id, session_id, type, categorie, montant, description, patient_nom, medecin_nom, mode_paiement, reference, saisi_par)
+backend/server.js:2492:       description||null, patient_nom||null, medecin_nom||null,
+backend/routes/extra.js:38:    type, categorie, patient_nom, emetteur_nom, notes, rapport, fichier_url, fichier_nom, statut,
+backend/routes/extra.js:43:    fichier_prescription_url, fichier_prescription_nom,
+backend/routes/extra.js:56:      'INSERT INTO bulletins (id,type,categorie,patient_nom,patient_id,emetteur_nom,clinique_id,notes,rapport,fichier_url,fichier_nom,statut,fichier_prescription_url,fichier_prescription_nom) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+backend/routes/extra.js:57:      [type, categorie||'imagerie', patient_nom||null, patientId, emetteur_nom||null, req.user?.clinique_id||null, notes||null, rapport||null, fichier_url||null, fichier_nom||null, statut||'nouveau', fichier_prescription_url||null, fichier_prescription_nom||null]
+backend/routes/extra.js:144:    let sql = `SELECT c.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact
+backend/routes/extra.js:159:      SELECT c.*, u.prenom||' '||u.nom AS patient_nom, u.telephone AS contact
+backend/routes/optique.js:125:  const { patient_id, patient_nom, medecin_prescripteur, date_prescription, date_validite,
+backend/routes/optique.js:133:        (cabinet_id,patient_id,patient_nom,medecin_prescripteur,date_prescription,date_validite,
+backend/routes/optique.js:138:      [cid,patient_id||null,patient_nom||null,medecin_prescripteur||null,
+backend/routes/optique.js:294:  const { patient_nom, patient_id, ordonnance_id, monture_id, monture_desc, monture_prix,
+backend/routes/optique.js:299:  if (!patient_nom) return res.status(400).json({ success: false, message: 'Nom patient requis' });
+backend/routes/optique.js:309:        (reference,cabinet_id,patient_nom,patient_id,ordonnance_id,
+backend/routes/optique.js:318:      [ref,cid,patient_nom,patient_id||null,ordonnance_id||null,
+backend/routes/optique.js:337:      INSERT INTO factures_optiques (reference,cabinet_id,vente_id,patient_nom,patient_id,
+backend/routes/optique.js:340:      [facRef,cid,r.rows[0].id,patient_nom,patient_id||null,
+backend/routes/optique.js:399:  const { vente_id, patient_nom, patient_id, compagnie, numero_police,
+backend/routes/optique.js:401:  if (!compagnie || !patient_nom) return res.status(400).json({ success: false, message: 'Compagnie et patient requis' });
+backend/routes/optique.js:410:        (reference,cabinet_id,vente_id,patient_nom,patient_id,compagnie,numero_police,
+backend/routes/optique.js:414:      [ref,cid,vente_id||null,patient_nom,patient_id||null,compagnie,numero_police||null,
+backend/routes/patients_mobile.js:410:      INSERT INTO quotations_assurance (id,reference,patient_id,patient_nom,assureur_id,assureur_nom,message)
+backend/routes/planning.js:47:      SELECT d.*, rdv.patient_nom, rdv.motif AS rdv_motif, rdv.statut AS rdv_statut, rdv.id AS rdv_id
+

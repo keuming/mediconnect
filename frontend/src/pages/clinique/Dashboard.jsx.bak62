@@ -4361,7 +4361,6 @@ function PageFacturation() {
     { key:"actes", label:"Actes & tarifs" },
     { key:"budget", label:"Budget" },
     { key:"assurances", label:"Remboursements" },
-    { key:"bordereaux", label:"Bordereaux" },
     { key:"rapports", label:"Rapports" },
   ];
 
@@ -4481,94 +4480,6 @@ function PageFacturation() {
         <Panel title="Demandes de remboursement assurance">
           <Empty icon="🛡️" title="Remboursements assurance" subtitle="Gérez ici les demandes de remboursement tiers-payant — intégration module assurance" />
         </Panel>
-      )}
-
-      {tab==="bordereaux" && (
-        <>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-            <select value={filtreBordereauStatut} onChange={e=>setFiltreBordereauStatut(e.target.value)}
-              style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontFamily:"inherit" }}>
-              <option value="">Tous les statuts</option>
-              {Object.entries(BORDEREAU_STATUT_LABEL).map(([k,l])=>(<option key={k} value={k}>{l}</option>))}
-            </select>
-            <Btn onClick={()=>setShowCreationBordereau(true)}>+ Nouveau bordereau</Btn>
-          </div>
-
-          <Panel title="Bordereaux de facturation assurance">
-            {loadingBordereaux
-              ? <Empty icon="⏳" title="Chargement…" />
-              : bordereaux.length===0
-                ? <Empty icon="📑" title="Aucun bordereau" subtitle="Créez un bordereau pour grouper vos factures par compagnie d'assurance" />
-                : <Table columns={[
-                    { key:"reference", label:"Référence", render:v=><span style={{fontFamily:"monospace",fontSize:16,color:C.teal}}>{v}</span> },
-                    { key:"compagnie_nom", label:"Compagnie" },
-                    { key:"periode_debut", label:"Période", render:(_,b)=><span>{fmtDate(b.periode_debut)} → {fmtDate(b.periode_fin)}</span> },
-                    { key:"nb_lignes", label:"Lignes" },
-                    { key:"montant_total", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
-                    { key:"statut", label:"Statut", render:v=><Badge color={BORDEREAU_STATUT_STYLE[v]||"gray"}>{BORDEREAU_STATUT_LABEL[v]||v}</Badge> },
-                    { key:"id", label:"", render:(_,b)=><Btn variant="outline" style={{padding:"4px 10px",fontSize:14}} onClick={()=>ouvrirBordereau(b.id)}>Ouvrir</Btn> },
-                  ]} rows={bordereaux} />
-            }
-          </Panel>
-
-          {bordereauSelectionne && (
-            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
-              <div style={{ background:C.bg, borderRadius:16, padding:24, width:"90%", maxWidth:780, maxHeight:"85vh", overflowY:"auto" }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
-                  <div>
-                    <h3 style={{ margin:0, color:C.text }}>{bordereauSelectionne.reference}</h3>
-                    <p style={{ margin:"4px 0", color:C.muted }}>{bordereauSelectionne.compagnie_nom}</p>
-                  </div>
-                  <Btn variant="outline" style={{padding:"4px 10px"}} onClick={()=>setBordereauSelectionne(null)}>✕</Btn>
-                </div>
-
-                <div style={{ margin:"12px 0" }}>
-                  <Badge color={BORDEREAU_STATUT_STYLE[bordereauSelectionne.statut]||"gray"}>
-                    {BORDEREAU_STATUT_LABEL[bordereauSelectionne.statut]||bordereauSelectionne.statut}
-                  </Badge>
-                </div>
-
-                <Grid cols={3} gap={12} style={{ marginBottom:16 }}>
-                  <Card label="Montant total" value={`${fmt(bordereauSelectionne.montant_total)} F`} icon="💰" color={C.blue} />
-                  <Card label="Validé" value={`${fmt(bordereauSelectionne.montant_valide)} F`} icon="✅" color={C.green} />
-                  <Card label="Rejeté" value={`${fmt(bordereauSelectionne.montant_rejete)} F`} icon="⚠️" color={C.red} />
-                </Grid>
-
-                {(bordereauSelectionne.lignes||[]).length>0 && (
-                  <Table columns={[
-                    { key:"montant_facture", label:"Facturé", render:v=>`${fmt(v)} F` },
-                    { key:"montant_contractuel", label:"Tarif contractuel", render:v=>v!=null?`${fmt(v)} F`:"—" },
-                    { key:"id", label:"Écart", render:(_,l)=>{
-                        if (l.montant_contractuel==null) return "—";
-                        const ecart = l.montant_facture - l.montant_contractuel;
-                        return <span style={{ color: ecart===0?C.green:Math.abs(ecart)<1000?C.amber:C.red, fontWeight:700 }}>
-                          {ecart>0?"+":""}{fmt(ecart)} F
-                        </span>;
-                      } },
-                    { key:"statut_ligne", label:"Statut ligne" },
-                  ]} rows={bordereauSelectionne.lignes} />
-                )}
-
-                {(BORDEREAU_ACTIONS[bordereauSelectionne.statut]||[]).length>0 && (
-                  <div style={{ display:"flex", gap:10, marginTop:20, flexWrap:"wrap" }}>
-                    {BORDEREAU_ACTIONS[bordereauSelectionne.statut].map(([to,label])=>(
-                      <Btn key={to} onClick={()=>transitionBordereauMut.mutate({ id:bordereauSelectionne.id, statut:to })}>
-                        {label}
-                      </Btn>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {showCreationBordereau && (
-            <CreationBordereauModal
-              onClose={()=>setShowCreationBordereau(false)}
-              onCreated={()=>{ setShowCreationBordereau(false); qc.invalidateQueries(["cl-bordereaux"]); }}
-            />
-          )}
-        </>
       )}
 
       {tab==="rapports" && (
