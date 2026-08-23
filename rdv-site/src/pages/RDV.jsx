@@ -291,6 +291,7 @@ export default function RDV() {
   const [chargementDispos, setChargementDispos] = useState(false);
   const [rechercheValeur, setRechercheValeur] = useState('');
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
+  const [rechercheInfructueuse, setRechercheInfructueuse] = useState(false);
   useEffect(() => {
     if (!medecin) return;
     if (medecin.id.startsWith('md-')) {
@@ -596,8 +597,10 @@ export default function RDV() {
                         if (d.data) {
                           setPatient(p => ({ ...p, prenom: d.data.prenom || '', nom: d.data.nom || '', telephone: d.data.telephone || '', email: d.data.email || '', ville_residence: d.data.ville || p.ville_residence }));
                           toast.success('Vos informations ont été retrouvées !');
+                          setRechercheInfructueuse(false);
                         } else {
                           toast.error('Aucun patient trouvé — remplissez le formulaire manuellement');
+                          setRechercheInfructueuse(true);
                         }
                       } catch (e) { toast.error('Erreur de recherche'); }
                       setRechercheEnCours(false);
@@ -608,6 +611,14 @@ export default function RDV() {
                   </button>
                 </div>
               </div>
+
+              {rechercheInfructueuse && (
+                <div style={{ marginBottom: 16, background: 'rgba(245,158,11,.1)', border: '2px solid rgba(245,158,11,.4)', borderRadius: 10, padding: 14 }}>
+                  <p style={{ fontSize: 14, fontWeight: 800, color: '#F59E0B', margin: 0, lineHeight: 1.5 }}>
+                    ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT EN REMPLISSANT LE FORMULAIRE CI-DESSOUS.
+                  </p>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {inp('Prénom *', 'prenom', patient, setPatient, { placeholder: 'Prénom du patient' })}
