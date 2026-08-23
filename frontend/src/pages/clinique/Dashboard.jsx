@@ -431,6 +431,10 @@ function PageHome() {
   const modulesTous = [
     { icon:"📅", label:"Planning & RDV",    path:"planning",    color:C.teal,   stat:`${rdvAujourdhui} RDV à venir` },
     { icon:"👤", label:"Dossiers patients", path:"dossiers",    color:C.blue,   stat:"DME complets" },
+    // Remonte de la 11e a la 3e position (demande explicite) -- module
+    // tres sollicite par le bureau des entrees, trop bas dans la liste
+    // pour un usage quotidien intensif.
+    { icon:"🚶", label:"File d'attente",     path:"file-attente",color:C.teal,   stat:"Accueil patients" },
     { icon:"🩺", label:"Consultation",      path:"consultation",color:C.green,  stat:"En cours" },
     { icon:"💰", label:"Caisse",            path:"caisse",      color:C.amber,  stat:"Ouverte" },
     { icon:"📄", label:"Gestion financière", path:"facturation", color:C.purple, stat:"États financiers" },
@@ -439,7 +443,6 @@ function PageHome() {
     { icon:"🛡️", label:"Assurances",        path:"assurance",   color:C.teal,   stat:"Tiers-payant" },
     { icon:"📋", label:"Qualité & Docs",    path:"qualite",     color:C.purple, stat:"Politiques" },
     { icon:"📊", label:"Statistiques",      path:"stats",       color:C.green,  stat:"Rapports" },
-    { icon:"🚶", label:"File d'attente",     path:"file-attente",color:C.teal,   stat:"Accueil patients" },
     { icon:"👁️", label:"Vue Propriétaire",   path:"proprietaire", color:C.amber,  stat:"Surveillance financière" },
     { icon:"🏥", label:"Profil & Logo",       path:"profil-logo",  color:C.purple, stat:"Identité visuelle" },
     { icon:"🩺", label:"Ma file (Médecin)",  path:"file-medecin", color:C.green,  stat:"Mes patients" },
