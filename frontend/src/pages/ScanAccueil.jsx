@@ -175,8 +175,10 @@ export default function ScanAccueil() {
               </div>
             )}
             {termeRecherche.trim().length >= 2 && resultatsRecherche.length === 0 && !patientTrouve && (
-              <div style={{marginTop:10,background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'14px'}}>
-                <p style={{fontSize:12,color:C.muted,marginBottom:10}}>Aucun dossier trouvé pour ce nom.</p>
+              <div style={{marginTop:10,background:'rgba(245,158,11,.1)',border:'2px solid rgba(245,158,11,.4)',borderRadius:10,padding:'14px'}}>
+                <p style={{fontSize:14,fontWeight:800,color:'#F59E0B',marginBottom:10,lineHeight:1.5}}>
+                  ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT.
+                </p>
                 <a href={`https://manager.mediconnect4africa.cloud/register?clinique_id=${cliniqueId}&role=patient`}
                   style={{display:'block',textAlign:'center',padding:'10px',background:C.green,color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,textDecoration:'none',marginBottom:12}}>
                   Créer mon dossier MediConnect →
