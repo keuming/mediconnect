@@ -365,6 +365,45 @@ app.get('/api/cliniques/stats', auth, async (req, res) => {
 });
 
 // ── MÉDECINS ──────────────────────────────────────────────────────
+// ── Grilles tarifaires assurance (tarifs convenus par assureur) ────
+// Deja lues par bordereaux.js (tarif_convention le plus recent valide
+// par assureur_id) mais aucune route de gestion n'existait encore.
+app.get('/api/grilles-tarifaires', auth, async (req, res) => {
+  try {
+    const cid = req.query.clinique_id || req.user?.clinique_id;
+    const r = await db(
+      `SELECT g.*, a.nom AS assureur_nom
+         FROM grilles_tarifaires g
+         JOIN assureurs a ON a.id = g.assureur_id
+        WHERE g.clinique_id = $1
+        ORDER BY a.nom, g.date_debut_validite DESC`,
+      [cid]
+    );
+    res.json({ success:true, data:r.rows });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.post('/api/grilles-tarifaires', auth, async (req, res) => {
+  const { assureur_id, formule_assurance_id, libelle_acte, tarif_convention, date_debut_validite, date_fin_validite } = req.body;
+  const cid = req.user?.clinique_id;
+  if (!assureur_id || !tarif_convention) return res.status(400).json({ success:false, message:'assureur_id et tarif_convention requis' });
+  try {
+    const r = await db(
+      `INSERT INTO grilles_tarifaires (id,clinique_id,assureur_id,formule_assurance_id,libelle_acte,tarif_convention,date_debut_validite,date_fin_validite)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,COALESCE($6,CURRENT_DATE),$7) RETURNING *`,
+      [cid, assureur_id, formule_assurance_id||null, libelle_acte||null, tarif_convention, date_debut_validite||null, date_fin_validite||null]
+    );
+    res.status(201).json({ success:true, data:r.rows[0] });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
+app.delete('/api/grilles-tarifaires/:id', auth, async (req, res) => {
+  try {
+    await db('DELETE FROM grilles_tarifaires WHERE id=$1 AND clinique_id=$2', [req.params.id, req.user?.clinique_id]);
+    res.json({ success:true });
+  } catch(e) { res.status(500).json({ success:false, message:e.message }); }
+});
+
 app.get('/api/medecins', auth, async (req, res) => {
   try {
     const cid = req.query.clinique_id || req.user?.clinique_id;
