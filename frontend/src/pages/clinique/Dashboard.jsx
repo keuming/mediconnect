@@ -408,6 +408,20 @@ function PageHome() {
     return tous.filter(x => String(x.date_rdv).slice(0,10) >= auj && (x.statut==='en_attente' || x.statut==='confirme'));
   }), retry:1 });
   const { data: stockData } = useQuery({ queryKey:["cl-stock-alerts"], queryFn:()=>cAPI.stock().then(r=>r.data||[]), retry:1 });
+  // Nombre de patients actuellement en attente -- carte d'alerte visuelle
+  // en haut du dashboard, rafraichie automatiquement pour que les agents
+  // du bureau des entrees voient la charge de la salle d'attente sans
+  // avoir a ouvrir l'onglet File d'attente.
+  const { data: filesData } = useQuery({
+    queryKey: ["cl-file-attente-count"],
+    queryFn: async () => {
+      const r = await fetch(`https://mediconnect-backend-v2.vercel.app/api/file-attente/liste?statut=en_attente`, { headers:{ Authorization:`Bearer ${useAuthStore.getState().token}` } });
+      const d = await r.json();
+      return d?.stats?.en_attente ?? (d?.data?.length || 0);
+    },
+    refetchInterval: 15000, retry: 1,
+  });
+  const enAttenteCount = filesData || 0;
 
   const rdvs = rdvsData||[]; const stock = stockData||[];
   const alertesStock = stock.filter(s=>s.quantite<=s.seuil_alerte);
@@ -456,6 +470,32 @@ function PageHome() {
   return (
     <div>
       <PageHeader title={`🏥 Bienvenue, ${user?.nom||"Clinique"}`} subtitle={`${new Date().toLocaleDateString("fr-CI",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`} />
+
+      <style>{`
+        @keyframes clignoteAttente { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+      `}</style>
+      <div onClick={()=>nav("file-attente")} style={{
+          background:"#0A0E12", border:`1.5px solid ${enAttenteCount>0?"rgba(217,119,6,.5)":"rgba(10,143,88,.4)"}`,
+          borderRadius:16, padding:"18px 24px", marginBottom:20, cursor:"pointer",
+          display:"flex", alignItems:"center", justifyContent:"space-between", gap:16,
+          boxShadow: enAttenteCount>0 ? "0 0 28px rgba(217,119,6,.15)" : "0 0 20px rgba(10,143,88,.1)",
+        }}>
+        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+          <div style={{ fontSize:34 }}>🚶</div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#8BA0B5", textTransform:"uppercase", letterSpacing:".5px" }}>Salle d'attente en direct</div>
+            <div style={{ fontSize:14, color:"#5A7A94", marginTop:2 }}>Patients actuellement en attente</div>
+          </div>
+        </div>
+        <div style={{
+            fontSize:52, fontWeight:900, lineHeight:1, minWidth:70, textAlign:"center",
+            color: enAttenteCount>0 ? "#F59E0B" : "#0A8F58",
+            animation: enAttenteCount>0 ? "clignoteAttente 1s ease-in-out infinite" : "none",
+            textShadow: enAttenteCount>0 ? "0 0 18px rgba(245,158,11,.6)" : "0 0 14px rgba(10,143,88,.5)",
+          }}>
+          {enAttenteCount}
+        </div>
+      </div>
 
       {afficherStatsGenerales && (
       <Grid cols={4} gap={14} style={{ marginBottom:20 }}>
