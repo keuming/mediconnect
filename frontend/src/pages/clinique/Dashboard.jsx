@@ -5184,7 +5184,7 @@ function PanelGrillesTarifaires() {
               <button onClick={()=>window.confirm("Supprimer cette grille ?")&&delMut.mutate(r.id)}
                 style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:16}}>🗑️</button>
             ) },
-          ]} data={grilles} />
+          ]} rows={grilles} />
         </Panel>
       )}
 
