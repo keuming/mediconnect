@@ -3658,6 +3658,110 @@ function PanelTypeActes() {
 }
 
 // PARAMETRAGE - PAGE PRINCIPALE (5 onglets)
+// Affiche imprimable pour l'accueil / salle d'attente : QR code pointant
+// vers la VRAIE page de scan deja utilisee par PageFileAttente
+// (/scan-accueil?clinique_id=..., composant ScanAccueil.jsx) -- pas une
+// route separee. Genere via qrcodejs (meme librairie, meme patron de
+// chargement dynamique que le reste de l'app), avec un bouton pour
+// telecharger le QR seul (PNG) et un bouton pour imprimer l'affiche
+// complete au format A4 standard ("feuille de RAM").
+function PanelQRPresence() {
+  const { user } = useAuthStore();
+  const cliniqueId = user?.clinique_id;
+  const qrPreviewRef = React.useRef(null);
+  const [qrPret, setQrPret] = useState(false);
+  const scanUrl = `https://manager.mediconnect4africa.cloud/scan-accueil?clinique_id=${cliniqueId}`;
+
+  const chargerQRCode = () => new Promise((resolve, reject) => {
+    if (window.QRCode) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+
+  useEffect(() => {
+    if (!cliniqueId) return;
+    chargerQRCode().then(() => {
+      if (qrPreviewRef.current) {
+        qrPreviewRef.current.innerHTML = '';
+        new window.QRCode(qrPreviewRef.current, { text: scanUrl, width: 180, height: 180, correctLevel: window.QRCode.CorrectLevel.M });
+        setQrPret(true);
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliniqueId]);
+
+  const telechargerQR = () => {
+    const canvas = qrPreviewRef.current?.querySelector('canvas');
+    const img = qrPreviewRef.current?.querySelector('img');
+    const dataUrl = canvas ? canvas.toDataURL('image/png') : img?.src;
+    if (!dataUrl) { toast.error("QR code pas encore prêt"); return; }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'qr-code-presence-clinique.png';
+    a.click();
+  };
+
+  const imprimerAffiche = async () => {
+    const w = window.open('', '_blank');
+    w.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Préparation de l\'affiche…</p>');
+    let cl = null;
+    try { const r = await api.get('/clinique/profil'); cl = r.data || null; } catch(e) { /* affiche sans en-tete si echec */ }
+
+    w.document.open();
+    w.document.write(`
+      <html><head><title>Affiche — Prise de rang</title>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+      <style>
+        @page { size: A4; margin: 0; }
+        body{font-family:Arial,sans-serif;color:#16211C;margin:0;padding:0;}
+        .page{width:210mm;height:297mm;box-sizing:border-box;padding:30mm 20mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;}
+        .titre{font-size:34px;font-weight:900;color:${cl?.couleur_primaire||'#0A8F58'};line-height:1.25;margin-bottom:10mm;}
+        .sous-titre{font-size:16px;color:#5A7A94;margin-bottom:14mm;}
+        #qr{padding:14mm;background:#fff;border:3px solid ${cl?.couleur_primaire||'#0A8F58'};border-radius:16px;display:flex;align-items:center;justify-content:center;}
+        .nom-clinique{font-size:20px;font-weight:700;margin-top:14mm;color:#16211C;}
+        .footer{font-size:13px;color:#8BA0B5;margin-top:auto;padding-top:16mm;}
+        @media print{ @page { size: A4; margin: 0; } }
+      </style></head><body>
+      <div class="page">
+        <div>
+          <div class="titre">Veuillez scanner ce QR code<br/>pour réserver votre place</div>
+          <div class="sous-titre">Votre rang s'affichera instantanément sur votre téléphone</div>
+        </div>
+        <div id="qr"></div>
+        <div>
+          <div class="nom-clinique">${cl?.nom || 'MediConnect Africa'}</div>
+          <div class="footer">Ets agréé MediConnect Africa</div>
+        </div>
+      </div>
+      <script>
+        try {
+          new QRCode(document.getElementById('qr'), { text: ${JSON.stringify(scanUrl)}, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M });
+        } catch(e) { /* impression sans QR si la librairie n'a pas charge */ }
+        window.onload = () => window.print();
+      <\/script>
+      </body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <Panel title="📱 QR Code — Prise de rang à l'accueil">
+      <p style={{ fontSize:15, color:C.muted, marginBottom:20 }}>
+        Ce QR code oriente vos patients vers la page de prise de rang de <strong style={{color:C.text}}>votre clinique uniquement</strong>. Téléchargez le QR seul ou imprimez l'affiche complète au format A4, à coller au bureau des entrées ou en salle d'attente.
+      </p>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, padding:24, background:C.hover, borderRadius:14 }}>
+        <div ref={qrPreviewRef} style={{ background:"#fff", padding:16, borderRadius:12 }} />
+        {!qrPret && <div style={{ fontSize:14, color:C.dim }}>Génération du QR code…</div>}
+        <div style={{ display:"flex", gap:10 }}>
+          <Btn variant="outline" onClick={telechargerQR} disabled={!qrPret}>⬇️ Télécharger le QR (PNG)</Btn>
+          <Btn onClick={imprimerAffiche} disabled={!cliniqueId}>🖨️ Imprimer l'affiche (A4)</Btn>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function PageParametrage() {
   const [tab, setTab] = useState("assurance");
   const PARAM_TABS = [
@@ -3666,10 +3770,11 @@ function PageParametrage() {
     { key:"type-charges", label:"💸 Type de charges" },
     { key:"type-actes", label:"📋 Type d'actes" },
     { key:"specialites", label:"⚕️ Specialites" },
+    { key:"qr-presence", label:"📱 QR Présence" },
   ];
   return (
     <div>
-      <PageHeader title="⚙️ Parametrage" subtitle="Assurance . Actes & tarifs . Charges . Specialites" />
+      <PageHeader title="⚙️ Parametrage" subtitle="Assurance . Actes & tarifs . Charges . Specialites . QR Présence" />
       <div style={{ display:"flex", gap:4, background:C.input, borderRadius:10, padding:4, marginBottom:20, flexWrap:"wrap" }}>
         {PARAM_TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
@@ -3683,6 +3788,7 @@ function PageParametrage() {
       {tab==="type-charges" && <PanelTypeCharges />}
       {tab==="type-actes" && <PanelTypeActes />}
       {tab==="specialites" && <PageSpecialites />}
+      {tab==="qr-presence" && <PanelQRPresence />}
     </div>
   );
 }
