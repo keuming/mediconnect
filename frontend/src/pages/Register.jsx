@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import useAuthStore from '../context/authStore';
 import { PAYS_OPTIONS, getVillesByPays } from '../utils/geoAfrique';
@@ -31,8 +31,14 @@ const C = {
 };
 
 export default function Register() {
-  const [step, setStep]   = useState(1);
-  const [role, setRole]   = useState('');
+  // Depuis un scan QR de prise de rang (ScanAccueil.jsx), la clinique
+  // est deja connue et le role forcement 'patient' -- on saute le
+  // choix de role pour aller direct aux infos personnelles.
+  const [searchParams] = useSearchParams();
+  const cliniqueScanId = searchParams.get('clinique_id') || null;
+  const roleForce = searchParams.get('role');
+  const [step, setStep]   = useState(cliniqueScanId && roleForce === 'patient' ? 2 : 1);
+  const [role, setRole]   = useState(cliniqueScanId && roleForce === 'patient' ? 'patient' : '');
   const [pays, setPays]   = useState('CI');
   const [ville, setVille] = useState('');
   const [form, setForm]   = useState({
@@ -110,6 +116,7 @@ export default function Register() {
       nom_clinique: role === 'clinique' ? (cliniqueSel?.nom || extraForm.nom_etab) : undefined,
       clinique_id_existante: role === 'clinique' ? (cliniqueSel?.id || undefined) : undefined,
       specialites: role === 'clinique' ? servicesOfferts : undefined,
+      clinique_scan_id: role === 'patient' ? (cliniqueScanId || undefined) : undefined,
     };
     delete payload.confirm;
 

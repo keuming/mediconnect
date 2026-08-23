@@ -92,7 +92,12 @@ router.post('/register', async (req, res) => {
           // Position GPS optionnelle (geolocalisation navigateur a
           // l'inscription), utilisee par la recherche par rayon de
           // rdv.mediconnect4africa.cloud.
-          latitude, longitude } = req.body;
+          latitude, longitude,
+          // Clinique dont le patient a scanne le QR code de prise de
+          // rang (ScanAccueil.jsx -> Register?clinique_id=...) -- lie
+          // directement le dossier patient a cette clinique, distinct
+          // de clinique_id_existante qui sert au role 'clinique'.
+          clinique_scan_id } = req.body;
   if (!email || !password)
     return res.status(400).json({ success: false, message: 'Email et mot de passe requis' });
   try {
@@ -128,9 +133,9 @@ router.post('/register', async (req, res) => {
     if (roleVal === 'patient') {
       patient_id = uuid();
       await db(
-        `INSERT INTO patients (id, user_id, prenom, nom, telephone, email, ville)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [patient_id, userId, prenom||'', nom||'', telephone||null, email||null, ville||null]
+        `INSERT INTO patients (id, user_id, prenom, nom, telephone, email, ville, clinique_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [patient_id, userId, prenom||'', nom||'', telephone||null, email||null, ville||null, clinique_scan_id||null]
       );
       await db('UPDATE utilisateurs SET patient_id=$1 WHERE id=$2', [patient_id, userId]);
 

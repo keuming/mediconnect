@@ -174,6 +174,19 @@ export default function ScanAccueil() {
                 ✓ Dossier trouvé : {patientTrouve.prenom} {patientTrouve.nom}
               </div>
             )}
+            {termeRecherche.trim().length >= 2 && resultatsRecherche.length === 0 && !patientTrouve && (
+              <div style={{marginTop:10,background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'14px'}}>
+                <p style={{fontSize:12,color:C.muted,marginBottom:10}}>Aucun dossier trouvé pour ce nom.</p>
+                <a href={`https://manager.mediconnect4africa.cloud/register?clinique_id=${cliniqueId}&role=patient`}
+                  style={{display:'block',textAlign:'center',padding:'10px',background:C.green,color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,textDecoration:'none',marginBottom:12}}>
+                  Créer mon dossier MediConnect →
+                </a>
+                <p style={{fontSize:11,color:C.dim,lineHeight:1.6}}>
+                  Avec un compte MediConnect, vous et votre famille bénéficiez d'une prise en charge médicale d'urgence gratuite — accident, AVC, infarctus — sans rien avancer, en attendant votre rétablissement.<br/><br/>
+                  Commandez une VigieCard pour vous et pour chaque membre de votre famille. En cas d'urgence, un simple scan du QR code donne accès aux contacts d'urgence de toute la famille — sans déverrouiller aucun téléphone.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
