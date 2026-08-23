@@ -23,6 +23,23 @@ export default function ScanAccueil() {
   const [motif, setMotif] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Recherche par nom pour un patient deja enregistre mais non connecte
+  // sur ce telephone -- evite que le bureau des entrees doive le
+  // ressaisir alors que son dossier existe deja dans MediConnect.
+  const [termeRecherche, setTermeRecherche] = useState('');
+  const [resultatsRecherche, setResultatsRecherche] = useState([]);
+  const [patientTrouve, setPatientTrouve] = useState(null);
+
+  const rechercherPatient = (valeur) => {
+    setTermeRecherche(valeur);
+    setPatientTrouve(null);
+    if (valeur.trim().length < 2) { setResultatsRecherche([]); return; }
+    fetch(`${BACKEND}/api/public/patients/recherche-nom?q=${encodeURIComponent(valeur.trim())}`)
+      .then(r => r.json())
+      .then(d => setResultatsRecherche(d?.data || []))
+      .catch(() => setResultatsRecherche([]));
+  };
+
   useEffect(() => {
     if (!cliniqueId) { setStep('error'); return; }
     // Récupérer infos clinique
@@ -52,6 +69,8 @@ export default function ScanAccueil() {
       };
       if (user && token) {
         body.patient_id = user.patient_id || user.id;
+      } else if (patientTrouve) {
+        body.patient_id = patientTrouve.id;
       }
       const r = await fetch(`${BACKEND}/api/file-attente/scan`, {
         method: 'POST',
@@ -127,6 +146,34 @@ export default function ScanAccueil() {
             <p style={{fontSize:12,color:'#F59E0B',lineHeight:1.6}}>
               💡 Connectez-vous à MediConnect pour un meilleur suivi de votre rang en temps réel.
             </p>
+          </div>
+        )}
+
+        {!user && (
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:12,color:C.muted,display:'block',marginBottom:6}}>DÉJÀ ENREGISTRÉ ? RECHERCHEZ VOTRE NOM (optionnel)</label>
+            <input
+              value={termeRecherche}
+              onChange={e=>rechercherPatient(e.target.value)}
+              placeholder="Tapez votre nom et prénom"
+              style={{width:'100%',padding:'10px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none',boxSizing:'border-box'}}
+            />
+            {resultatsRecherche.length > 0 && (
+              <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,marginTop:6,overflow:'hidden'}}>
+                {resultatsRecherche.map(p => (
+                  <div key={p.id} onClick={() => { setPatientTrouve(p); setTermeRecherche(`${p.prenom} ${p.nom}`); setResultatsRecherche([]); }}
+                    style={{padding:'10px 12px',cursor:'pointer',borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+                    <div style={{color:C.text,fontWeight:700}}>{p.prenom} {p.nom}</div>
+                    {p.telephone && <div style={{color:C.dim,fontSize:11}}>{p.telephone}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {patientTrouve && (
+              <div style={{marginTop:8,fontSize:12,color:C.greenL}}>
+                ✓ Dossier trouvé : {patientTrouve.prenom} {patientTrouve.nom}
+              </div>
+            )}
           </div>
         )}
 
