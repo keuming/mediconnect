@@ -614,9 +614,13 @@ export default function RDV() {
 
               {rechercheInfructueuse && (
                 <div style={{ marginBottom: 16, background: 'rgba(245,158,11,.1)', border: '2px solid rgba(245,158,11,.4)', borderRadius: 10, padding: 14 }}>
-                  <p style={{ fontSize: 14, fontWeight: 800, color: '#F59E0B', margin: 0, lineHeight: 1.5 }}>
-                    ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT EN REMPLISSANT LE FORMULAIRE CI-DESSOUS.
+                  <p style={{ fontSize: 14, fontWeight: 800, color: '#F59E0B', margin: '0 0 12px', lineHeight: 1.5 }}>
+                    ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT.
                   </p>
+                  <a href={`https://manager.mediconnect4africa.cloud/register${clinique?.id ? `?clinique_id=${clinique.id}&role=patient` : '?role=patient'}`}
+                    style={{ display: 'block', textAlign: 'center', padding: '10px', background: V.green, color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
+                    Créer mon dossier MediConnect →
+                  </a>
                 </div>
               )}
 
