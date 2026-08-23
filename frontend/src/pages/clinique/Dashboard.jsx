@@ -5188,8 +5188,7 @@ function PanelGrillesTarifaires() {
         </Panel>
       )}
 
-      {showAdd && (
-        <Modal title="💵 Nouvelle grille tarifaire" onClose={()=>setShowAdd(false)}>
+      <Modal open={showAdd} title="💵 Nouvelle grille tarifaire" onClose={()=>setShowAdd(false)}>
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Assureur *</label>
             <select value={form.assureur_id} onChange={f("assureur_id")}
@@ -5224,8 +5223,7 @@ function PanelGrillesTarifaires() {
             if(!form.assureur_id||!form.tarif_convention){ toast.error("Assureur et tarif requis"); return; }
             addMut.mutate(form);
           }} style={{width:"100%"}}>Enregistrer la grille</Btn>
-        </Modal>
-      )}
+      </Modal>
     </div>
   );
 }
