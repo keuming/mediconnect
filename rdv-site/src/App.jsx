@@ -4,7 +4,6 @@ import { Toaster } from 'react-hot-toast';
 import Home from './pages/Home';
 import RDV from './pages/RDV';
 import Confirmation from './pages/Confirmation';
-import Presence from './pages/Presence';
 import useThemeStore from './context/themeStore';
 import { V, PALETTE_LIGHT, PALETTE_DARK } from './theme';
 
@@ -28,7 +27,6 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/rdv" element={<RDV />} />
           <Route path="/confirmation" element={<Confirmation />} />
-          <Route path="/presence/:cliniqueId" element={<Presence />} />
         </Routes>
       </div>
     </BrowserRouter>
