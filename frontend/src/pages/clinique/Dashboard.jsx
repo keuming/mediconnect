@@ -1465,12 +1465,16 @@ function PageDossiers() {
 
   // Preselection depuis Planning & RDV : le bouton "Carte patient" du
   // bureau des entrees redirige ici avec ?patient_id=XXX -- des que la
-  // liste est chargee, on selectionne automatiquement ce patient.
+  // liste est chargee, on selectionne automatiquement ce patient. Un
+  // ?tab=carte optionnel (ex. depuis la File d'attente) ouvre directement
+  // l'onglet Carte au lieu du defaut Infos.
   React.useEffect(() => {
     const pid = searchParams.get('patient_id');
+    const tab = searchParams.get('tab');
     if (pid && data && !selected) {
       const p = data.find(x => x.id === pid);
       if (p) setSelected(p);
+      if (tab) setActiveTab(tab);
     }
   }, [searchParams, data, selected]);
   const { data: consults } = useQuery({ queryKey:["cl-consults",selected?.id], queryFn:async()=>{
@@ -6244,6 +6248,7 @@ function PageCaisse() {
 // ══════════════════════════════════════════════════════════════════
 function PageFileAttente(){
   const { user, token } = useAuthStore();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState('en_attente');
   const [showQR, setShowQR] = React.useState(false);
@@ -6410,6 +6415,11 @@ function PageFileAttente(){
                 </span>
               </div>
               <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>navigate(`/clinique/dossiers?patient_id=${e.patient_id}&tab=carte`)} disabled={!e.patient_id}
+                  title={e.patient_id?"Voir la carte patient":"Ticket sans dossier lie"}
+                  style={{padding:'6px 8px',background:'rgba(124,58,237,.15)',border:'1px solid rgba(124,58,237,.3)',borderRadius:7,color:'#7C3AED',fontSize:14,fontWeight:700,cursor:e.patient_id?'pointer':'not-allowed',fontFamily:'inherit',opacity:e.patient_id?1:.5}}>
+                  🪪 Carte
+                </button>
                 {e.statut==='en_attente'&&(
                   <button onClick={()=>updateStatut(e.id,'appeler')} style={{flex:1,padding:'6px 0',background:'rgba(59,130,246,.15)',border:'1px solid rgba(59,130,246,.3)',borderRadius:7,color:'#3B82F6',fontSize:14,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                     📣 Appeler
