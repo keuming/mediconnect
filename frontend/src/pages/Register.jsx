@@ -37,6 +37,11 @@ export default function Register() {
   const [searchParams] = useSearchParams();
   const cliniqueScanId = searchParams.get('clinique_id') || null;
   const roleForce = searchParams.get('role');
+  // URL d'origine (RDV.jsx ou ScanAccueil.jsx, sur rdv-site) a laquelle
+  // revenir apres inscription reussie -- sans ca, le patient etait
+  // toujours envoye vers /app (dashboard patient), perdant le
+  // rendez-vous ou la prise de rang qu'il etait en train de faire.
+  const retourUrl = searchParams.get('retour_url') || null;
   const [step, setStep]   = useState(cliniqueScanId && roleForce === 'patient' ? 2 : 1);
   const [role, setRole]   = useState(cliniqueScanId && roleForce === 'patient' ? 'patient' : '');
   const [pays, setPays]   = useState('CI');
@@ -123,7 +128,7 @@ export default function Register() {
     const res = await register(payload);
     if (res.success) {
       toast.success('Compte créé avec succès ! Bienvenue 🎉');
-      navigate('/app');
+      if (retourUrl) { window.location.href = retourUrl; } else { navigate('/app'); }
     } else {
       toast.error(res.message || 'Erreur lors de la création du compte');
     }

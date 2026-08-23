@@ -617,7 +617,7 @@ export default function RDV() {
                   <p style={{ fontSize: 14, fontWeight: 800, color: '#F59E0B', margin: '0 0 12px', lineHeight: 1.5 }}>
                     ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT.
                   </p>
-                  <a href={`https://manager.mediconnect4africa.cloud/register${clinique?.id ? `?clinique_id=${clinique.id}&role=patient` : '?role=patient'}`}
+                  <a href={`https://manager.mediconnect4africa.cloud/register${clinique?.id ? `?clinique_id=${clinique.id}&role=patient` : '?role=patient'}&retour_url=${encodeURIComponent(window.location.href)}`}
                     style={{ display: 'block', textAlign: 'center', padding: '10px', background: V.green, color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
                     Créer mon dossier MediConnect →
                   </a>

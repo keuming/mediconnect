@@ -179,7 +179,7 @@ export default function ScanAccueil() {
                 <p style={{fontSize:14,fontWeight:800,color:'#F59E0B',marginBottom:10,lineHeight:1.5}}>
                   ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT.
                 </p>
-                <a href={`https://manager.mediconnect4africa.cloud/register?clinique_id=${cliniqueId}&role=patient`}
+                <a href={`https://manager.mediconnect4africa.cloud/register?clinique_id=${cliniqueId}&role=patient&retour_url=${encodeURIComponent(window.location.href)}`}
                   style={{display:'block',textAlign:'center',padding:'10px',background:C.green,color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,textDecoration:'none',marginBottom:12}}>
                   Créer mon dossier MediConnect →
                 </a>
