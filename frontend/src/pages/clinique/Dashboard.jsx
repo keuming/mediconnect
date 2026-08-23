@@ -192,6 +192,9 @@ const cAPI = {
   updatePatient: (id,d) => api.put(`/patients/${id}`, d),
   affecterMedecinPassage: (passageId,medecinId) => api.put(`/passages/${passageId}/medecin`, { medecin_id:medecinId }),
   assureursListe:  () => api.get("/assureurs"),
+  grillesTarifaires:    () => api.get("/grilles-tarifaires"),
+  addGrilleTarifaire:   d  => api.post("/grilles-tarifaires", d),
+  deleteGrilleTarifaire: id => api.delete(`/grilles-tarifaires/${id}`),
   conventions:     () => api.get("/conventions"),
   addConvention:   (d) => api.post("/conventions", d),
   updateConvention:(id,d) => api.put(`/conventions/${id}`, d),
@@ -5147,6 +5150,86 @@ function PanelCompagniesFormules() {
   );
 }
 
+// Grilles tarifaires : tarif convenu par assureur, deja lu par le
+// module Bordereaux (tarif_convention le plus recent valide) pour
+// afficher le tarif contractuel/ecart sur chaque bordereau -- jusqu'ici
+// aucune interface ne permettait de le saisir, donc toujours vide.
+function PanelGrillesTarifaires() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ assureur_id:"", libelle_acte:"", tarif_convention:"", date_debut_validite:"", date_fin_validite:"" });
+  const { data, isLoading } = useQuery({ queryKey:["cl-grilles"], queryFn:()=>cAPI.grillesTarifaires().then(r=>r.data||[]) });
+  const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
+  const addMut = useMutation({ mutationFn:d=>cAPI.addGrilleTarifaire(d), onSuccess:()=>{ toast.success("Grille ajoutée"); qc.invalidateQueries(["cl-grilles"]); setShowAdd(false); setForm({ assureur_id:"", libelle_acte:"", tarif_convention:"", date_debut_validite:"", date_fin_validite:"" }); } });
+  const delMut = useMutation({ mutationFn:id=>cAPI.deleteGrilleTarifaire(id), onSuccess:()=>{ toast.success("Supprimée"); qc.invalidateQueries(["cl-grilles"]); } });
+
+  const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
+  const grilles = data||[];
+  const assureurs = assureursData||[];
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:14}}>
+        <Btn onClick={()=>setShowAdd(true)}>+ Nouvelle grille</Btn>
+      </div>
+      {isLoading ? <Loader /> : (
+        <Panel>
+          <Table emptyMsg="Aucune grille tarifaire — le tarif contractuel restera vide sur les bordereaux tant qu'aucune grille n'est saisie" columns={[
+            { key:"assureur_nom", label:"Assureur" },
+            { key:"libelle_acte", label:"Acte", render:v=>v||"—" },
+            { key:"tarif_convention", label:"Tarif convenu", render:v=><span style={{fontWeight:700,color:C.green}}>{fmt(v)} F</span> },
+            { key:"date_debut_validite", label:"Depuis", render:v=>v?new Date(v).toLocaleDateString("fr-CI"):"—" },
+            { key:"date_fin_validite", label:"Jusqu'au", render:v=>v?new Date(v).toLocaleDateString("fr-CI"):"—" },
+            { key:"actions", label:"", render:(_,r)=>(
+              <button onClick={()=>window.confirm("Supprimer cette grille ?")&&delMut.mutate(r.id)}
+                style={{background:"none",border:"none",color:C.red,cursor:"pointer",fontSize:16}}>🗑️</button>
+            ) },
+          ]} data={grilles} />
+        </Panel>
+      )}
+
+      {showAdd && (
+        <Modal title="💵 Nouvelle grille tarifaire" onClose={()=>setShowAdd(false)}>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Assureur *</label>
+            <select value={form.assureur_id} onChange={f("assureur_id")}
+              style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit"}}>
+              <option value="">— Choisir un assureur —</option>
+              {assureurs.map(a=>(<option key={a.id} value={a.id}>{a.nom}</option>))}
+            </select>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Acte / Libellé (optionnel)</label>
+            <input value={form.libelle_acte} onChange={f("libelle_acte")} placeholder="Ex: Consultation générale"
+              style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}} />
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Tarif convenu (FCFA) *</label>
+            <input type="number" value={form.tarif_convention} onChange={f("tarif_convention")} placeholder="Ex: 15000"
+              style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}} />
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+            <div>
+              <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Valide depuis</label>
+              <input type="date" value={form.date_debut_validite} onChange={f("date_debut_validite")}
+                style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}} />
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Valide jusqu'au (optionnel)</label>
+              <input type="date" value={form.date_fin_validite} onChange={f("date_fin_validite")}
+                style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}} />
+            </div>
+          </div>
+          <Btn onClick={()=>{
+            if(!form.assureur_id||!form.tarif_convention){ toast.error("Assureur et tarif requis"); return; }
+            addMut.mutate(form);
+          }} style={{width:"100%"}}>Enregistrer la grille</Btn>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function PageAssurance() {
   const qc = useQueryClient();
   const [tab, setTab] = useState("dossiers");
@@ -5172,7 +5255,7 @@ function PageAssurance() {
         actions={tab==="dossiers"?<Btn onClick={()=>setShowAdd(true)}>+ Nouveau dossier</Btn>:null} />
 
       <div style={{display:"flex",gap:4,background:C.input,borderRadius:10,padding:4,marginBottom:20}}>
-        {[["dossiers","📁 Dossiers"],["compagnies","🏢 Compagnies & formules"]].map(([k,l])=>(
+        {[["dossiers","📁 Dossiers"],["compagnies","🏢 Compagnies & formules"],["grilles","💵 Grilles tarifaires"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)}
             style={{flex:1,background:tab===k?C.hover:"transparent",border:"none",borderRadius:8,padding:"9px 4px",cursor:"pointer",fontFamily:"inherit",color:tab===k?C.text:C.muted,fontSize:16,fontWeight:tab===k?700:400}}>
             {l}
@@ -5181,6 +5264,7 @@ function PageAssurance() {
       </div>
 
       {tab==="compagnies" && <PanelCompagniesFormules />}
+      {tab==="grilles" && <PanelGrillesTarifaires />}
 
       {tab==="dossiers" && (<>
       <Grid cols={4} gap={14} style={{marginBottom:20}}>
