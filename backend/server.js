@@ -4657,20 +4657,26 @@ app.post('/api/passages/:id/actes', auth, requireSousRole('bureau_entrees', 'med
     // remplace le tarif de base si une ligne existe pour cet acte dans
     // la convention active. Le taux de couverture reste celui de la
     // formule personnelle du patient, independant du tarif negocie.
+    // Tarif negocie lu directement dans grilles_tarifaires (assureur +
+    // acte precis) -- remplace l'ancienne logique conventions/
+    // actes_tarifs_convention, qui referencait une table jamais creee
+    // et faisait echouer tout ajout d'acte assure des qu'une convention
+    // active existait. grilles_tarifaires est desormais la source
+    // unique du tarif negocie, geree depuis Parametrage > Assurance.
     let puEffectif = parseFloat(a.tarif_base||0);
     if (est_assure) {
       const patientAssurance = await db('SELECT assureur_id FROM patients WHERE id=$1', [passage.rows[0].patient_id]);
       const assureurId = patientAssurance.rows[0]?.assureur_id;
       if (assureurId) {
-        const conv = await db(
-          `SELECT id FROM conventions WHERE clinique_id=$1 AND assureur_id=$2 AND is_active IS NOT false
-             AND (date_fin IS NULL OR date_fin >= CURRENT_DATE) ORDER BY date_debut DESC LIMIT 1`,
-          [passage.rows[0].clinique_id, assureurId]
+        const grille = await db(
+          `SELECT tarif_convention FROM grilles_tarifaires
+            WHERE clinique_id=$1 AND assureur_id=$2 AND acte_id=$3
+              AND date_debut_validite <= CURRENT_DATE
+              AND (date_fin_validite IS NULL OR date_fin_validite >= CURRENT_DATE)
+            ORDER BY date_debut_validite DESC LIMIT 1`,
+          [passage.rows[0].clinique_id, assureurId, acte_id]
         );
-        if (conv.rows.length) {
-          const tn = await db('SELECT tarif_negocie FROM actes_tarifs_convention WHERE convention_id=$1 AND acte_id=$2', [conv.rows[0].id, acte_id]);
-          if (tn.rows.length) puEffectif = parseFloat(tn.rows[0].tarif_negocie);
-        }
+        if (grille.rows.length) puEffectif = parseFloat(grille.rows[0].tarif_convention);
       }
     }
     const pu = prixSurcharge != null ? parseFloat(prixSurcharge) : puEffectif;
@@ -4741,6 +4747,12 @@ app.post('/api/passages/:id/medicament', auth, requireSousRole('bureau_entrees',
       // Tarif negocie par convention (clinique + assureur du patient) --
       // remplace le prix de base si une ligne existe pour ce produit
       // dans la convention active, meme principe que pour les actes.
+      // Tarif negocie lu directement dans grilles_tarifaires (assureur +
+      // produit precis via stock_id) -- remplace l'ancienne logique
+      // conventions/stock_tarifs_convention, qui referencait une table
+      // jamais creee et faisait echouer toute vente assuree des qu'une
+      // convention active existait. grilles_tarifaires est desormais la
+      // source unique du tarif negocie.
       let puEffectif = parseFloat(produit.prix_unitaire || 0);
       let taux = 0;
       if (est_assure) {
@@ -4752,15 +4764,15 @@ app.post('/api/passages/:id/medicament', auth, requireSousRole('bureau_entrees',
           taux = f.rows[0]?.taux_couverture ?? 0;
         }
         if (assureurId) {
-          const conv = await client.query(
-            `SELECT id FROM conventions WHERE clinique_id=$1 AND assureur_id=$2 AND is_active IS NOT false
-               AND (date_fin IS NULL OR date_fin >= CURRENT_DATE) ORDER BY date_debut DESC LIMIT 1`,
-            [passage.clinique_id, assureurId]
+          const grille = await client.query(
+            `SELECT tarif_convention FROM grilles_tarifaires
+              WHERE clinique_id=$1 AND assureur_id=$2 AND stock_id=$3
+                AND date_debut_validite <= CURRENT_DATE
+                AND (date_fin_validite IS NULL OR date_fin_validite >= CURRENT_DATE)
+              ORDER BY date_debut_validite DESC LIMIT 1`,
+            [passage.clinique_id, assureurId, stock_id]
           );
-          if (conv.rows.length) {
-            const tn = await client.query('SELECT tarif_negocie FROM stock_tarifs_convention WHERE convention_id=$1 AND stock_id=$2', [conv.rows[0].id, stock_id]);
-            if (tn.rows.length) puEffectif = parseFloat(tn.rows[0].tarif_negocie);
-          }
+          if (grille.rows.length) puEffectif = parseFloat(grille.rows[0].tarif_convention);
         }
       }
       const pu = puEffectif;
