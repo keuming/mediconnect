@@ -3758,38 +3758,83 @@ function PanelQRPresence() {
     w.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Préparation de l\'affiche…</p>');
     let cl = null;
     try { const r = await api.get('/clinique/profil'); cl = r.data || null; } catch(e) { /* affiche sans en-tete si echec */ }
+    const couleur = cl?.couleur_primaire || '#0A8F58';
 
     w.document.open();
     w.document.write(`
-      <html><head><title>Affiche — Prise de rang</title>
+      <html><head><meta charset="UTF-8"><title>Affiche — Prise de rang — ${cl?.nom || 'MediConnect Africa'}</title>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
       <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
       <style>
         @page { size: A4; margin: 0; }
-        body{font-family:Arial,sans-serif;color:#16211C;margin:0;padding:0;}
-        .page{width:210mm;height:297mm;box-sizing:border-box;padding:30mm 20mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;}
-        .titre{font-size:34px;font-weight:900;color:${cl?.couleur_primaire||'#0A8F58'};line-height:1.25;margin-bottom:10mm;}
-        .sous-titre{font-size:16px;color:#5A7A94;margin-bottom:14mm;}
-        #qr{padding:14mm;background:#fff;border:3px solid ${cl?.couleur_primaire||'#0A8F58'};border-radius:16px;display:flex;align-items:center;justify-content:center;}
-        .nom-clinique{font-size:20px;font-weight:700;margin-top:14mm;color:#16211C;}
-        .footer{font-size:13px;color:#8BA0B5;margin-top:auto;padding-top:16mm;}
+        * { box-sizing: border-box; }
+        body{font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#16211C;margin:0;padding:0;}
+        .page{width:210mm;height:297mm;padding:20mm 20mm 14mm;display:flex;flex-direction:column;align-items:center;background:linear-gradient(180deg,#F5F9F7 0%,#FFFFFF 22%);}
+
+        .brand{display:flex;align-items:center;gap:10mm;margin-bottom:16mm;width:100%;}
+        .brand-mark{width:20mm;height:20mm;border-radius:5mm;background:linear-gradient(135deg,#0A8F58,#0D9488);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13mm;font-weight:900;font-family:Arial,sans-serif;flex-shrink:0;}
+        .brand-name{font-family:'DM Serif Display',serif;font-size:11mm;color:#16211C;text-align:left;line-height:1;}
+        .brand-name b{color:#0A8F58;}
+        .brand-tagline{font-size:4mm;color:#5A7A94;text-align:left;margin-top:1.5mm;letter-spacing:.3mm;}
+
+        .clinique-banner{width:100%;background:linear-gradient(90deg,${couleur},${couleur}CC);border-radius:6mm;padding:9mm 10mm;margin-bottom:20mm;text-align:center;box-shadow:0 4mm 10mm ${couleur}33;}
+        .clinique-label{font-size:3.6mm;color:#FFFFFFCC;text-transform:uppercase;letter-spacing:.8mm;font-weight:700;margin-bottom:2mm;}
+        .clinique-nom{font-size:8mm;color:#fff;font-weight:800;line-height:1.2;}
+
+        .titre{font-size:10mm;font-weight:800;color:#16211C;line-height:1.3;margin-bottom:5mm;text-align:center;}
+        .sous-titre{font-size:4.4mm;color:#5A7A94;margin-bottom:16mm;max-width:150mm;text-align:center;line-height:1.6;}
+
+        #qr-wrap{padding:12mm;background:#fff;border-radius:8mm;position:relative;margin-bottom:20mm;}
+        #qr-wrap::before{content:'';position:absolute;inset:-1.5mm;border-radius:8mm;padding:1.5mm;background:linear-gradient(135deg,#0A8F58,#0D9488,${couleur});-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
+        #qr{position:relative;z-index:1;}
+
+        .etapes{display:flex;gap:10mm;width:100%;max-width:165mm;}
+        .etape{flex:1;text-align:center;}
+        .etape-num{width:9mm;height:9mm;border-radius:50%;background:#F0F3F5;border:0.5mm solid ${couleur};color:${couleur};font-weight:800;font-size:4mm;display:flex;align-items:center;justify-content:center;margin:0 auto 3mm;}
+        .etape-txt{font-size:3.4mm;color:#5A7A94;line-height:1.5;}
+
+        .footer{width:100%;padding-top:8mm;margin-top:auto;border-top:0.3mm solid #E1E7EC;display:flex;align-items:center;justify-content:center;gap:4mm;}
+        .footer-mark{width:6mm;height:6mm;border-radius:1.5mm;background:linear-gradient(135deg,#0A8F58,#0D9488);display:flex;align-items:center;justify-content:center;color:#fff;font-size:4mm;font-weight:900;}
+        .footer-txt{font-size:3.4mm;color:#8BA0B5;font-weight:600;}
+
         @media print{ @page { size: A4; margin: 0; } }
       </style></head><body>
       <div class="page">
-        <div>
-          <div class="titre">Veuillez scanner ce QR code<br/>pour réserver votre place</div>
-          <div class="sous-titre">Votre rang s'affichera instantanément sur votre téléphone</div>
+        <div class="brand">
+          <div class="brand-mark">+</div>
+          <div>
+            <div class="brand-name">Medi<b>Connect</b> Africa</div>
+            <div class="brand-tagline">DIGITAL PLATFORMS FOR AFRICA</div>
+          </div>
         </div>
-        <div id="qr"></div>
-        <div>
-          <div class="nom-clinique">${cl?.nom || 'MediConnect Africa'}</div>
-          <div class="footer">Ets agréé MediConnect Africa</div>
+
+        <div class="clinique-banner">
+          <div class="clinique-label">Établissement partenaire</div>
+          <div class="clinique-nom">${cl?.nom || 'Votre clinique'}</div>
+        </div>
+
+        <div class="titre">📍 Scannez pour réserver votre place</div>
+        <div class="sous-titre">Votre rang s'affiche instantanément sur votre téléphone — plus besoin de patienter au guichet.</div>
+
+        <div id="qr-wrap"><div id="qr"></div></div>
+
+        <div class="etapes">
+          <div class="etape"><div class="etape-num">1</div><div class="etape-txt">Scannez le QR code avec votre téléphone</div></div>
+          <div class="etape"><div class="etape-num">2</div><div class="etape-txt">Indiquez si vous êtes déjà enregistré</div></div>
+          <div class="etape"><div class="etape-num">3</div><div class="etape-txt">Consultez votre rang en temps réel</div></div>
+        </div>
+
+        <div class="footer">
+          <div class="footer-mark">+</div>
+          <div class="footer-txt">Établissement agréé MediConnect Africa</div>
         </div>
       </div>
       <script>
         try {
           new QRCode(document.getElementById('qr'), { text: ${JSON.stringify(scanUrl)}, width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M });
         } catch(e) { /* impression sans QR si la librairie n'a pas charge */ }
-        window.onload = () => window.print();
+        window.onload = () => setTimeout(() => window.print(), 300);
       <\/script>
       </body></html>`);
     w.document.close();
