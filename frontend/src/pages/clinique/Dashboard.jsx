@@ -3769,7 +3769,7 @@ function PanelQRPresence() {
       <style>
         @page { size: A4; margin: 0; }
         * { box-sizing: border-box; }
-        body{font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#16211C;margin:0;padding:0;}
+        body{font-family:'Plus Jakarta Sans',Arial,sans-serif;color:#16211C;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
         /* Pas de hauteur fixe 297mm : le contenu garde sa taille naturelle
            (mesuree ~210mm) pour ne jamais deborder sur une 2e page, quelles
            que soient les marges d'impression systeme du navigateur (souvent
@@ -3790,7 +3790,7 @@ function PanelQRPresence() {
         .titre{font-size:8.5mm;font-weight:800;color:#16211C;line-height:1.3;margin-bottom:3mm;text-align:center;}
         .sous-titre{font-size:3.9mm;color:#5A7A94;margin-bottom:11mm;max-width:150mm;text-align:center;line-height:1.5;}
 
-        #qr-wrap{padding:9mm;background:#fff;border-radius:7mm;position:relative;margin-bottom:13mm;}
+        #qr-wrap{padding:9mm;background:#fff;border-radius:7mm;position:relative;margin-bottom:6.5mm;}
         #qr-wrap::before{content:'';position:absolute;inset:-1.5mm;border-radius:7mm;padding:1.5mm;background:linear-gradient(135deg,#0A8F58,#0D9488,${couleur});-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;}
         #qr{position:relative;z-index:1;}
 
@@ -3799,7 +3799,7 @@ function PanelQRPresence() {
         .etape-num{width:8mm;height:8mm;border-radius:50%;background:#F0F3F5;border:0.5mm solid ${couleur};color:${couleur};font-weight:800;font-size:3.6mm;display:flex;align-items:center;justify-content:center;margin:0 auto 2.5mm;}
         .etape-txt{font-size:3.2mm;color:#5A7A94;line-height:1.5;}
 
-        .footer{width:100%;padding-top:6mm;margin-top:16mm;border-top:0.3mm solid #E1E7EC;display:flex;align-items:center;justify-content:center;gap:3mm;}
+        .footer{width:100%;padding-top:3mm;margin-top:8mm;border-top:0.3mm solid #E1E7EC;display:flex;align-items:center;justify-content:center;gap:3mm;}
         .footer-mark{width:5mm;height:5mm;border-radius:1.2mm;background:linear-gradient(135deg,#0A8F58,#0D9488);display:flex;align-items:center;justify-content:center;color:#fff;font-size:3.2mm;font-weight:900;}
         .footer-txt{font-size:3mm;color:#8BA0B5;font-weight:600;}
         .footer-banner{background:linear-gradient(90deg,${couleur},${couleur}CC);border-radius:5mm;padding:4mm 10mm;box-shadow:0 2mm 6mm ${couleur}33;display:flex;align-items:center;gap:3mm;}
@@ -3842,7 +3842,7 @@ function PanelQRPresence() {
       </div>
       <script>
         try {
-          new QRCode(document.getElementById('qr'), { text: ${JSON.stringify(scanUrl)}, width: 360, height: 360, correctLevel: QRCode.CorrectLevel.M });
+          new QRCode(document.getElementById('qr'), { text: ${JSON.stringify(scanUrl)}, width: 324, height: 324, correctLevel: QRCode.CorrectLevel.M });
         } catch(e) { /* impression sans QR si la librairie n'a pas charge */ }
         window.onload = () => setTimeout(() => window.print(), 300);
       <\/script>
