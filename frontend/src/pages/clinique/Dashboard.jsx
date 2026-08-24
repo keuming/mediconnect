@@ -3777,13 +3777,13 @@ function PanelQRPresence() {
            "Aucune marge" dans la boite de dialogue d'impression). */
         .page{width:210mm;padding:14mm 18mm 16mm;display:flex;flex-direction:column;align-items:center;background:linear-gradient(180deg,#F5F9F7 0%,#FFFFFF 22%);}
 
-        .brand{display:flex;align-items:center;gap:8mm;margin-bottom:11mm;width:100%;}
+        .brand{display:flex;align-items:center;gap:8mm;margin-bottom:5.5mm;width:100%;}
         .brand-mark{width:16mm;height:16mm;border-radius:4mm;background:linear-gradient(135deg,#0A8F58,#0D9488);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10mm;font-weight:900;font-family:Arial,sans-serif;flex-shrink:0;}
         .brand-name{font-family:'DM Serif Display',serif;font-size:9mm;color:#16211C;text-align:left;line-height:1;}
         .brand-name b{color:#0A8F58;}
         .brand-tagline{font-size:3.4mm;color:#5A7A94;text-align:left;margin-top:1.5mm;letter-spacing:.3mm;}
 
-        .clinique-banner{width:100%;background:linear-gradient(90deg,${couleur},${couleur}CC);border-radius:5mm;padding:6mm 10mm;margin-bottom:13mm;text-align:center;box-shadow:0 3mm 8mm ${couleur}33;}
+        .clinique-banner{width:100%;background:linear-gradient(90deg,${couleur},${couleur}CC);border-radius:5mm;padding:6mm 10mm;margin-bottom:6.5mm;text-align:center;box-shadow:0 3mm 8mm ${couleur}33;}
         .clinique-label{font-size:3mm;color:#FFFFFFCC;text-transform:uppercase;letter-spacing:.6mm;font-weight:700;margin-bottom:1.5mm;}
         .clinique-nom{font-size:6.5mm;color:#fff;font-weight:800;line-height:1.2;}
 
@@ -3802,6 +3802,9 @@ function PanelQRPresence() {
         .footer{width:100%;padding-top:6mm;margin-top:16mm;border-top:0.3mm solid #E1E7EC;display:flex;align-items:center;justify-content:center;gap:3mm;}
         .footer-mark{width:5mm;height:5mm;border-radius:1.2mm;background:linear-gradient(135deg,#0A8F58,#0D9488);display:flex;align-items:center;justify-content:center;color:#fff;font-size:3.2mm;font-weight:900;}
         .footer-txt{font-size:3mm;color:#8BA0B5;font-weight:600;}
+        .footer-banner{background:linear-gradient(90deg,${couleur},${couleur}CC);border-radius:5mm;padding:4mm 10mm;box-shadow:0 2mm 6mm ${couleur}33;display:flex;align-items:center;gap:3mm;}
+        .footer-banner .footer-mark{background:#fff;color:${couleur};}
+        .footer-banner .footer-txt{color:#fff;font-weight:700;}
 
         @media print{ @page { size: A4; margin: 0; } }
       </style></head><body>
@@ -3831,8 +3834,10 @@ function PanelQRPresence() {
         </div>
 
         <div class="footer">
-          <div class="footer-mark">+</div>
-          <div class="footer-txt">Établissement agréé MediConnect Africa</div>
+          <div class="footer-banner">
+            <div class="footer-mark">+</div>
+            <div class="footer-txt">Établissement agréé MediConnect Africa</div>
+          </div>
         </div>
       </div>
       <script>
