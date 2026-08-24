@@ -5157,15 +5157,20 @@ function PanelCompagniesFormules() {
 function PanelGrillesTarifaires() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ assureur_id:"", libelle_acte:"", tarif_convention:"", date_debut_validite:"", date_fin_validite:"" });
+  const [typeCible, setTypeCible] = useState("acte"); // acte | stock
+  const [form, setForm] = useState({ assureur_id:"", acte_id:"", stock_id:"", tarif_convention:"", date_debut_validite:"", date_fin_validite:"" });
   const { data, isLoading } = useQuery({ queryKey:["cl-grilles"], queryFn:()=>cAPI.grillesTarifaires().then(r=>r.data||[]) });
   const { data: assureursData } = useQuery({ queryKey:["cl-assureurs-liste"], queryFn:()=>cAPI.assureursListe().then(r=>r.data||[]) });
-  const addMut = useMutation({ mutationFn:d=>cAPI.addGrilleTarifaire(d), onSuccess:()=>{ toast.success("Grille ajoutée"); qc.invalidateQueries(["cl-grilles"]); setShowAdd(false); setForm({ assureur_id:"", libelle_acte:"", tarif_convention:"", date_debut_validite:"", date_fin_validite:"" }); } });
+  const { data: catalogueData } = useQuery({ queryKey:["cl-actes-catalogue-grilles"], queryFn:()=>cAPI.actesCatalogue().then(r=>r.data||[]) });
+  const { data: stockData } = useQuery({ queryKey:["cl-stock-grilles"], queryFn:()=>cAPI.stock().then(r=>r.data||[]) });
+  const addMut = useMutation({ mutationFn:d=>cAPI.addGrilleTarifaire(d), onSuccess:()=>{ toast.success("Grille ajoutée"); qc.invalidateQueries(["cl-grilles"]); setShowAdd(false); setForm({ assureur_id:"", acte_id:"", stock_id:"", tarif_convention:"", date_debut_validite:"", date_fin_validite:"" }); } });
   const delMut = useMutation({ mutationFn:id=>cAPI.deleteGrilleTarifaire(id), onSuccess:()=>{ toast.success("Supprimée"); qc.invalidateQueries(["cl-grilles"]); } });
 
   const f = k => e => setForm(p=>({...p,[k]:e.target.value}));
   const grilles = data||[];
   const assureurs = assureursData||[];
+  const catalogue = catalogueData||[];
+  const stockListe = stockData||[];
 
   return (
     <div>
@@ -5176,7 +5181,7 @@ function PanelGrillesTarifaires() {
         <Panel>
           <Table emptyMsg="Aucune grille tarifaire — le tarif contractuel restera vide sur les bordereaux tant qu'aucune grille n'est saisie" columns={[
             { key:"assureur_nom", label:"Assureur" },
-            { key:"libelle_acte", label:"Acte", render:v=>v||"—" },
+            { key:"cible", label:"Acte / Produit", render:(_,r)=>r.acte_libelle||r.stock_nom||"—" },
             { key:"tarif_convention", label:"Tarif convenu", render:v=><span style={{fontWeight:700,color:C.green}}>{fmt(v)} F</span> },
             { key:"date_debut_validite", label:"Depuis", render:v=>v?new Date(v).toLocaleDateString("fr-CI"):"—" },
             { key:"date_fin_validite", label:"Jusqu'au", render:v=>v?new Date(v).toLocaleDateString("fr-CI"):"—" },
@@ -5198,9 +5203,29 @@ function PanelGrillesTarifaires() {
             </select>
           </div>
           <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Acte / Libellé (optionnel)</label>
-            <input value={form.libelle_acte} onChange={f("libelle_acte")} placeholder="Ex: Consultation générale"
-              style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit",boxSizing:"border-box"}} />
+            <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>S'applique à *</label>
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              {[["acte","🩺 Un acte medical"],["stock","💊 Un produit de stock"]].map(([k,l])=>(
+                <button key={k} type="button" onClick={()=>{setTypeCible(k); setForm(p=>({...p,acte_id:"",stock_id:""}));}}
+                  style={{flex:1,padding:"8px 4px",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+                    border:`1.5px solid ${typeCible===k?C.green:C.border}`,background:typeCible===k?`${C.green}22`:"transparent",color:typeCible===k?C.green:C.muted}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {typeCible==="acte" ? (
+              <select value={form.acte_id} onChange={f("acte_id")}
+                style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit"}}>
+                <option value="">— Choisir un acte —</option>
+                {catalogue.map(a=>(<option key={a.id} value={a.id}>{a.libelle}</option>))}
+              </select>
+            ) : (
+              <select value={form.stock_id} onChange={f("stock_id")}
+                style={{width:"100%",padding:"10px 12px",background:C.input,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:14,fontFamily:"inherit"}}>
+                <option value="">— Choisir un produit —</option>
+                {stockListe.map(s=>(<option key={s.id} value={s.id}>{s.nom}</option>))}
+              </select>
+            )}
           </div>
           <div style={{marginBottom:14}}>
             <label style={{display:"block",fontSize:13,fontWeight:700,color:C.muted,marginBottom:6}}>Tarif convenu (FCFA) *</label>
@@ -5221,6 +5246,8 @@ function PanelGrillesTarifaires() {
           </div>
           <Btn onClick={()=>{
             if(!form.assureur_id||!form.tarif_convention){ toast.error("Assureur et tarif requis"); return; }
+            if(typeCible==="acte" && !form.acte_id){ toast.error("Choisissez un acte"); return; }
+            if(typeCible==="stock" && !form.stock_id){ toast.error("Choisissez un produit"); return; }
             addMut.mutate(form);
           }} style={{width:"100%"}}>Enregistrer la grille</Btn>
       </Modal>
