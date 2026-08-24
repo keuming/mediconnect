@@ -372,9 +372,13 @@ app.get('/api/grilles-tarifaires', auth, async (req, res) => {
   try {
     const cid = req.query.clinique_id || req.user?.clinique_id;
     const r = await db(
-      `SELECT g.*, a.nom AS assureur_nom
+      `SELECT g.*, a.nom AS assureur_nom,
+              am.libelle AS acte_libelle,
+              s.nom AS stock_nom
          FROM grilles_tarifaires g
          JOIN assureurs a ON a.id = g.assureur_id
+         LEFT JOIN actes_medicaux am ON am.id = g.acte_id
+         LEFT JOIN stock s ON s.id = g.stock_id
         WHERE g.clinique_id = $1
         ORDER BY a.nom, g.date_debut_validite DESC`,
       [cid]
@@ -384,14 +388,15 @@ app.get('/api/grilles-tarifaires', auth, async (req, res) => {
 });
 
 app.post('/api/grilles-tarifaires', auth, async (req, res) => {
-  const { assureur_id, formule_assurance_id, libelle_acte, tarif_convention, date_debut_validite, date_fin_validite } = req.body;
+  const { assureur_id, formule_assurance_id, acte_id, stock_id, libelle_acte, tarif_convention, date_debut_validite, date_fin_validite } = req.body;
   const cid = req.user?.clinique_id;
   if (!assureur_id || !tarif_convention) return res.status(400).json({ success:false, message:'assureur_id et tarif_convention requis' });
+  if (!acte_id && !stock_id) return res.status(400).json({ success:false, message:'Choisissez un acte medical ou un produit de stock' });
   try {
     const r = await db(
-      `INSERT INTO grilles_tarifaires (id,clinique_id,assureur_id,formule_assurance_id,libelle_acte,tarif_convention,date_debut_validite,date_fin_validite)
-       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,COALESCE($6,CURRENT_DATE),$7) RETURNING *`,
-      [cid, assureur_id, formule_assurance_id||null, libelle_acte||null, tarif_convention, date_debut_validite||null, date_fin_validite||null]
+      `INSERT INTO grilles_tarifaires (id,clinique_id,assureur_id,formule_assurance_id,acte_id,stock_id,libelle_acte,tarif_convention,date_debut_validite,date_fin_validite)
+       VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,$7,COALESCE($8,CURRENT_DATE),$9) RETURNING *`,
+      [cid, assureur_id, formule_assurance_id||null, acte_id||null, stock_id||null, libelle_acte||null, tarif_convention, date_debut_validite||null, date_fin_validite||null]
     );
     res.status(201).json({ success:true, data:r.rows[0] });
   } catch(e) { res.status(500).json({ success:false, message:e.message }); }
