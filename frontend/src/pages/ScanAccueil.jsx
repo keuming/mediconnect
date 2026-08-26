@@ -23,18 +23,24 @@ export default function ScanAccueil() {
   const [motif, setMotif] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Recherche par nom pour un patient deja enregistre mais non connecte
-  // sur ce telephone -- evite que le bureau des entrees doive le
-  // ressaisir alors que son dossier existe deja dans MediConnect.
+  // Recherche unifiee (nom, telephone OU code secret) pour un patient
+  // deja enregistre mais non connecte sur ce telephone -- evite que le
+  // bureau des entrees doive le ressaisir alors que son dossier existe
+  // deja dans MediConnect. Si la recherche echoue, patientNom/patientTel
+  // permettent de creer reellement le dossier au lieu de rediriger le
+  // patient hors du parcours (voir bloc JSX plus bas).
   const [termeRecherche, setTermeRecherche] = useState('');
   const [resultatsRecherche, setResultatsRecherche] = useState([]);
   const [patientTrouve, setPatientTrouve] = useState(null);
+  const [patientNom, setPatientNom] = useState('');
+  const [patientTel, setPatientTel] = useState('');
+  const [erreurValidation, setErreurValidation] = useState('');
 
   const rechercherPatient = (valeur) => {
     setTermeRecherche(valeur);
     setPatientTrouve(null);
     if (valeur.trim().length < 2) { setResultatsRecherche([]); return; }
-    fetch(`${BACKEND}/api/public/patients/recherche-nom?q=${encodeURIComponent(valeur.trim())}`)
+    fetch(`${BACKEND}/api/public/patients/recherche?q=${encodeURIComponent(valeur.trim())}`)
       .then(r => r.json())
       .then(d => setResultatsRecherche(d?.data || []))
       .catch(() => setResultatsRecherche([]));
@@ -60,6 +66,11 @@ export default function ScanAccueil() {
   }, [cliniqueId]);
 
   const handleScan = async () => {
+    setErreurValidation('');
+    if (!user && !patientTrouve && (!patientNom.trim() || !patientTel.trim())) {
+      setErreurValidation('Merci de renseigner votre nom et votre téléphone pour rejoindre la file.');
+      return;
+    }
     setLoading(true);
     try {
       const body = {
@@ -71,6 +82,14 @@ export default function ScanAccueil() {
         body.patient_id = user.patient_id || user.id;
       } else if (patientTrouve) {
         body.patient_id = patientTrouve.id;
+      } else if (patientNom.trim() && patientTel.trim()) {
+        // BUG CORRIGE : avant, aucune de ces informations n'etait envoyee
+        // si la recherche echouait -- la file recevait une entree
+        // "Patient anonyme" sans telephone. Desormais le backend
+        // retrouve ou cree reellement la fiche patient a partir de ces
+        // deux champs (voir POST /api/file-attente/scan).
+        body.patient_nom = patientNom.trim();
+        body.patient_telephone = patientTel.trim();
       }
       const r = await fetch(`${BACKEND}/api/file-attente/scan`, {
         method: 'POST',
@@ -175,18 +194,23 @@ export default function ScanAccueil() {
               </div>
             )}
             {termeRecherche.trim().length >= 2 && resultatsRecherche.length === 0 && !patientTrouve && (
-              <div style={{marginTop:10,background:'rgba(245,158,11,.1)',border:'2px solid rgba(245,158,11,.4)',borderRadius:10,padding:'14px'}}>
-                <p style={{fontSize:14,fontWeight:800,color:'#F59E0B',marginBottom:10,lineHeight:1.5}}>
-                  ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT.
+              <div style={{marginTop:10,background:'rgba(10,143,88,.06)',border:'1px solid rgba(10,143,88,.2)',borderRadius:10,padding:'14px'}}>
+                <p style={{fontSize:12,color:C.muted,margin:'0 0 10px',lineHeight:1.6}}>
+                  🆕 Aucun dossier existant trouvé. Renseignez votre nom et votre téléphone pour créer votre dossier et rejoindre la file — pas besoin de repasser par l'accueil.
                 </p>
-                <a href={`https://manager.mediconnect4africa.cloud/register?clinique_id=${cliniqueId}&role=patient&retour_url=${encodeURIComponent(window.location.href)}`}
-                  style={{display:'block',textAlign:'center',padding:'10px',background:C.green,color:'#fff',borderRadius:8,fontSize:13,fontWeight:700,textDecoration:'none',marginBottom:12}}>
-                  Créer mon dossier MediConnect →
-                </a>
-                <p style={{fontSize:11,color:C.dim,lineHeight:1.6}}>
-                  Avec un compte MediConnect, vous et votre famille bénéficiez d'une prise en charge médicale d'urgence gratuite — accident, AVC, infarctus — sans rien avancer, en attendant votre rétablissement.<br/><br/>
-                  Commandez une VigieCard pour vous et pour chaque membre de votre famille. En cas d'urgence, un simple scan du QR code donne accès aux contacts d'urgence de toute la famille — sans déverrouiller aucun téléphone.
-                </p>
+                <input
+                  value={patientNom || termeRecherche}
+                  onChange={e=>setPatientNom(e.target.value)}
+                  placeholder="Nom et prénom"
+                  style={{width:'100%',padding:'9px 12px',marginBottom:8,background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none',boxSizing:'border-box'}}
+                />
+                <input
+                  value={patientTel}
+                  onChange={e=>setPatientTel(e.target.value)}
+                  placeholder="Téléphone (ex: 07 00 00 00 00)"
+                  type="tel"
+                  style={{width:'100%',padding:'9px 12px',background:'rgba(255,255,255,.04)',border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:13,outline:'none',boxSizing:'border-box'}}
+                />
               </div>
             )}
           </div>
@@ -218,6 +242,9 @@ export default function ScanAccueil() {
           </div>
         )}
 
+        {erreurValidation && (
+          <div style={{marginBottom:10,fontSize:12,color:'#F59E0B',textAlign:'center'}}>{erreurValidation}</div>
+        )}
         <button
           onClick={handleScan}
           disabled={loading}

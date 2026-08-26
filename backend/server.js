@@ -2270,8 +2270,9 @@ app.get('/api/public/cliniques/:id/medecins', async (req, res) => {
 // des champs deja renseignes sur sa fiche (horaires_debut, horaires_fin,
 // jours_travail) -- ces informations existent pour la quasi-totalite du
 // reseau, mais n'avaient jamais ete transformees en vraies plages
-// reservables dans "disponibilites". Fenetre de 30 jours, coherente avec
-// celle deja utilisee par la lecture publique.
+// reservables dans "disponibilites". Fenetre de 365 jours (calendrier
+// annuel) -- coherente avec celle desormais utilisee par la lecture
+// publique.
 const JOURS_INDEX = { 'dim':0, 'lun':1, 'mar':2, 'mer':3, 'jeu':4, 'ven':5, 'sam':6 };
 async function genererDisponibilitesMedecin(medecin) {
   if (!medecin.horaires_debut || !medecin.horaires_fin || !medecin.jours_travail) return 0;
@@ -2284,7 +2285,7 @@ async function genererDisponibilitesMedecin(medecin) {
   if (!joursActifs.length) return 0;
 
   let cree = 0;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 365; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     if (!joursActifs.includes(d.getDay())) continue;
@@ -2346,6 +2347,52 @@ app.get('/api/public/patients/recherche-nom', async (req, res) => {
   } catch(e) { res.json({ success: true, data: [] }); }
 });
 
+// ── Recherche patient UNIFIEE -- accepte code secret (MC-XX-0000),
+// telephone OU nom dans un seul champ, et renvoie une liste de
+// candidats (jamais le dossier medical complet). Remplace le besoin
+// de deviner quel format saisir : avant cette route, un patient qui
+// tapait naturellement son nom dans le champ "telephone ou code"
+// n'obtenait jamais de resultat -- non pas a cause d'un bug, mais
+// parce que ce champ n'a jamais accepte les noms. Les routes
+// recherche-telephone et recherche-nom restent actives telles
+// quelles pour ne rien casser ailleurs (mobile, autres ecrans).
+app.get('/api/public/patients/recherche', async (req, res) => {
+  const { q } = req.query;
+  if (!q || !q.trim()) return res.json({ success: true, data: [] });
+  const valeur = q.trim();
+  try {
+    // 1. Code secret exact
+    if (/^MC-/i.test(valeur)) {
+      const r = await db(
+        `SELECT id, prenom, nom, telephone, email, ville FROM patients WHERE UPPER(code_secret)=UPPER($1) LIMIT 1`,
+        [valeur]
+      );
+      return res.json({ success: true, data: r.rows });
+    }
+    // 2. Telephone exact (8 derniers chiffres), si la saisie contient
+    // au moins 8 chiffres
+    const chiffres = valeur.replace(/[^0-9]/g, '');
+    if (chiffres.length >= 8) {
+      const norm = chiffres.slice(-8);
+      const r = await db(
+        `SELECT id, prenom, nom, telephone, email, ville FROM patients
+          WHERE RIGHT(REGEXP_REPLACE(telephone, '[^0-9]', '', 'g'), 8) = $1 LIMIT 1`,
+        [norm]
+      );
+      if (r.rows.length) return res.json({ success: true, data: r.rows });
+    }
+    // 3. Nom (prenom, nom, ou "prenom nom"), jusqu'a 8 resultats
+    const terme = `%${valeur}%`;
+    const r = await db(
+      `SELECT id, prenom, nom, telephone, email, ville FROM patients
+        WHERE prenom ILIKE $1 OR nom ILIKE $1 OR (prenom || ' ' || nom) ILIKE $1
+        ORDER BY nom, prenom LIMIT 8`,
+      [terme]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch(e) { res.json({ success: true, data: [] }); }
+});
+
 app.get('/api/public/patients/recherche-telephone', async (req, res) => {
   const { telephone, code_secret } = req.query;
   try {
@@ -2374,17 +2421,19 @@ app.get('/api/public/patients/recherche-telephone', async (req, res) => {
 });
 
 // ── Creneaux disponibles d'un medecin (pour le flux public de RDV) ──
-// Genere des creneaux de 30 min a partir de la table disponibilites
-// (creee de longue date mais jamais exploitee par aucune route), en
+// Genere des creneaux de 30 min a partir de la table disponibilites, en
 // excluant ceux deja pris dans rendez_vous. Fenetre : aujourd'hui a
-// J+30, pour rester utile sans devenir une liste infinie.
+// J+365 (calendrier annuel). Reponse regroupee par date
+// { "2026-08-27": ["08:00","08:30",...], ... } plutot qu'une liste
+// plate, pour permettre au frontend d'afficher un vrai calendrier
+// mois/jour au lieu d'une liste de boutons chronologiques.
 app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
   try {
     const medecinId = req.params.id;
     const dispos = await db(
       `SELECT date, heure_debut, heure_fin FROM disponibilites
         WHERE medecin_id=$1 AND statut='disponible'
-          AND date >= CURRENT_DATE AND date <= CURRENT_DATE + INTERVAL '30 days'
+          AND date >= CURRENT_DATE AND date <= CURRENT_DATE + INTERVAL '365 days'
         ORDER BY date, heure_debut`,
       [medecinId]
     );
@@ -2399,7 +2448,7 @@ app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
       return `${d} ${String(p.heure_rdv).slice(0,5)}`;
     }));
 
-    const creneaux = [];
+    const parDate = {};
     for (const d of dispos.rows) {
       const jour = new Date(d.date).toISOString().split('T')[0];
       let [h, m] = d.heure_debut.split(':').map(Number);
@@ -2407,13 +2456,16 @@ app.get('/api/public/medecins/:id/disponibilites', async (req, res) => {
       while (h < hFin || (h === hFin && m < mFin)) {
         const heureStr = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
         const cle = `${jour} ${heureStr}`;
-        if (!occupes.has(cle)) creneaux.push(cle);
+        if (!occupes.has(cle)) {
+          if (!parDate[jour]) parDate[jour] = [];
+          parDate[jour].push(heureStr);
+        }
         m += 30;
         if (m >= 60) { m -= 60; h += 1; }
       }
     }
-    res.json({ success: true, data: creneaux.slice(0, 60) });
-  } catch(e) { res.json({ success: true, data: [] }); }
+    res.json({ success: true, data: parDate });
+  } catch(e) { res.json({ success: true, data: {} }); }
 });
 
 // ── Creneaux disponibles pour laboratoire/imagerie (pas de "medecin"
@@ -3001,7 +3053,7 @@ app.get('/api/file-attente/qr/:clinique_id', async (req, res) => {
 
 // ── Scanner le QR — patient rejoint la file ───────────────────────
 app.post('/api/file-attente/scan', async (req, res) => {
-  const { clinique_id, patient_id, medecin_id, motif } = req.body;
+  const { clinique_id, patient_id, medecin_id, motif, patient_nom: nomSaisi, patient_telephone: telSaisi } = req.body;
   if (!clinique_id) return res.status(400).json({ success: false, message: 'clinique_id requis' });
   try {
     // Vérifier que la clinique existe
@@ -3016,16 +3068,48 @@ app.post('/api/file-attente/scan', async (req, res) => {
     );
     const rang = (last.rows[0].max_rang || 0) + 1;
 
-    // Récupérer les infos patient si connecté
+    // Récupérer les infos patient si connecté / déjà identifié par la recherche
+    let finalPatientId = patient_id || null;
     let patient_nom = 'Patient anonyme', patient_telephone = null, medecin_nom = null;
-    if (patient_id) {
+    if (finalPatientId) {
       const pat = await db(
         'SELECT prenom, nom, telephone FROM patients WHERE id=$1 OR user_id=$1 LIMIT 1',
-        [patient_id]
+        [finalPatientId]
       );
       if (pat.rows[0]) {
         patient_nom = `${pat.rows[0].prenom} ${pat.rows[0].nom}`;
         patient_telephone = pat.rows[0].telephone;
+      }
+    } else if (nomSaisi && telSaisi) {
+      // BUG CORRIGE : quand la recherche (par nom/telephone/code) ne
+      // trouve personne, on ne se contente plus de creer une entree
+      // "Patient anonyme" sans telephone -- on cree (ou retrouve, au
+      // cas ou la recherche cote frontend ait rate un match) une vraie
+      // fiche patient, meme logique find-or-create que POST /api/public/rdv.
+      const normTel = String(telSaisi).replace(/[^0-9]/g, '').slice(-8);
+      if (normTel.length >= 8) {
+        const existant = await db(
+          `SELECT id, prenom, nom, telephone FROM patients WHERE RIGHT(REGEXP_REPLACE(telephone, '[^0-9]', '', 'g'), 8) = $1 LIMIT 1`,
+          [normTel]
+        );
+        if (existant.rows.length) {
+          finalPatientId = existant.rows[0].id;
+          patient_nom = `${existant.rows[0].prenom} ${existant.rows[0].nom}`;
+          patient_telephone = existant.rows[0].telephone;
+        }
+      }
+      if (!finalPatientId) {
+        const noms = String(nomSaisi).trim().split(/\s+/);
+        const prenom = noms[0] || nomSaisi;
+        const nom = noms.slice(1).join(' ') || nomSaisi;
+        const code = 'MC-'+(prenom[0]+nom[0]).toUpperCase()+'-'+Math.floor(1000+Math.random()*9000);
+        finalPatientId = uuid();
+        await db(
+          'INSERT INTO patients (id,code_secret,prenom,nom,telephone,clinique_id) VALUES ($1,$2,$3,$4,$5,$6)',
+          [finalPatientId, code, prenom, nom, telSaisi, clinique_id]
+        );
+        patient_nom = `${prenom} ${nom}`;
+        patient_telephone = telSaisi;
       }
     }
 
@@ -3047,7 +3131,7 @@ app.post('/api/file-attente/scan', async (req, res) => {
       `INSERT INTO file_attente
        (clinique_id, patient_id, patient_nom, patient_telephone, medecin_id, medecin_nom, rang, motif)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [clinique_id, patient_id||null, patient_nom, patient_telephone,
+      [clinique_id, finalPatientId, patient_nom, patient_telephone,
        medecin_id||null, medecin_nom, rang, motif||null]
     );
 

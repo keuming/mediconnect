@@ -31,15 +31,45 @@ const DEMO_MEDECINS = {
   'Neurologie': [{ id: 'md-5', prenom: 'Koffi', nom: "N\'Guessan", specialite: 'Neurologie', tarif: 35000, experience_ans: 18, statut: 'Disponible' }],
 };
 
+// Renvoie un objet groupe par date { "2026-08-27": ["08:00",...], ... },
+// meme forme que la reponse reelle de GET /api/public/medecins/:id/disponibilites
+// -- utilise par le mode demo (medecins "md-*" sans backend reel) et
+// consomme par le calendrier ci-dessous.
 const genDispo = () => {
-  const slots = [];
-  for (let d = 1; d <= 14; d++) {
+  const parDate = {};
+  for (let d = 1; d <= 60; d++) {
     const date = new Date(); date.setDate(date.getDate() + d);
     if ([0,6].includes(date.getDay())) continue;
     const ds = date.toISOString().split('T')[0];
-    ['08:00','08:30','09:00','09:30','10:00','10:30','14:00','14:30','15:00','15:30'].forEach(h => slots.push(`${ds} ${h}`));
+    parDate[ds] = ['08:00','08:30','09:00','09:30','10:00','10:30','14:00','14:30','15:00','15:30'];
   }
-  return slots.slice(0, 40);
+  return parDate;
+};
+
+// ── Calendrier mois/jour ─────────────────────────────────────────
+// Petites fonctions pures, sans etat, pour construire la grille d'un
+// mois donne et formater ses libelles -- utilisees par l'etape 2
+// (choix du creneau) pour remplacer l'ancienne liste plate de boutons
+// par un vrai calendrier annuel navigable.
+const nomMois = (date) => date.toLocaleDateString('fr-CI', { month: 'long', year: 'numeric' });
+
+const joursGrille = (moisDate) => {
+  const annee = moisDate.getFullYear(), mois = moisDate.getMonth();
+  const premierJour = new Date(annee, mois, 1);
+  const nbJours = new Date(annee, mois + 1, 0).getDate();
+  const decalage = (premierJour.getDay() + 6) % 7; // lundi=0 ... dimanche=6
+  const cellules = [];
+  for (let i = 0; i < decalage; i++) cellules.push(null);
+  for (let j = 1; j <= nbJours; j++) {
+    const iso = `${annee}-${String(mois + 1).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
+    cellules.push({ jour: j, iso });
+  }
+  return cellules;
+};
+
+const fmtJourLong = (iso) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('fr-CI', { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
 const fmt = (n) => Number(n||0).toLocaleString('fr-CI');
@@ -228,7 +258,7 @@ export default function RDV() {
   // Données API
   const [cliniques, setCliniques] = useState([]);
   const [medecins, setMedecins] = useState([]);
-  const [dispos, setDispos] = useState([]);
+  const [dispos, setDispos] = useState({});
 
   // Sélections
   const [ville, setVille] = useState('Abidjan');
@@ -287,22 +317,39 @@ export default function RDV() {
       .catch(() => setMedecins(DEMO_MEDECINS[specialite] || []));
   }, [clinique, specialite]);
 
-  // Charger disponibilités quand médecin sélectionné
+  // Charger disponibilités quand médecin sélectionné -- dispos est
+  // maintenant un objet groupé par date { "2026-08-27": ["08:00",...] },
+  // consommé par le calendrier mois/jour ci-dessous (voir step 2 JSX).
   const [chargementDispos, setChargementDispos] = useState(false);
+  const [moisAffiche, setMoisAffiche] = useState(new Date());
+  const [jourSelectionne, setJourSelectionne] = useState(null);
+  const changerMois = (delta) => setMoisAffiche(m => new Date(m.getFullYear(), m.getMonth() + delta, 1));
   const [rechercheValeur, setRechercheValeur] = useState('');
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
   const [rechercheInfructueuse, setRechercheInfructueuse] = useState(false);
+  const [resultatsRechercheRDV, setResultatsRechercheRDV] = useState([]);
   useEffect(() => {
     if (!medecin) return;
+    setJourSelectionne(null);
+    const positionner = (parDate) => {
+      const premiereDate = Object.keys(parDate).sort()[0];
+      if (premiereDate) { setMoisAffiche(new Date(premiereDate)); setJourSelectionne(premiereDate); }
+    };
     if (medecin.id.startsWith('md-')) {
-      setDispos(genDispo());
+      const d = genDispo();
+      setDispos(d);
+      positionner(d);
       return;
     }
     setChargementDispos(true);
     fetch(`${API}/public/medecins/${medecin.id}/disponibilites`)
       .then(r => r.json())
-      .then(d => setDispos((d.data && d.data.length) ? d.data : []))
-      .catch(() => setDispos([]))
+      .then(d => {
+        const parDate = (d.data && typeof d.data === 'object') ? d.data : {};
+        setDispos(parDate);
+        positionner(parDate);
+      })
+      .catch(() => setDispos({}))
       .finally(() => setChargementDispos(false));
   }, [medecin]);
 
@@ -486,21 +533,70 @@ export default function RDV() {
                 </div>
 
                 {medecin?.id === m.id && (
-                  <div style={{ background: hexToRgba(V.green, .06), borderRadius: 10, padding: 14, marginTop: 4 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: V.green, marginBottom: 10 }}>📅 Créneaux disponibles</div>
-                    {chargementDispos
-                      ? <div style={{ color: V.dim, fontSize: 12 }}>⏳ Chargement des disponibilités…</div>
-                      : dispos.length === 0
-                      ? <div style={{ color: V.dim, fontSize: 12 }}>Aucun créneau disponible actuellement pour ce médecin — contactez directement la clinique.</div>
-                      : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                          {dispos.slice(0, 16).map(d => (
-                            <button key={d} onClick={e => { e.stopPropagation(); setCreneau(d); }}
-                              style={{ background: creneau === d ? V.green : hexToRgba(V.text, .06), color: creneau === d ? '#fff' : V.text, border: `1px solid ${creneau === d ? V.green : hexToRgba(V.text, .1)}`, borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}>
-                              {fmtDate(d)}
-                            </button>
-                          ))}
+                  <div onClick={e => e.stopPropagation()} style={{ background: hexToRgba(V.green, .06), borderRadius: 10, padding: 14, marginTop: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: V.green, marginBottom: 10 }}>📅 Choisissez une date</div>
+                    {chargementDispos ? (
+                      <div style={{ color: V.dim, fontSize: 12 }}>⏳ Chargement des disponibilités…</div>
+                    ) : Object.keys(dispos).length === 0 ? (
+                      <div style={{ color: V.dim, fontSize: 12 }}>Aucun créneau disponible actuellement pour ce médecin — contactez directement la clinique.</div>
+                    ) : (
+                      <div>
+                        {/* Navigateur de mois -- calendrier annuel : le patient peut
+                            avancer/reculer librement, aucune limite a un seul mois. */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <button onClick={() => changerMois(-1)}
+                            style={{ background: hexToRgba(V.text, .06), border: `1px solid ${V.border}`, borderRadius: 8, width: 28, height: 28, color: V.text, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>‹</button>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: V.text, textTransform: 'capitalize' }}>{nomMois(moisAffiche)}</div>
+                          <button onClick={() => changerMois(1)}
+                            style={{ background: hexToRgba(V.text, .06), border: `1px solid ${V.border}`, borderRadius: 8, width: 28, height: 28, color: V.text, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>›</button>
                         </div>
-                    }
+
+                        {/* Grille des jours du mois affiché */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 14 }}>
+                          {['L','M','M','J','V','S','D'].map((j, i) => (
+                            <div key={i} style={{ textAlign: 'center', fontSize: 10, color: V.dim, fontWeight: 700 }}>{j}</div>
+                          ))}
+                          {joursGrille(moisAffiche).map((c, i) => {
+                            if (!c) return <div key={i} />;
+                            const disponible = !!dispos[c.iso];
+                            const selectionne = jourSelectionne === c.iso;
+                            return (
+                              <button key={i} disabled={!disponible} onClick={() => setJourSelectionne(c.iso)}
+                                style={{
+                                  aspectRatio: '1', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                                  cursor: disponible ? 'pointer' : 'not-allowed',
+                                  background: selectionne ? V.green : disponible ? hexToRgba(V.green, .12) : 'transparent',
+                                  color: selectionne ? '#fff' : disponible ? V.text : V.dim,
+                                  border: `1px solid ${selectionne ? V.green : disponible ? hexToRgba(V.green, .3) : V.border}`,
+                                  transition: 'all .15s',
+                                }}>
+                                {c.jour}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Créneaux du jour sélectionné */}
+                        {jourSelectionne && (
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: V.muted, marginBottom: 8, textTransform: 'capitalize' }}>
+                              Créneaux du {fmtJourLong(jourSelectionne)}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {(dispos[jourSelectionne] || []).map(h => {
+                                const d = `${jourSelectionne} ${h}`;
+                                return (
+                                  <button key={h} onClick={() => setCreneau(d)}
+                                    style={{ background: creneau === d ? V.green : hexToRgba(V.text, .06), color: creneau === d ? '#fff' : V.text, border: `1px solid ${creneau === d ? V.green : hexToRgba(V.text, .1)}`, borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s' }}>
+                                    {h}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -584,22 +680,30 @@ export default function RDV() {
                 <div style={{ fontSize: 12, fontWeight: 700, color: V.text, marginBottom: 8 }}>Déjà patient MediConnect ?</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <input value={rechercheValeur} onChange={e => setRechercheValeur(e.target.value)}
-                    placeholder="Téléphone ou code secret (ex: MC-KT-5069)"
+                    placeholder="Nom, téléphone ou code secret (ex: MC-KT-5069)"
                     style={{ flex: 1, minWidth: 200, padding: '9px 12px', background: V.input, border: `1px solid ${V.border}`, borderRadius: 8, color: V.text, fontSize: 13, outline: 'none' }} />
                   <button onClick={async () => {
                       if (!rechercheValeur.trim()) return;
                       setRechercheEnCours(true);
+                      setResultatsRechercheRDV([]);
                       try {
-                        const estCode = /^MC-/i.test(rechercheValeur.trim());
-                        const param = estCode ? `code_secret=${encodeURIComponent(rechercheValeur.trim())}` : `telephone=${encodeURIComponent(rechercheValeur.trim())}`;
-                        const r = await fetch(`${API}/public/patients/recherche-telephone?${param}`);
+                        // Recherche UNIFIEE : accepte desormais indifferemment un
+                        // nom, un telephone ou un code secret dans le meme champ
+                        // (avant : telephone/code uniquement, un nom tape ici ne
+                        // trouvait jamais rien, meme si le patient existait bel
+                        // et bien dans la base).
+                        const r = await fetch(`${API}/public/patients/recherche?q=${encodeURIComponent(rechercheValeur.trim())}`);
                         const d = await r.json();
-                        if (d.data) {
-                          setPatient(p => ({ ...p, prenom: d.data.prenom || '', nom: d.data.nom || '', telephone: d.data.telephone || '', email: d.data.email || '', ville_residence: d.data.ville || p.ville_residence }));
+                        const resultats = d.data || [];
+                        if (resultats.length === 1) {
+                          const p = resultats[0];
+                          setPatient(pr => ({ ...pr, prenom: p.prenom || '', nom: p.nom || '', telephone: p.telephone || '', email: p.email || '', ville_residence: p.ville || pr.ville_residence }));
                           toast.success('Vos informations ont été retrouvées !');
                           setRechercheInfructueuse(false);
+                        } else if (resultats.length > 1) {
+                          setResultatsRechercheRDV(resultats);
+                          setRechercheInfructueuse(false);
                         } else {
-                          toast.error('Aucun patient trouvé — remplissez le formulaire manuellement');
                           setRechercheInfructueuse(true);
                         }
                       } catch (e) { toast.error('Erreur de recherche'); }
@@ -610,17 +714,32 @@ export default function RDV() {
                     {rechercheEnCours ? 'Recherche…' : '🔎 Me retrouver'}
                   </button>
                 </div>
+
+                {/* Plusieurs dossiers correspondent (recherche par nom) --
+                    le patient choisit le sien dans la liste. */}
+                {resultatsRechercheRDV.length > 0 && (
+                  <div style={{ background: V.input, border: `1px solid ${V.border}`, borderRadius: 8, marginTop: 8, overflow: 'hidden' }}>
+                    {resultatsRechercheRDV.map(p => (
+                      <div key={p.id} onClick={() => {
+                          setPatient(pr => ({ ...pr, prenom: p.prenom || '', nom: p.nom || '', telephone: p.telephone || '', email: p.email || '', ville_residence: p.ville || pr.ville_residence }));
+                          setRechercheValeur(`${p.prenom} ${p.nom}`);
+                          setResultatsRechercheRDV([]);
+                          toast.success('Informations retrouvées !');
+                        }}
+                        style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: `1px solid ${V.border}`, fontSize: 13 }}>
+                        <div style={{ color: V.text, fontWeight: 700 }}>{p.prenom} {p.nom}</div>
+                        {p.telephone && <div style={{ color: V.dim, fontSize: 11 }}>{p.telephone}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {rechercheInfructueuse && (
-                <div style={{ marginBottom: 16, background: 'rgba(245,158,11,.1)', border: '2px solid rgba(245,158,11,.4)', borderRadius: 10, padding: 14 }}>
-                  <p style={{ fontSize: 14, fontWeight: 800, color: '#F59E0B', margin: '0 0 12px', lineHeight: 1.5 }}>
-                    ⚠️ VOUS N'ÊTES PAS ENCORE DANS LA BASE DE DONNÉES DE LA CLINIQUE.<br/>VEUILLEZ CRÉER VOTRE DOSSIER MEDICONNECT.
+                <div style={{ marginBottom: 16, background: hexToRgba(V.green, .06), border: `1px solid ${hexToRgba(V.green, .2)}`, borderRadius: 10, padding: 14 }}>
+                  <p style={{ fontSize: 13, color: V.muted, margin: 0, lineHeight: 1.6 }}>
+                    🆕 Aucun dossier existant trouvé. Pas de souci — remplissez simplement vos informations ci-dessous : votre dossier MediConnect sera créé automatiquement à la confirmation de votre rendez-vous.
                   </p>
-                  <a href={`https://manager.mediconnect4africa.cloud/register${clinique?.id ? `?clinique_id=${clinique.id}&role=patient` : '?role=patient'}&retour_url=${encodeURIComponent(window.location.href)}`}
-                    style={{ display: 'block', textAlign: 'center', padding: '10px', background: V.green, color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
-                    Créer mon dossier MediConnect →
-                  </a>
                 </div>
               )}
 
