@@ -7,10 +7,10 @@ const API = (process.env.REACT_APP_API_URL || 'https://mediconnect-backend-v2.ve
 
 const VILLES = ['Abidjan','Dakar','Ouagadougou','Accra','Bamako','Lomé','Cotonou','Conakry'];
 const PAYS = [
-  { code:'CI', label:"🇨🇮 Côte d'Ivoire", ville:'Abidjan' }, { code:'SN', label:'🇸🇳 Sénégal', ville:'Dakar' },
-  { code:'BF', label:'🇧🇫 Burkina Faso', ville:'Ouagadougou' }, { code:'GH', label:'🇬🇭 Ghana', ville:'Accra' },
-  { code:'ML', label:'🇲🇱 Mali', ville:'Bamako' }, { code:'TG', label:'🇹🇬 Togo', ville:'Lomé' },
-  { code:'BJ', label:'🇧🇯 Bénin', ville:'Cotonou' }, { code:'GN', label:'🇬🇳 Guinée', ville:'Conakry' },
+  { code:'CI', label:"🇨🇮 Côte d'Ivoire", nom:"Côte d'Ivoire", ville:'Abidjan' }, { code:'SN', label:'🇸🇳 Sénégal', nom:'Sénégal', ville:'Dakar' },
+  { code:'BF', label:'🇧🇫 Burkina Faso', nom:'Burkina Faso', ville:'Ouagadougou' }, { code:'GH', label:'🇬🇭 Ghana', nom:'Ghana', ville:'Accra' },
+  { code:'ML', label:'🇲🇱 Mali', nom:'Mali', ville:'Bamako' }, { code:'TG', label:'🇹🇬 Togo', nom:'Togo', ville:'Lomé' },
+  { code:'BJ', label:'🇧🇯 Bénin', nom:'Bénin', ville:'Cotonou' }, { code:'GN', label:'🇬🇳 Guinée', nom:'Guinée', ville:'Conakry' },
 ];
 const SPECIALITES = ['Cardiologie','Pédiatrie','Gynécologie','Dermatologie','Neurologie','Médecine générale','Ophtalmologie','ORL','Orthopédie','Psychiatrie','Radiologie','Chirurgie'];
 const ASSURANCES = ['Aucune','NSIA Assurances','Allianz CI','AXA CI','CNAM (CMU)','SANLAM','Saham Assurances','Atlantique Assurances'];
@@ -476,7 +476,7 @@ export default function RDV() {
             <p style={{ color: V.muted, marginBottom: 24, fontSize: 13 }}>Filtrez par ville et spécialité</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, background: V.input, border: `1px solid ${V.border}`, borderRadius: 12, padding: 18, marginBottom: 20 }}>
               {sel('Pays', pays, code => { setPays(code); const p = PAYS.find(x=>x.code===code); if (p) setVille(p.ville); }, PAYS.map(p=>p.code))}
-              {sel('Ville', ville, setVille, VILLES)}
+              {sel('Ville', ville, setVille, (() => { const vp = villesDuPays(PAYS.find(p=>p.code===pays)?.nom); return vp.length ? vp : VILLES; })())}
               {sel('Spécialité', specialite, setSpecialite, [{ v: '', l: 'Toutes les spécialités' }, ...SPECIALITES.map(s => ({ v: s, l: s }))])}
             </div>
             {loading && <div style={{ textAlign: 'center', padding: 32, color: V.dim }}>⏳ Chargement des établissements…</div>}
