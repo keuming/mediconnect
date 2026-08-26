@@ -4633,6 +4633,105 @@ function PageFacturation() {
     valide_compagnie: [["paye", "Marquer payé"]],
   };
 
+  // ===== Facture par assurance (recap agrege par type de service) =====
+  // Distincte du bordereau : celui-ci liste chaque beneficiaire ligne
+  // par ligne (nom, police, taux), la facture est un recapitulatif
+  // agrege par type de service -- les deux s'impriment ensemble en
+  // fin de mois pour chaque assurance.
+  const [factureAssCompagnieId, setFactureAssCompagnieId] = useState("");
+  const [factureAssDebut, setFactureAssDebut] = useState("");
+  const [factureAssFin, setFactureAssFin] = useState("");
+  const [factureAssData, setFactureAssData] = useState(null);
+  const [loadingFactureAss, setLoadingFactureAss] = useState(false);
+
+  const { data: compagniesFactureAss = [] } = useQuery({
+    queryKey: ["cl-compagnies-facture-ass"],
+    queryFn: async () => (await api.get("/compagnies-assurance")).data || [],
+  });
+
+  const genererFactureAssurance = async () => {
+    if (!factureAssCompagnieId || !factureAssDebut || !factureAssFin) {
+      toast.error("Choisissez la compagnie et la période");
+      return;
+    }
+    setLoadingFactureAss(true);
+    try {
+      const r = await api.get("/facture-assurance", {
+        params: { compagnie_id: factureAssCompagnieId, periode_debut: factureAssDebut, periode_fin: factureAssFin },
+      });
+      setFactureAssData(r.data);
+    } catch (e) {
+      toast.error(e?.response?.data?.message || "Erreur lors de la génération");
+      setFactureAssData(null);
+    } finally {
+      setLoadingFactureAss(false);
+    }
+  };
+
+  // Impression de la facture par assurance -- meme patron que
+  // imprimerBordereau (en-tete clinique recupere avant remplissage de
+  // la fenetre). Document distinct du bordereau : recap agrege par
+  // type de service, pas le detail ligne par ligne patient/police/taux.
+  const imprimerFactureAssurance = async () => {
+    if (!factureAssData) return;
+    const win = window.open('', '_blank');
+    win.document.write('<p style="font-family:Arial,sans-serif;padding:30px;">Chargement…</p>');
+    let cl = null;
+    try { const rp = await api.get('/clinique/profil'); cl = rp.data || null; } catch (e) { /* impression sans en-tete si echec */ }
+
+    const couleur = cl?.couleur_primaire || "#0A8F58";
+    const d = factureAssData;
+    const lignesHtml = (d.lignes||[]).map(l => `
+      <tr>
+        <td>${l.type_service||'—'}</td>
+        <td style="text-align:center;">${l.nb_beneficiaires}</td>
+        <td style="text-align:right;">${fmt(l.montant_total)} F</td>
+        <td style="text-align:right;">${fmt(l.part_patient)} F</td>
+        <td style="text-align:right;">${fmt(l.part_assurance)} F</td>
+      </tr>`).join('');
+
+    win.document.open();
+    win.document.write(`
+      <html><head><title>Facture assurance — ${d.assureur?.nom||''}</title>
+      <style>
+        body{font-family:Arial,sans-serif;padding:30px;color:#1a2e25;max-width:760px;margin:0 auto;}
+        h2{color:${couleur};font-size:16px;margin:0 0 16px;text-align:center;text-transform:uppercase;letter-spacing:1px;}
+        .champ{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:14px;}
+        .label{color:#8BA0B5;}
+        .valeur{font-weight:700;}
+        table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
+        th{text-align:left;color:#8BA0B5;font-size:11px;text-transform:uppercase;padding-bottom:6px;border-bottom:2px solid #1a2e25;}
+        td{padding:8px 4px;border-bottom:1px solid #e5e7eb;}
+        .totaux{margin-top:16px;}
+        .totaux .champ{font-size:15px;}
+        .total{font-size:20px;color:${couleur};font-weight:900;text-align:right;margin-top:10px;}
+        @media print{button{display:none;}}
+      </style></head><body>
+      <div class="header" style="display:flex;align-items:center;gap:14px;border-bottom:2px solid ${couleur};padding-bottom:12px;margin-bottom:18px;">
+        ${cl?.logo?`<img src="${cl.logo}" style="height:58px;object-fit:contain;"/>`:''}
+        <div>
+          <div style="font-size:16px;font-weight:700;color:${couleur};">${cl?.nom||'MediConnect Africa'}</div>
+          <div style="font-size:11px;color:#5A7A94;">${cl?.adresse_complete||cl?.adresse||''} ${cl?.ville?'· '+cl.ville:''}</div>
+        </div>
+      </div>
+      <h2>Facture — récapitulatif par type de service</h2>
+      <div class="champ"><span class="label">Compagnie</span><span class="valeur">${d.assureur?.nom||'—'}</span></div>
+      <div class="champ"><span class="label">Période</span><span class="valeur">${fmtDate(d.periode_debut)} → ${fmtDate(d.periode_fin)}</span></div>
+      <div class="champ"><span class="label">Bénéficiaires distincts</span><span class="valeur">${d.totaux?.nb_beneficiaires||0}</span></div>
+      <table>
+        <thead><tr><th>Type de service</th><th style="text-align:center;">Bénéficiaires</th><th style="text-align:right;">Montant</th><th style="text-align:right;">Part patient</th><th style="text-align:right;">Part assurance</th></tr></thead>
+        <tbody>${lignesHtml || '<tr><td colspan="5" style="text-align:center;padding:16px;color:#8BA0B5;">Aucune donnée sur cette période</td></tr>'}</tbody>
+      </table>
+      <div class="totaux">
+        <div class="champ"><span class="label">Part patient totale</span><span class="valeur">${fmt(d.totaux?.part_patient)} F</span></div>
+        <div class="champ"><span class="label">Part assurance totale</span><span class="valeur">${fmt(d.totaux?.part_assurance)} F</span></div>
+      </div>
+      <div class="total">Total : ${fmt(d.totaux?.montant_total)} F</div>
+      <script>window.onload=()=>window.print();<\/script>
+      </body></html>`);
+    win.document.close();
+  };
+
   const FINANCE_TABS = [
     { key:"tableau-bord", label:"Tableau de bord" },
     { key:"factures", label:"Factures" },
@@ -4640,6 +4739,7 @@ function PageFacturation() {
     { key:"budget", label:"Budget" },
     { key:"assurances", label:"Remboursements" },
     { key:"bordereaux", label:"Bordereaux" },
+    { key:"facture-assurance", label:"Facture assurance" },
     { key:"rapports", label:"Rapports" },
   ];
 
@@ -4850,6 +4950,52 @@ function PageFacturation() {
               onClose={()=>setShowCreationBordereau(false)}
               onCreated={()=>{ setShowCreationBordereau(false); qc.invalidateQueries(["cl-bordereaux"]); }}
             />
+          )}
+        </>
+      )}
+
+      {tab==="facture-assurance" && (
+        <>
+          <Panel title="Générer une facture par assurance">
+            <p style={{color:C.muted,fontSize:13,marginBottom:14}}>
+              Récapitulatif agrégé par type de service (bénéficiaires, montant, part patient, part assurance) sur la période choisie — à imprimer en complément du bordereau détaillé de chaque assurance.
+            </p>
+            <Grid cols={3} gap={12} style={{marginBottom:14}}>
+              <select value={factureAssCompagnieId} onChange={e=>setFactureAssCompagnieId(e.target.value)}
+                style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontFamily:"inherit" }}>
+                <option value="">— Compagnie d'assurance —</option>
+                {compagniesFactureAss.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+              </select>
+              <input type="date" value={factureAssDebut} onChange={e=>setFactureAssDebut(e.target.value)}
+                style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontFamily:"inherit" }} />
+              <input type="date" value={factureAssFin} onChange={e=>setFactureAssFin(e.target.value)}
+                style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 12px", color:C.text, fontFamily:"inherit" }} />
+            </Grid>
+            <Btn onClick={genererFactureAssurance}>{loadingFactureAss ? "Génération…" : "Générer"}</Btn>
+          </Panel>
+
+          {factureAssData && (
+            <Panel title={`Facture — ${factureAssData.assureur?.nom||''} · ${fmtDate(factureAssData.periode_debut)} → ${fmtDate(factureAssData.periode_fin)}`} style={{marginTop:16}}>
+              <Grid cols={4} gap={12} style={{ marginBottom:16 }}>
+                <Card label="Bénéficiaires" value={factureAssData.totaux?.nb_beneficiaires||0} icon="👥" color={C.blue} />
+                <Card label="Montant total" value={`${fmt(factureAssData.totaux?.montant_total)} F`} icon="💰" color={C.green} />
+                <Card label="Part patient" value={`${fmt(factureAssData.totaux?.part_patient)} F`} icon="🧍" color={C.amber} />
+                <Card label="Part assurance" value={`${fmt(factureAssData.totaux?.part_assurance)} F`} icon="🛡️" color={C.teal} />
+              </Grid>
+
+              {(factureAssData.lignes||[]).length>0
+                ? <Table columns={[
+                    { key:"type_service", label:"Type de service" },
+                    { key:"nb_beneficiaires", label:"Bénéficiaires" },
+                    { key:"montant_total", label:"Montant", render:v=><span style={{fontWeight:800,color:C.green}}>{fmt(v)} F</span> },
+                    { key:"part_patient", label:"Part patient", render:v=>`${fmt(v)} F` },
+                    { key:"part_assurance", label:"Part assurance", render:v=>`${fmt(v)} F` },
+                  ]} rows={factureAssData.lignes} />
+                : <Empty icon="📄" title="Aucune donnée" subtitle="Aucun acte facturé pour cette compagnie sur la période choisie" />
+              }
+
+              <Btn variant="outline" style={{marginTop:14}} onClick={imprimerFactureAssurance}>🖨️ Imprimer</Btn>
+            </Panel>
           )}
         </>
       )}

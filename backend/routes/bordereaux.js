@@ -417,5 +417,78 @@ module.exports = function bordereauxRoutes(pool, auth) {
     }
   });
 
+
+  // ── GET /api/facture-assurance ─────────────────────────────────
+  // Recapitulatif AGREGE par type de service pour une compagnie et
+  // une periode -- document distinct du bordereau (qui liste chaque
+  // beneficiaire ligne par ligne). Imprime en complement du bordereau
+  // detaille de chaque assurance en fin de mois.
+  router.get('/facture-assurance', auth, async (req, res) => {
+    try {
+      const cliniqueId = req.user?.clinique_id;
+      const { compagnie_id, periode_debut, periode_fin } = req.query;
+      if (!compagnie_id || !periode_debut || !periode_fin) {
+        return res.status(400).json({ success: false, message: 'compagnie_id, periode_debut, periode_fin requis' });
+      }
+
+      const assureurRes = await pool.query('SELECT id, nom FROM assureurs WHERE id=$1', [compagnie_id]);
+      if (!assureurRes.rows.length) {
+        return res.status(404).json({ success: false, message: 'Compagnie introuvable' });
+      }
+
+      const lignesRes = await pool.query(
+        `SELECT
+           COALESCE(am.categorie, CASE WHEN pca.code_acte='MED' THEN 'Médicaments' ELSE pca.libelle_acte END) AS type_service,
+           COUNT(DISTINCT pca.patient_id)::int AS nb_beneficiaires,
+           COUNT(*)::int AS nb_actes,
+           COALESCE(SUM(pca.quantite * pca.prix_unitaire),0) AS montant_total,
+           COALESCE(SUM(pca.part_patient),0) AS part_patient,
+           COALESCE(SUM(pca.part_assurance),0) AS part_assurance
+         FROM prise_en_charge_actes pca
+         JOIN patients p ON p.id = pca.patient_id
+         LEFT JOIN actes_medicaux am ON am.id = pca.acte_id
+         WHERE pca.clinique_id = $1
+           AND p.assureur_id = $2
+           AND pca.statut = 'facture'
+           AND pca.created_at::date BETWEEN $3 AND $4
+         GROUP BY type_service
+         ORDER BY montant_total DESC`,
+        [cliniqueId, compagnie_id, periode_debut, periode_fin]
+      );
+
+      // Total des beneficiaires DISTINCTS sur toute la periode -- ne
+      // peut pas etre deduit en sommant les lignes ci-dessus (un meme
+      // patient peut apparaitre dans plusieurs types de service).
+      const totauxRes = await pool.query(
+        `SELECT
+           COUNT(DISTINCT pca.patient_id)::int AS nb_beneficiaires,
+           COALESCE(SUM(pca.quantite * pca.prix_unitaire),0) AS montant_total,
+           COALESCE(SUM(pca.part_patient),0) AS part_patient,
+           COALESCE(SUM(pca.part_assurance),0) AS part_assurance
+         FROM prise_en_charge_actes pca
+         JOIN patients p ON p.id = pca.patient_id
+         WHERE pca.clinique_id = $1
+           AND p.assureur_id = $2
+           AND pca.statut = 'facture'
+           AND pca.created_at::date BETWEEN $3 AND $4`,
+        [cliniqueId, compagnie_id, periode_debut, periode_fin]
+      );
+
+      res.json({
+        success: true,
+        data: {
+          assureur: assureurRes.rows[0],
+          periode_debut,
+          periode_fin,
+          lignes: lignesRes.rows,
+          totaux: totauxRes.rows[0],
+        },
+      });
+    } catch (e) {
+      console.error('[bordereaux GET /facture-assurance]', e.message);
+      res.status(500).json({ success: false, message: e.message });
+    }
+  });
+
   return router;
 };
