@@ -269,8 +269,20 @@ export default function RDV() {
 
   // Patient
   const [statut, setStatut] = useState('patient');
-  const [patient, setPatient] = useState({ prenom: '', nom: '', telephone: '', email: '', ville_residence: 'Abidjan', assurance: 'Aucune', numero_police: '', motif: '' });
+  const [patient, setPatient] = useState({ prenom: '', nom: '', telephone: '', email: '', pays_residence: "Côte d'Ivoire", ville_residence: 'Abidjan', assurance: 'Aucune', numero_police: '', motif: '' });
   const [accomp, setAccomp] = useState({ prenom: '', nom: '', telephone: '', relation: 'Parent' });
+
+  // Pays -> villes (Afrique) pour le selecteur de residence du patient,
+  // charge depuis le backend au lieu de la liste plate VILLES (8 villes
+  // seulement). Repli local si l'API est indisponible.
+  const [paysVillesListe, setPaysVillesListe] = useState([]);
+  useEffect(() => {
+    fetch(`${API}/public/pays-villes`)
+      .then(r => r.json())
+      .then(d => setPaysVillesListe((d.success && d.data.length) ? d.data : [{ pays: "Côte d'Ivoire", villes: VILLES }]))
+      .catch(() => setPaysVillesListe([{ pays: "Côte d'Ivoire", villes: VILLES }]));
+  }, []);
+  const villesDuPays = (pays) => (paysVillesListe.find(p => p.pays === pays)?.villes) || [];
 
   // Si une clinique a deja ete choisie via la recherche de Home.jsx,
   // on la recupere directement et on saute l'etape 1 -- pas besoin de
@@ -748,7 +760,8 @@ export default function RDV() {
                 {inp('Nom *', 'nom', patient, setPatient, { placeholder: 'Nom du patient' })}
                 {inp('Téléphone *', 'telephone', patient, setPatient, { placeholder: '+225 07 00 00 00 00', type: 'tel' })}
                 {inp('Email', 'email', patient, setPatient, { placeholder: 'email@exemple.com', type: 'email' })}
-                {sel('Ville de résidence', patient.ville_residence, v => setPatient(p => ({ ...p, ville_residence: v })), VILLES)}
+                {sel('Pays de résidence', patient.pays_residence, v => setPatient(p => ({ ...p, pays_residence: v, ville_residence: villesDuPays(v)[0] || '' })), paysVillesListe.map(p => p.pays))}
+                {sel('Ville de résidence', patient.ville_residence, v => setPatient(p => ({ ...p, ville_residence: v })), villesDuPays(patient.pays_residence))}
                 {sel('Assurance santé', patient.assurance, v => setPatient(p => ({ ...p, assurance: v })), ASSURANCES)}
               </div>
               {patient.assurance !== 'Aucune' && inp('N° Police / Matricule assuré', 'numero_police', patient, setPatient, { placeholder: 'POL-2024-XXXXX' })}

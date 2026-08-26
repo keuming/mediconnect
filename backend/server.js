@@ -2381,13 +2381,22 @@ app.get('/api/public/patients/recherche', async (req, res) => {
       );
       if (r.rows.length) return res.json({ success: true, data: r.rows });
     }
-    // 3. Nom (prenom, nom, ou "prenom nom"), jusqu'a 8 resultats
-    const terme = `%${valeur}%`;
+    // 3. Nom -- chaque mot de la saisie est verifie independamment sur
+    // "prenom nom" concatenes, peu importe l'ordre dans lequel le
+    // patient les tape. BUG CORRIGE : avant, la saisie complete etait
+    // comparee telle quelle a "prenom nom" dans cet ordre exact -- un
+    // patient dont le prenom et le nom sont inverses par rapport a
+    // l'usage courant (ex: prenom="KEUMINGO REMI", nom="TOMA") n'etait
+    // jamais retrouve en tapant "toma keumingo remi" (seul un mot
+    // unique fonctionnait).
+    const mots = valeur.split(/\s+/).filter(Boolean).slice(0, 6);
+    const conditions = mots.map((_, i) => `(prenom || ' ' || nom) ILIKE $${i + 1}`).join(' AND ');
+    const valeursMots = mots.map(m => `%${m}%`);
     const r = await db(
       `SELECT id, prenom, nom, telephone, email, ville FROM patients
-        WHERE prenom ILIKE $1 OR nom ILIKE $1 OR (prenom || ' ' || nom) ILIKE $1
+        WHERE ${conditions}
         ORDER BY nom, prenom LIMIT 8`,
-      [terme]
+      valeursMots
     );
     res.json({ success: true, data: r.rows });
   } catch(e) { res.json({ success: true, data: [] }); }
@@ -2568,6 +2577,41 @@ app.post('/api/public/rdv', async (req, res) => {
 });
 
 // ── CHATBOT
+// ── Pays et villes (Afrique) pour les selecteurs Pays -> Ville --
+// remplace la liste plate de 8 villes utilisee jusqu'ici sur le site
+// RDV (VILLES), qui ne couvrait que quelques capitales. Liste statique
+// (pas de table dediee), volontairement centree sur les pays et
+// grandes villes ou MediConnect opere ou est susceptible de s'etendre.
+const PAYS_VILLES_AFRIQUE = {
+  "Côte d'Ivoire": ['Abidjan','Bouaké','Yamoussoukro','San-Pédro','Korhogo','Daloa','Man','Gagnoa','Abengourou','Agboville','Bingerville','Grand-Bassam','Anyama','Divo'],
+  'Sénégal': ['Dakar','Thiès','Touba','Rufisque','Kaolack','Saint-Louis','Ziguinchor','Mbour','Diourbel'],
+  'Burkina Faso': ['Ouagadougou','Bobo-Dioulasso','Koudougou','Banfora','Ouahigouya'],
+  'Ghana': ['Accra','Kumasi','Tamale','Sekondi-Takoradi','Ashaiman'],
+  'Mali': ['Bamako','Sikasso','Mopti','Koutiala','Ségou'],
+  'Togo': ['Lomé','Sokodé','Kara','Kpalimé','Atakpamé'],
+  'Bénin': ['Cotonou','Porto-Novo','Parakou','Djougou','Abomey-Calavi'],
+  'Guinée': ['Conakry','Nzérékoré','Kankan','Kindia','Labé'],
+  'Niger': ['Niamey','Zinder','Maradi','Agadez','Tahoua'],
+  'Cameroun': ['Douala','Yaoundé','Garoua','Bamenda','Bafoussam'],
+  'Gabon': ['Libreville','Port-Gentil','Franceville'],
+  'République démocratique du Congo': ['Kinshasa','Lubumbashi','Mbuji-Mayi','Goma'],
+  'Congo': ['Brazzaville','Pointe-Noire'],
+  'Tchad': ["N'Djamena",'Moundou','Sarh'],
+  'Maroc': ['Casablanca','Rabat','Fès','Marrakech','Tanger'],
+  'Algérie': ['Alger','Oran','Constantine','Annaba'],
+  'Tunisie': ['Tunis','Sfax','Sousse'],
+  'Nigéria': ['Lagos','Abuja','Kano','Ibadan','Port Harcourt'],
+  'Kenya': ['Nairobi','Mombasa','Kisumu'],
+  'Rwanda': ['Kigali','Butare'],
+};
+
+app.get('/api/public/pays-villes', (req, res) => {
+  res.json({
+    success: true,
+    data: Object.entries(PAYS_VILLES_AFRIQUE).map(([pays, villes]) => ({ pays, villes })),
+  });
+});
+
 app.use("/api/chatbot", require("./routes/chatbot"));
 app.use("/api/cards-admin", require("./routes/cards_admin"));
 
