@@ -593,7 +593,12 @@ function RecherchePatient({ value, onSelect, placeholder }) {
   const creerMut = useMutation({
     mutationFn: () => api.post("/patients", creerForm),
     onSuccess: (r) => {
-      const p = r.data.data;
+      // `api` ne fait qu'UN niveau d'unwrap (wrapper fetch maison, pas
+      // axios) : r.data EST le patient. Le `r.data.data` precedent valait
+      // undefined -> TypeError sur p.code_secret levee dans onSuccess ->
+      // React Query la routait vers onError -> toast "Erreur lors de la
+      // création" alors que le patient etait bien cree (HTTP 201).
+      const p = r.data;
       toast.success(`Patient créé — code secret ${p.code_secret}`);
       qc.invalidateQueries(["recherche-patient-globale"]);
       onSelect(p);
@@ -1344,7 +1349,10 @@ function PageDossiers() {
   const rechercherParReferenceMut = useMutation({
     mutationFn: () => api.get(`/passages/reference/${encodeURIComponent(numeroEntreeRecherche.trim())}`),
     onSuccess: (r) => {
-      const d = r.data.data;
+      // Meme correctif d'unwrap que ci-dessus : sans lui, d valait
+      // toujours undefined et le message "Aucun passage trouvé"
+      // s'affichait meme pour un numero d'entree parfaitement valide.
+      const d = r.data;
       if (!d) { toast.error("Aucun passage trouvé pour ce numéro d'entrée"); return; }
       const c = d.consultation || {};
       setRapportHospForm(f => ({
@@ -5689,7 +5697,8 @@ function PageConsultation() {
     if (!e.patient_id) { toast.error("Ce patient n'a pas de dossier MediConnect lié"); return; }
     try {
       const r = await api.get(`/patients/${e.patient_id}`);
-      setPatient(r.data.data);
+      // Meme correctif d'unwrap : setPatient(undefined) auparavant.
+      setPatient(r.data);
       if (e.statut !== 'en_consultation') appellerPatientMut.mutate({ id:e.id, action:'consultation' });
     } catch { toast.error("Erreur lors du chargement du dossier patient"); }
   };
