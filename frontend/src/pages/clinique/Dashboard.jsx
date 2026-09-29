@@ -673,11 +673,30 @@ function PagePlanning() {
   const navigate = useNavigate();
   const [showAdd, setShowAdd] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today());
+  // Mode "Tous" : affiche l'integralite des rendez-vous, toutes dates
+  // confondues, au lieu du seul jour selectionne. Choisir une date
+  // (calendrier ou raccourcis) repasse automatiquement en mode date unique.
+  const [voirTousRdv, setVoirTousRdv] = useState(false);
+  const choisirDate = (ds) => { setVoirTousRdv(false); setSelectedDate(ds); };
   const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [workflowRdv, setWorkflowRdv] = useState(null);
 
-  const { data, isLoading } = useQuery({ queryKey:["cl-rdvs",selectedDate], queryFn:()=>cAPI.rdvs({ date:selectedDate }).then(r=>r.data.data||[]) });
+  const { data, isLoading } = useQuery({
+    queryKey:["cl-rdvs", voirTousRdv ? "tous" : selectedDate],
+    queryFn:()=>cAPI.rdvs(voirTousRdv ? {} : { date:selectedDate }).then(r=>{
+      const liste = r.data.data||[];
+      // En mode "Tous", la liste couvre plusieurs jours : on la trie du
+      // plus recent au plus ancien pour que les RDV a venir et ceux du
+      // jour restent en haut.
+      if (!voirTousRdv) return liste;
+      return [...liste].sort((a,b)=>{
+        const da = `${String(a.date_rdv||"").slice(0,10)} ${String(a.heure_rdv||"")}`;
+        const db = `${String(b.date_rdv||"").slice(0,10)} ${String(b.heure_rdv||"")}`;
+        return db.localeCompare(da);
+      });
+    }),
+  });
   const rdvs = data||[];
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addRdv(d), onSuccess:()=>{ toast.success("RDV ajouté !"); qc.invalidateQueries(["cl-rdvs"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
@@ -692,20 +711,21 @@ function PagePlanning() {
 
   return (
     <div>
-      <PageHeader title="📅 Planning & Rendez-vous" subtitle={`${rdvs.length} RDV pour le ${fmtDate(selectedDate)}`}
+      <PageHeader title="📅 Planning & Rendez-vous" subtitle={voirTousRdv ? `${rdvs.length} RDV au total — toutes dates` : `${rdvs.length} RDV pour le ${fmtDate(selectedDate)}`}
         actions={<><Btn onClick={()=>{ setForm(prev=>({...prev, date_rdv:selectedDate})); setShowAdd(true); }}>+ Nouveau RDV</Btn></>} />
 
       {/* Sélecteur de date */}
       <div style={{ background:C.input, border:`1px solid ${C.border}`, borderRadius:12, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
         <label style={{ fontSize:16, fontWeight:700, color:C.muted, textTransform:"uppercase" }}>Date</label>
-        <input type="date" value={selectedDate} onChange={e=>setSelectedDate(e.target.value)}
-          style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontSize:18, outline:"none", fontFamily:"inherit" }} />
+        <input type="date" value={selectedDate} onChange={e=>choisirDate(e.target.value)}
+          style={{ background:C.hover, border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 12px", color:C.text, fontSize:18, outline:"none", fontFamily:"inherit", opacity: voirTousRdv ? 0.55 : 1 }} />
         <div style={{ display:"flex", gap:8 }}>
           {["Hier","Aujourd'hui","Demain"].map((l,i)=>{
             const d = new Date(); d.setDate(d.getDate()+(i-1));
             const ds = d.toISOString().split("T")[0];
-            return <Btn key={l} variant={selectedDate===ds?"primary":"outline"} style={{padding:"7px 14px",fontSize:16}} onClick={()=>setSelectedDate(ds)}>{l}</Btn>;
+            return <Btn key={l} variant={(!voirTousRdv && selectedDate===ds)?"primary":"outline"} style={{padding:"7px 14px",fontSize:16}} onClick={()=>choisirDate(ds)}>{l}</Btn>;
           })}
+          <Btn variant={voirTousRdv?"primary":"outline"} style={{padding:"7px 14px",fontSize:16}} onClick={()=>setVoirTousRdv(true)}>Tous</Btn>
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
           {statuts.map(s => <Badge key={s} color={statutColor[s]}>{rdvs.filter(r=>r.statut===s).length} {s}</Badge>)}
@@ -715,8 +735,11 @@ function PagePlanning() {
       {isLoading ? <Loader /> : (
         <Panel>
           {rdvs.length===0
-            ? <Empty icon="📅" title="Aucun RDV ce jour" subtitle="Cliquez sur + Nouveau RDV pour en ajouter" />
+            ? <Empty icon="📅" title={voirTousRdv ? "Aucun RDV enregistré" : "Aucun RDV ce jour"} subtitle="Cliquez sur + Nouveau RDV pour en ajouter" />
             : <Table columns={[
+                // Colonne Date affichee uniquement en mode "Tous" : en mode
+                // date unique elle repeterait la meme valeur sur chaque ligne.
+                ...(voirTousRdv ? [{ key:"date_rdv", label:"Date", render:v=><span style={{fontWeight:700,color:C.text}}>{fmtDate(v)}</span> }] : []),
                 { key:"heure_rdv", label:"Heure", render:v=><span style={{fontFamily:"monospace",fontWeight:700,color:C.teal}}>{v?.slice(0,5)||"—"}</span> },
                 { key:"patient_nom", label:"Patient", render:(v,r)=><><div style={{fontWeight:700}}>{v||"—"}</div><div style={{fontSize:14,color:C.muted}}>{r.assurance||"Sans assurance"}</div></> },
                 { key:"medecin_nom", label:"Médecin", render:v=>v||"—" },
