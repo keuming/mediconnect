@@ -678,7 +678,7 @@ function PagePlanning() {
   // (calendrier ou raccourcis) repasse automatiquement en mode date unique.
   const [voirTousRdv, setVoirTousRdv] = useState(false);
   const choisirDate = (ds) => { setVoirTousRdv(false); setSelectedDate(ds); };
-  const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
+  const [form, setForm] = useState({ patient_nom:"", medecin_nom:"", medecin_id:"", date_rdv:today(), heure_rdv:"09:00", motif:"", assurance:"", statut:"en_attente" });
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [workflowRdv, setWorkflowRdv] = useState(null);
 
@@ -698,6 +698,15 @@ function PagePlanning() {
     }),
   });
   const rdvs = data||[];
+
+  // Medecins reellement enregistres dans cette clinique -- alimentent le
+  // menu deroulant du formulaire de RDV (meme source que la page
+  // Medecins & RH), au lieu d'une saisie libre source de doublons.
+  const { data: medecinsPlanning } = useQuery({
+    queryKey: ["cl-medecins-planning"],
+    queryFn: () => cAPI.medecins().then(r => r.data||[]),
+  });
+  const libelleMedecin = (m) => `Dr ${m.prenom} ${m.nom}${m.specialite ? ' — ' + m.specialite : ''}`;
 
   const addMut = useMutation({ mutationFn:d=>cAPI.addRdv(d), onSuccess:()=>{ toast.success("RDV ajouté !"); qc.invalidateQueries(["cl-rdvs"]); setShowAdd(false); }, onError:()=>toast.error("Erreur") });
   const updMut = useMutation({ mutationFn:({id,statut})=>cAPI.updateRdv(id,{statut}), onSuccess:()=>{ toast.success("RDV mis à jour"); qc.invalidateQueries(["cl-rdvs"]); qc.invalidateQueries(["cl-rdvs-today"]); }, onError:()=>toast.error("Erreur") });
@@ -772,7 +781,13 @@ function PagePlanning() {
       <Modal open={showAdd} onClose={()=>setShowAdd(false)} title="📅 Nouveau rendez-vous" width={640}>
         <Grid cols={2} gap={12}>
           <RecherchePatient value={form.patient_nom} onSelect={p=>setForm(prev=>({...prev, patient_id:p.id, patient_nom:`${p.prenom} ${p.nom}`}))} />
-          <Inp label="Médecin" value={form.medecin_nom} onChange={f("medecin_nom")} placeholder="Dr. Traoré" />
+          <Sel label="Médecin" value={form.medecin_id} onChange={e=>{
+            const m = (medecinsPlanning||[]).find(x => String(x.id) === e.target.value);
+            // On enregistre l'identifiant ET le libelle : le premier lie
+            // le RDV au dossier du medecin, le second reste affiche tel
+            // quel dans les listes et les impressions.
+            setForm(prev => ({ ...prev, medecin_id: m ? m.id : "", medecin_nom: m ? libelleMedecin(m) : "" }));
+          }} options={[{v:"",l:"— Choisir un médecin —"}, ...(medecinsPlanning||[]).map(m=>({v:String(m.id), l:libelleMedecin(m)}))]} />
           <Inp label="Date" type="date" required value={form.date_rdv} onChange={f("date_rdv")} />
           <Inp label="Heure" type="time" required value={form.heure_rdv} onChange={f("heure_rdv")} />
         </Grid>
